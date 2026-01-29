@@ -1125,7 +1125,13 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      // If currently listening, stop speech recognition instead of sending
+      if (isListening && recognition.current) {
+        recognition.current.stop();
+        setIsListening(false);
+      } else {
+        handleSendMessage();
+      }
     }
   };
 
@@ -1383,7 +1389,7 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                     ref={inputRef}
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
+                    onKeyDown={handleKeyPress}
                     placeholder="Ask Loli anything about patient care, treatments, or dental procedures..."
                     className="flex-1 border border-indigo-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-white/70 backdrop-blur-sm transition-all duration-300 hover:bg-white/90 focus:bg-white shadow-sm min-h-[60px]"
                     rows={2}
