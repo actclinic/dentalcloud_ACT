@@ -1,0 +1,399 @@
+AI_ASSISTANT_COMMANDS_GUIDE.txt
+================================
+
+COMPREHENSIVE GUIDE FOR DENTAL CLOUD AI ASSISTANT
+=================================================
+
+TABLE OF CONTENTS:
+1. MODES OF OPERATION
+2. PATIENT MANAGEMENT COMMANDS
+3. APPOINTMENT OPERATIONS
+4. TREATMENT PROCEDURES
+5. MEDICINE MANAGEMENT
+6. FINANCIAL OPERATIONS
+7. REPORTING AND ANALYTICS
+8. ADVANCED WORKFLOWS
+9. MULTI-STEP PROCESS EXAMPLES
+10. CONFIRMATION AND ERROR HANDLING
+
+---
+
+1. MODES OF OPERATION
+=====================
+
+ASK MODE (Default):
+- Read-only access to information
+- Provides dental knowledge and guidance
+- Cannot perform CRUD operations
+- Example: "What are the symptoms of gingivitis?"
+
+AGENT MODE (Required for actions):
+- Full CRUD capabilities
+- Can create, update, delete data
+- Must be enabled for operational commands
+- Toggle using the mode switch in the UI
+
+---
+
+2. PATIENT MANAGEMENT COMMANDS
+==============================
+
+FIND PATIENT:
+{ "action": "p_find", "params": { "name": "John" } }
+
+CREATE PATIENT:
+{ "action": "p_c", "params": { 
+  "n": "John Smith", 
+  "e": "john.smith@email.com", 
+  "ph": "555-0123", 
+  "m": "Allergic to penicillin" 
+} }
+
+UPDATE PATIENT:
+{ "action": "p_u", "params": { 
+  "id": "patient123", 
+  "data": { 
+    "phone": "555-0124", 
+    "email": "john.updated@email.com" 
+  } 
+} }
+
+DELETE PATIENT:
+{ "action": "p_d", "params": { "id": "patient123" } }
+OR
+{ "action": "p_d", "params": { "name": "John Smith" } }
+
+GET PATIENT BALANCE:
+{ "action": "pat_bal", "params": { "pid": "patient123" } }
+
+GET PATIENT HISTORY:
+{ "action": "pat_hist", "params": { "pid": "patient123" } }
+
+---
+
+3. APPOINTMENT OPERATIONS
+=========================
+
+CREATE APPOINTMENT:
+{ "action": "apt_c", "params": { 
+  "p_id": "patient123", 
+  "dr_id": "doctor456", 
+  "dt": "2024-02-15", 
+  "t": "10:30", 
+  "ty": "Checkup", 
+  "n": "Routine dental examination" 
+} }
+
+UPDATE APPOINTMENT:
+{ "action": "apt_u", "params": { 
+  "id": "appointment789", 
+  "data": { 
+    "time": "11:00", 
+    "status": "Confirmed" 
+  } 
+} }
+
+DELETE APPOINTMENT:
+{ "action": "apt_d", "params": { "id": "appointment789" } }
+
+RESCHEDULE APPOINTMENT:
+{ "action": "apt_reschedule", "params": { 
+  "id": "appointment789", 
+  "dt": "2024-02-16", 
+  "t": "14:00" 
+} }
+
+UPDATE APPOINTMENT STATUS:
+{ "action": "apt_status", "params": { 
+  "id": "appointment789", 
+  "status": "Completed" 
+} }
+
+FIND PATIENT APPOINTMENTS:
+{ "action": "apt_find_patient", "params": { "name": "John Smith" } }
+
+---
+
+4. TREATMENT PROCEDURES
+=======================
+
+RECORD TREATMENT:
+{ "action": "tr_create", "params": { 
+  "pid": "patient123", 
+  "teeth": [18, 19], 
+  "desc": "Composite filling for caries", 
+  "cost": 150,
+  "meds": [
+    {"id": "med789", "qty": 1},
+    {"id": "med101", "qty": 2}
+  ]
+} }
+
+UNDO TREATMENT RECORD:
+{ "action": "tr_undo", "params": { 
+  "id": "treatment456", 
+  "pid": "patient123", 
+  "cost": 150 
+} }
+
+---
+
+5. MEDICINE MANAGEMENT
+======================
+
+CREATE MEDICINE:
+{ "action": "m_c", "params": { 
+  "n": "Amoxicillin 500mg", 
+  "d": "Antibiotic for dental infections", 
+  "u": "capsule", 
+  "p": 25.50, 
+  "s": 50, 
+  "ms": 10, 
+  "c": "Antibiotics" 
+} }
+
+UPDATE MEDICINE:
+{ "action": "m_u", "params": { 
+  "id": "medicine789", 
+  "data": { 
+    "price": 27.99, 
+    "min_stock": 15 
+  } 
+} }
+
+RESTOCK MEDICINE:
+{ "action": "m_restock", "params": { 
+  "id": "medicine789", 
+  "qty": 25 
+} }
+
+GET LOW STOCK REPORT:
+{ "action": "inv_low", "params": {} }
+
+GET OUT OF STOCK ITEMS:
+{ "action": "inv_out", "params": {} }
+
+GET MEDICINE SALES REPORT:
+{ "action": "med_sales_report", "params": {} }
+
+GET REORDER SUGGESTIONS:
+{ "action": "inv_reorder_suggestions", "params": {} }
+
+PERFORM INVENTORY AUDIT:
+{ "action": "inventory_audit", "params": {} }
+
+---
+
+6. FINANCIAL OPERATIONS
+=======================
+
+PROCESS PAYMENT:
+{ "action": "fin_pay", "params": { 
+  "pid": "patient123", 
+  "amt": 150 
+} }
+
+GET FINANCIAL REPORT:
+{ "action": "fin_report", "params": { "period": "weekly" } }
+// Options: "daily", "weekly", "monthly"
+
+DETAILED FINANCIAL ANALYSIS:
+{ "action": "financial_analysis", "params": { 
+  "start_date": "2024-01-01", 
+  "end_date": "2024-01-31" 
+} }
+
+---
+
+7. REPORTING AND ANALYTICS
+==========================
+
+STAFF AVAILABILITY:
+{ "action": "staff_availability", "params": { "date": "2024-02-15" } }
+
+BULK APPOINTMENTS:
+{ "action": "bulk_appointments", "params": { 
+  "patients": ["John Smith", "Jane Doe", "Bob Johnson"], 
+  "dr_id": "doctor456", 
+  "date": "2024-02-20", 
+  "time": "09:00" 
+} }
+
+---
+
+8. ADVANCED WORKFLOWS
+=====================
+
+AI-ASSISTED TREATMENT PLANNING:
+{ "action": "treatment_plan", "params": { 
+  "patient_name": "John Smith", 
+  "chief_complaint": "severe toothache and sensitivity", 
+  "examination_findings": "caries on tooth #19, swollen gums, possible abscess" 
+} }
+
+SCHEDULE PATIENT FOLLOW-UP:
+{ "action": "patient_followup", "params": { 
+  "patient_name": "John Smith", 
+  "days": 14, 
+  "reason": "post-root canal checkup" 
+} }
+
+INVENTORY OPTIMIZATION:
+{ "action": "inventory_optimization", "params": {} }
+
+---
+
+9. MULTI-STEP PROCESS EXAMPLES
+==============================
+
+EXAMPLE 1: Complete Patient Onboarding Workflow
+-----------------------------------------------
+Step 1 - Find existing patient:
+"I want to check if John Smith is already in our system"
+{ "action": "p_find", "params": { "name": "John Smith" } }
+
+Step 2 - Create new patient (if not found):
+"Create a new patient profile for John Smith"
+{ "action": "p_c", "params": { 
+  "n": "John Smith", 
+  "e": "john.smith@email.com", 
+  "ph": "555-0123", 
+  "m": "No known allergies" 
+} }
+
+Step 3 - Schedule appointment:
+"Now book him for a routine checkup next Tuesday at 10 AM"
+{ "action": "apt_c", "params": { 
+  "p_id": "generated_patient_id", 
+  "dr_id": "doctor123", 
+  "dt": "2024-02-20", 
+  "t": "10:00", 
+  "ty": "Checkup", 
+  "n": "First visit routine examination" 
+} }
+
+EXAMPLE 2: Treatment and Billing Workflow
+-----------------------------------------
+Step 1 - Record treatment:
+"Record a composite filling on tooth #18 for patient Jane Doe, cost 175 MMK"
+{ "action": "tr_create", "params": { 
+  "pid": "patient456", 
+  "teeth": [18], 
+  "desc": "Composite filling on tooth #18", 
+  "cost": 175 
+} }
+
+Step 2 - Process payment:
+"Process her payment of 175 MMK"
+{ "action": "fin_pay", "params": { 
+  "pid": "patient456", 
+  "amt": 175 
+} }
+
+Step 3 - Schedule follow-up:
+"Schedule a follow-up appointment in 2 weeks for post-treatment check"
+{ "action": "patient_followup", "params": { 
+  "patient_name": "Jane Doe", 
+  "days": 14, 
+  "reason": "Post-treatment follow-up" 
+} }
+
+EXAMPLE 3: Inventory Management Workflow
+----------------------------------------
+Step 1 - Check inventory status:
+"What medicines are running low?"
+{ "action": "inv_low", "params": {} }
+
+Step 2 - Get reorder suggestions:
+"Show me reorder recommendations"
+{ "action": "inv_reorder_suggestions", "params": {} }
+
+Step 3 - Restock specific item:
+"Restock Amoxicillin by 30 units"
+{ "action": "m_restock", "params": { 
+  "id": "medicine789", 
+  "qty": 30 
+} }
+
+Step 4 - Verify update:
+"Show me the updated inventory report"
+{ "action": "inventory_audit", "params": {} }
+
+---
+
+10. CONFIRMATION AND ERROR HANDLING
+===================================
+
+CONFIRMATION RESPONSES:
+When the AI asks for confirmation, respond with:
+- "Yes"
+- "Confirm"  
+- "Proceed"
+- "OK"
+- "Sure"
+- "Y"
+
+CANCELLATION RESPONSES:
+To cancel a pending action:
+- "No"
+- "Cancel"
+- "Never mind"
+- "Abort"
+
+ERROR HANDLING:
+Common error scenarios and solutions:
+
+1. "Agent Mode Required":
+   Solution: Switch to Agent Mode using the toggle button
+
+2. "Patient not found":
+   Solution: Use p_find to locate the correct patient ID first
+
+3. "Invalid JSON format":
+   Solution: Check syntax - ensure proper quotes and brackets
+   
+4. "Insufficient stock":
+   Solution: Check inventory levels before prescribing medicines
+
+5. "Doctor not available":
+   Solution: Use staff_availability to check schedules first
+
+---
+
+TIPS FOR EFFECTIVE USAGE:
+=========================
+
+1. Always enable Agent Mode for operational commands
+2. Use p_find before creating new patients to avoid duplicates
+3. Check inventory levels before prescribing medicines
+4. Use staff_availability to verify doctor schedules
+5. For complex workflows, break them into logical steps
+6. The AI maintains context during multi-step processes
+7. Speak naturally - the AI understands conversational language
+8. You can mix voice and text input seamlessly
+9. Previous conversation context is preserved across sessions
+10. Use confirmation responses naturally ("Yes, proceed" or "Confirm")
+
+---
+
+VOICE COMMAND EXAMPLES:
+=======================
+
+Instead of typing JSON, you can speak naturally:
+
+"Find patient John Smith" 
+→ AI will suggest the p_find action
+
+"Book an appointment for next Tuesday at 2 PM with Dr. Wilson"
+→ AI will guide you through creating the appointment
+
+"I need to restock our antibiotic supply by 25 units"
+→ AI will help you identify the medicine and process the restock
+
+"Show me this month's financial report"
+→ AI will generate the fin_report with period="monthly"
+
+---
+
+For technical support or questions about specific commands,
+refer to the AI Assistant documentation or contact your system administrator.

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X } from 'lucide-react';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine } from '../types';
 import { api } from '../services/api';
 
@@ -183,6 +183,9 @@ How can I assist you today?
     workflowStep: 0,
     contextSummary: ''
   });
+  // Help modal state
+  const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [helpContent, setHelpContent] = useState<string>('');
 
   // Enhanced context summary generator for better continuity
   const generateContextSummary = (userMessage: string, assistantResponse: string): string => {
@@ -303,6 +306,62 @@ How can I assist you today?
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // Load help content on component mount
+  useEffect(() => {
+    const loadHelpContent = async () => {
+      try {
+        // In a real implementation, you might fetch this from a file or API
+        // For now, we'll use a simplified version
+        const content = `AI ASSISTANT COMMANDS GUIDE
+
+MODES OF OPERATION:
+===================
+ASK MODE (Default): Read-only, provides dental knowledge
+AGENT MODE: Full CRUD capabilities, required for operational commands
+
+PATIENT MANAGEMENT:
+==================
+Find patient: { "action": "p_find", "params": { "name": "John" } }
+Create patient: { "action": "p_c", "params": { "n": "John Smith", "e": "email", "ph": "phone", "m": "history" } }
+Update patient: { "action": "p_u", "params": { "id": "patient123", "data": { "phone": "new" } } }
+Delete patient: { "action": "p_d", "params": { "id": "patient123" } }
+
+APPOINTMENT OPERATIONS:
+======================
+Create appointment: { "action": "apt_c", "params": { "p_id": "patient123", "dr_id": "doctor456", "dt": "2024-02-15", "t": "10:30", "ty": "Checkup" } }
+Update appointment: { "action": "apt_u", "params": { "id": "apt789", "data": { "time": "11:00" } } }
+Delete appointment: { "action": "apt_d", "params": { "id": "apt789" } }
+
+TREATMENT PROCEDURES:
+====================
+Record treatment: { "action": "tr_create", "params": { "pid": "patient123", "teeth": [18], "desc": "filling", "cost": 150 } }
+Undo treatment: { "action": "tr_undo", "params": { "id": "treatment456", "pid": "patient123", "cost": 150 } }
+
+MEDICINE MANAGEMENT:
+===================
+Restock medicine: { "action": "m_restock", "params": { "id": "medicine789", "qty": 25 } }
+Create medicine: { "action": "m_c", "params": { "n": "Amoxicillin", "p": 25.50, "s": 50, "ms": 10 } }
+
+FINANCIAL OPERATIONS:
+====================
+Process payment: { "action": "fin_pay", "params": { "pid": "patient123", "amt": 150 } }
+Financial report: { "action": "fin_report", "params": { "period": "weekly" } }
+
+CONFIRMATION RESPONSES:
+======================
+When asked for confirmation, respond with: "Yes", "Confirm", "Proceed", "OK", "Sure"
+
+For complete documentation, please refer to the AI_ASSISTANT_COMMANDS_GUIDE.txt file in your project directory.`;
+        setHelpContent(content);
+      } catch (error) {
+        console.error('Failed to load help content:', error);
+        setHelpContent('Help content could not be loaded. Please check the AI_ASSISTANT_COMMANDS_GUIDE.txt file.');
+      }
+    };
+
+    loadHelpContent();
   }, []);
 
   // Cleanup old chat sessions on mount and at regular intervals
@@ -2150,6 +2209,16 @@ Category Breakdown: ${categories.join(', ')}`;
             </button>
           </div>
 
+          {/* Help Button */}
+          <button
+            onClick={() => setShowHelpModal(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
+            title="View AI Assistant Commands Guide"
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>Help</span>
+          </button>
+
           <button
             onClick={createNewSession}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
@@ -2391,6 +2460,44 @@ Category Breakdown: ${categories.join(', ')}`;
           </div>
         </div>
       </div>
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <HelpCircle className="w-8 h-8 text-green-600" />
+                AI Assistant Commands Guide
+              </h2>
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Close help modal"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="prose max-w-none">
+                <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 bg-gray-50 p-4 rounded-lg border">
+                  {helpContent}
+                </pre>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
