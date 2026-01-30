@@ -811,7 +811,7 @@ Examples:
 { "action": "pat_hist", "params": { "name": "John Smith" } }
 `
 
-  const callAICompletionAPI = async (userMessage: string): Promise<string> => {
+  const callAICompletionAPI = async (userMessage: string, history: Message[] = []): Promise<string> => {
     const apiKey = process.env.AI_API_KEY || MOCK_API_KEY;
     
     // Check if message implies an action
@@ -889,6 +889,10 @@ OPTIMIZATION GUIDELINES:
                 role: "system",
                 content: systemPrompt
               },
+              ...history.slice(-10).map(msg => ({
+                role: msg.role === 'assistant' ? 'assistant' : 'user',
+                content: msg.content
+              })),
               {
                 role: "user",
                 content: userMessage
@@ -1461,7 +1465,7 @@ Thank you for using Loli! 🦷✨`,
     setIsLoading(true);
 
     try {
-      const aiResponse = await callAICompletionAPI(userMessage.content);
+      const aiResponse = await callAICompletionAPI(userMessage.content, messages);
           
       // Parse for multiple action JSON blocks with improved validation
       let actionResults: string[] = [];
