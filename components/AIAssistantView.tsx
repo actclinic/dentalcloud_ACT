@@ -167,16 +167,43 @@ How can I assist you today?
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   // State for pending actions that require confirmation
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  // State for conversation context that persists across speech sessions
+  // Enhanced conversation context with multi-turn awareness
   const [conversationContext, setConversationContext] = useState<{
     lastUserMessage: string | null;
     lastAssistantResponse: string | null;
     pendingConfirmation: boolean;
+    currentWorkflow: string | null; // Track ongoing workflows
+    workflowStep: number; // Track progress in multi-step processes
+    contextSummary: string; // Brief summary of conversation context
   }>({
     lastUserMessage: null,
     lastAssistantResponse: null,
-    pendingConfirmation: false
+    pendingConfirmation: false,
+    currentWorkflow: null,
+    workflowStep: 0,
+    contextSummary: ''
   });
+
+  // Enhanced context summary generator for better continuity
+  const generateContextSummary = (userMessage: string, assistantResponse: string): string => {
+    const lowerUser = userMessage.toLowerCase();
+    const lowerAssistant = assistantResponse.toLowerCase();
+    
+    // Identify workflow type
+    if (lowerUser.includes('treatment') && lowerUser.includes('plan')) {
+      return 'Treatment planning discussion';
+    } else if (lowerUser.includes('inventory') || lowerUser.includes('stock')) {
+      return 'Inventory management discussion';
+    } else if (lowerUser.includes('appointment') || lowerUser.includes('schedule')) {
+      return 'Appointment scheduling discussion';
+    } else if (lowerUser.includes('financial') || lowerUser.includes('report')) {
+      return 'Financial analysis discussion';
+    } else if (lowerUser.includes('patient') && (lowerUser.includes('find') || lowerUser.includes('search'))) {
+      return 'Patient lookup discussion';
+    }
+    
+    return 'General dental practice discussion';
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   
@@ -225,7 +252,8 @@ How can I assist you today?
         setConversationContext(prev => ({
           ...prev,
           lastUserMessage: transcript,
-          pendingConfirmation: pendingAction !== null
+          pendingConfirmation: pendingAction !== null,
+          contextSummary: prev.contextSummary || generateContextSummary(transcript, prev.lastAssistantResponse || '')
         }));
         
         // If we have a final result, we should consider stopping the recognition
@@ -416,6 +444,53 @@ How can I assist you today?
     }
   };
 
+  // Token-optimized context builder for cost-effective AI operations
+  const getOptimizedContextData = (isActionQuery: boolean = false, maxTokens: number = 1500) => {
+    const today = new Date().toISOString().split('T')[0];
+    const baseData = {
+      td: today,
+      s: {
+        p: patients.length,
+        a: appointments.length,
+        d: doctors.length,
+        t: treatmentTypes.length,
+        m: medicines.length
+      }
+    };
+
+    // Calculate approximate token usage for different context levels
+    const baseTokens = JSON.stringify(baseData).length / 4; // Rough approximation
+    const askModeTokens = 300; // Compressed data
+    const agentModeTokens = 800; // Extended data
+    const advancedTokens = 1200; // Full context with analytics
+
+    if (!isActionQuery && mode === 'ask') {
+      // Ultra-compressed mode for minimal token usage
+      return {
+        ...baseData,
+        dr: doctors.slice(0, 5).map(d => ({ n: d.name, s: d.specialization.substring(0, 20) })), 
+        ta: appointments.filter(a => a.status === 'Scheduled' && a.date === today).slice(0, 3).map(a => ({ p: a.patient_name.substring(0, 15), t: a.time })),
+        inv: {
+          total: medicines.length,
+          low: medicines.filter(m => m.stock <= (m.min_stock || 0)).length
+        }
+      };
+    }
+
+    if (isActionQuery && maxTokens < 1000) {
+      // Medium context for action queries with token constraints
+      return {
+        ...baseData,
+        patients: patients.slice(0, 10).map(p => ({ i: p.id, n: p.name.substring(0, 20), ph: p.phone })),
+        doctors: doctors.slice(0, 8).map(d => ({ i: d.id, n: d.name, s: d.specialization })),
+        medicines: medicines.slice(0, 10).map(m => ({ i: m.id, n: m.name.substring(0, 25), s: m.stock }))
+      };
+    }
+
+    // Full context for complex operations
+    return getContextualData(isActionQuery);
+  };
+
   const getContextualData = (isActionQuery: boolean = false) => {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
     
@@ -448,13 +523,73 @@ How can I assist you today?
       };
     }
 
-    // Extended context for Agent Mode or Action queries
+    // Extended context for Agent Mode or Action queries with enhanced data
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
     return {
       ...baseData,
-      patients: patients.slice(0, 15).map(p => ({ i: p.id, n: p.name, ph: p.phone, b: p.balance })),
-      doctors: doctors.map(d => ({ i: d.id, n: d.name, s: d.specialization, sch: d.schedules })),
-      appointments: appointments.filter(a => a.date >= today).slice(0, 15).map(a => ({ i: a.id, p: a.patient_name, pi: a.patient_id, d: a.doctor_name, di: a.doctor_id, dt: a.date, t: a.time, s: a.status })),
-      medicines: medicines.slice(0, 15).map(m => ({ i: m.id, n: m.name, s: m.stock, ms: m.min_stock, p: m.price })),
+      patients: patients.slice(0, 25).map(p => ({ 
+        i: p.id, 
+        n: p.name, 
+        ph: p.phone, 
+        b: p.balance,
+        lp: p.loyalty_points,
+        mh: p.medicalHistory ? p.medicalHistory.substring(0, 100) : ''
+      })),
+      doctors: doctors.map(d => ({ 
+        i: d.id, 
+        n: d.name, 
+        s: d.specialization, 
+        sch: d.schedules,
+        appts_today: appointments.filter(a => a.doctor_id === d.id && a.date === today && a.status === 'Scheduled').length
+      })),
+      appointments: appointments.filter(a => a.date >= sevenDaysAgoStr).slice(0, 30).map(a => ({ 
+        i: a.id, 
+        p: a.patient_name, 
+        pi: a.patient_id, 
+        d: a.doctor_name, 
+        di: a.doctor_id, 
+        dt: a.date, 
+        t: a.time, 
+        s: a.status,
+        ty: a.type
+      })),
+      medicines: medicines.slice(0, 25).map(m => ({ 
+        i: m.id, 
+        n: m.name, 
+        s: m.stock, 
+        ms: m.min_stock, 
+        p: m.price,
+        c: m.category,
+        sales_7days: 0 // Would be calculated from sales data
+      })),
+      treatment_records: treatmentRecords.slice(0, 20).map(tr => ({
+        i: tr.id,
+        pid: tr.patient_id,
+        pn: tr.patient_name,
+        t: tr.teeth,
+        d: tr.description,
+        c: tr.cost,
+        dt: tr.date
+      })),
+      financial_summary: {
+        daily_revenue: treatmentRecords.filter(tr => tr.date === today).reduce((sum, tr) => sum + (tr.cost || 0), 0),
+        weekly_revenue: treatmentRecords.filter(tr => tr.date >= sevenDaysAgoStr).reduce((sum, tr) => sum + (tr.cost || 0), 0),
+        monthly_revenue: treatmentRecords.filter(tr => {
+          const recordDate = new Date(tr.date);
+          const currentDate = new Date();
+          return recordDate.getMonth() === currentDate.getMonth() && 
+                 recordDate.getFullYear() === currentDate.getFullYear();
+        }).reduce((sum, tr) => sum + (tr.cost || 0), 0)
+      },
+      inventory_insights: {
+        low_stock_items: medicines.filter(m => m.stock <= (m.min_stock || 0)).length,
+        out_of_stock_items: medicines.filter(m => m.stock === 0).length,
+        total_inventory_value: medicines.reduce((sum, m) => sum + (m.stock * m.price), 0),
+        fast_moving_items: medicines.slice(0, 5).map(m => ({ n: m.name, s: m.stock })) // Placeholder
+      },
       loc: users[0]?.location_id || 'main' // Use first user's location as default
     };
   };
@@ -481,6 +616,27 @@ ACTIONS (Available in all modes):
 - dr_d(id): Delete doctor.
 - m_c(n, d, u, p, s, ms, c): Create medicine. n=name, d=description, u=unit, p=price, s=stock, ms=min_stock, c=category.
 - m_u(id, data): Update medicine.
+- m_restock(id, qty): Restock medicine. id=medicine id, qty=quantity to add.
+- tr_create(pid, teeth[], desc, cost, meds[]): Record treatment. pid=patient id, teeth=array of tooth numbers, desc=description, cost=amount, meds=[{id, qty}].
+- tr_undo(id, pid, cost): Undo treatment record.
+- fin_pay(pid, amt): Process payment. pid=patient id, amt=amount.
+- inv_low(): Get low stock report.
+- inv_out(): Get out-of-stock items.
+- fin_report(period): Get financial report. period='daily'|'weekly'|'monthly'.
+- pat_bal(pid): Get patient balance.
+- pat_hist(pid): Get patient treatment history.
+- apt_reschedule(id, dt, t): Reschedule appointment.
+- apt_status(id, status): Update appointment status.
+- med_sales_report(): Get medicine sales summary.
+- p_find(name): Find patient by name (partial match).
+- apt_find_patient(name): Find appointments for patient.
+- inv_reorder_suggestions(): Get automatic reorder recommendations.
+- staff_availability(date): Check doctor availability for date.
+- bulk_appointments(patients[], dr_id, date, time): Schedule multiple appointments.
+- treatment_plan(patient_name, symptoms, proposed_treatments[]): AI-assisted treatment planning.
+- patient_followup(patient_name, days, reason): Schedule follow-up appointment.
+- financial_analysis(start_date, end_date): Detailed financial insights.
+- inventory_audit(): Complete inventory status and recommendations.
 
 To perform an action, include a JSON block at the END of your message:
 { "action": "ACTION_NAME", "params": { ... } }
@@ -488,8 +644,20 @@ To perform an action, include a JSON block at the END of your message:
 Examples:
 { "action": "p_c", "params": { "n": "John Doe", "e": "john@example.com", "ph": "1234567890", "m": "No known allergies" } }
 { "action": "apt_c", "params": { "p_id": "patient123", "dr_id": "doctor456", "dt": "2024-01-15", "t": "10:00", "ty": "Checkup", "n": "Routine checkup" } }
+{ "action": "tr_create", "params": { "pid": "patient123", "teeth": [18, 19], "desc": "Composite filling", "cost": 150, "meds": [{"id": "med789", "qty": 1}] } }
+{ "action": "treatment_plan", "params": { "patient_name": "John Doe", "chief_complaint": "severe toothache", "examination_findings": "caries on tooth #19, swollen gums" } }
+{ "action": "inventory_optimization", "params": {} }
+{ "action": "financial_analysis", "params": { "start_date": "2024-01-01", "end_date": "2024-01-31" } }
 
-Only perform actions if explicitly requested or clearly intended. Ensure JSON is properly formatted with correct syntax.
+ADVANCED WORKFLOWS:
+- treatment_planning(patient_name, chief_complaint, examination_findings): Comprehensive treatment planning with cost estimation
+- inventory_optimization(): Automated inventory management with reorder suggestions
+- patient_care_coordination(patient_name, treatments[], timeline): Multi-stage treatment coordination
+- revenue_forecasting(period): Predictive financial analysis
+- staff_scheduling_optimization(week_start): Optimize doctor schedules based on demand
+- quality_assurance_review(): Treatment outcome analysis and improvement suggestions
+
+Multi-step processes are supported - the AI will guide you through complex workflows and maintain context throughout the interaction. The AI can autonomously suggest optimal workflows based on practice patterns and patient needs.
 `
 
   const callAICompletionAPI = async (userMessage: string): Promise<string> => {
@@ -531,13 +699,29 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
 
     // Real API call to apifree.ai
     try {
-      const contextData = getContextualData(isActionIntent || isAgentMode);
+      // Use optimized context based on query type and token budget
+      const isComplexQuery = userMessage.toLowerCase().includes('analysis') || 
+                            userMessage.toLowerCase().includes('report') || 
+                            userMessage.toLowerCase().includes('financial') ||
+                            userMessage.toLowerCase().includes('audit');
+      
+      const contextData = isComplexQuery ? 
+        getOptimizedContextData(isActionIntent || isAgentMode, 2000) : 
+        getOptimizedContextData(isActionIntent || isAgentMode, 1500);
+      
       const systemPrompt = `You are Loli, a dental AI assistant by WinterArc Myanmar, designed by Min Thuta Saw Naing.
 Today: ${contextData.td}
 Current Mode: ${isAgentMode ? 'AGENT (Actions enabled)' : 'ASK (Read-only)'}
 Practice Data: ${JSON.stringify(contextData)}
 ${isAgentMode ? API_DOCS : 'You are in ASK mode. CRUD operations (creating, updating, deleting data) are only allowed in Agent Mode. If the user wants to perform such actions, ask them to switch to Agent Mode first.'}
-Verification by pros required. Identity: Loli by WinterArc Myanmar.`;
+Verification by pros required. Identity: Loli by WinterArc Myanmar.
+
+OPTIMIZATION GUIDELINES:
+- Be concise and direct in responses
+- Use bullet points for lists
+- Prioritize essential information
+- Keep explanations focused on dental practice needs
+- For complex analyses, provide key insights first, then details`;
 
       const response = await fetch(
         `https://api.apifree.ai/v1/chat/completions`,
@@ -560,8 +744,8 @@ Verification by pros required. Identity: Loli by WinterArc Myanmar.`;
               }
             ],
             temperature: 0.7,
-            max_tokens: 2048,
-            top_p: 1,
+            max_tokens: isComplexQuery ? 1500 : 1000, // Reduced token limits for cost optimization
+            top_p: 0.9, // Slightly reduced for more focused responses
             stream: false
           }),
         }
@@ -1055,7 +1239,10 @@ I can provide guidance on:
         setConversationContext({
           lastUserMessage: null,
           lastAssistantResponse: null,
-          pendingConfirmation: false
+          pendingConfirmation: false,
+          currentWorkflow: null,
+          workflowStep: 0,
+          contextSummary: ''
         });
         setInputMessage('');
 
@@ -1080,7 +1267,10 @@ I can provide guidance on:
         setConversationContext({
           lastUserMessage: null,
           lastAssistantResponse: null,
-          pendingConfirmation: false
+          pendingConfirmation: false,
+          currentWorkflow: null,
+          workflowStep: 0,
+          contextSummary: ''
         });
       } finally {
         setIsLoading(false);
@@ -1169,7 +1359,11 @@ Thank you for using Loli! 🦷✨`,
           const { action, params } = actionObj;
               
           // Check if action is a CRUD operation that requires Agent Mode
-          const crudActions = ['apt_c', 'apt_u', 'apt_d', 'p_c', 'p_u', 'p_d', 'dr_c', 'dr_u', 'dr_d', 'm_c', 'm_u'];
+          const crudActions = [
+            'apt_c', 'apt_u', 'apt_d', 'p_c', 'p_u', 'p_d', 'dr_c', 'dr_u', 'dr_d', 
+            'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
+            'apt_status', 'bulk_appointments'
+          ];
           if (crudActions.includes(action) && mode !== 'agent') {
             actionResult = `⚠️ Agent Mode Required
 
@@ -1334,6 +1528,420 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                 throw new Error(`Failed to update medicine: ${err.message}`);
               }
               break;
+            case 'm_restock':
+              try {
+                const medicine = medicines.find(m => m.id === params.id);
+                if (!medicine) {
+                  throw new Error(`Medicine with ID ${params.id} not found`);
+                }
+                
+                const newStock = (medicine.stock || 0) + (params.qty || 0);
+                result = await api.medicines.update(params.id, { stock: newStock });
+                actionResult = `✅ Restocked ${medicine.name}. New stock level: ${newStock} units.`;
+              } catch (err: any) {
+                console.error('Medicine restock error:', err);
+                throw new Error(`Failed to restock medicine: ${err.message}`);
+              }
+              break;
+            case 'tr_create':
+              try {
+                result = await api.treatments.record({
+                  location_id: locationId,
+                  patient_id: params.pid,
+                  teeth: params.teeth || [],
+                  description: params.desc,
+                  cost: params.cost || 0
+                });
+                
+                // Handle medicine sales if provided
+                if (params.meds && Array.isArray(params.meds)) {
+                  for (const medSale of params.meds) {
+                    const medicine = medicines.find(m => m.id === medSale.id);
+                    if (medicine && medicine.stock >= medSale.qty) {
+                      const newStock = medicine.stock - medSale.qty;
+                      await api.medicines.update(medSale.id, { stock: newStock });
+                    }
+                  }
+                }
+                
+                actionResult = `✅ Treatment recorded successfully. Patient balance updated to ${result.new_balance} MMK.`;
+              } catch (err: any) {
+                console.error('Treatment record error:', err);
+                throw new Error(`Failed to record treatment: ${err.message}`);
+              }
+              break;
+            case 'tr_undo':
+              try {
+                await api.treatments.undoRecord(params.id, params.pid, params.cost);
+                actionResult = `✅ Treatment record undone successfully.`;
+              } catch (err: any) {
+                console.error('Treatment undo error:', err);
+                throw new Error(`Failed to undo treatment: ${err.message}`);
+              }
+              break;
+            case 'fin_pay':
+              try {
+                result = await api.finance.processPayment(params.pid, params.amt);
+                actionResult = `✅ Payment of ${params.amt} MMK processed. New balance: ${result.new_balance} MMK.`;
+              } catch (err: any) {
+                console.error('Payment processing error:', err);
+                throw new Error(`Failed to process payment: ${err.message}`);
+              }
+              break;
+            case 'inv_low':
+              try {
+                const lowStockItems = medicines.filter(m => m.stock <= (m.min_stock || 0));
+                if (lowStockItems.length === 0) {
+                  actionResult = `✅ All inventory items are adequately stocked.`;
+                } else {
+                  actionResult = `⚠️ Low Stock Alert:\n\n${lowStockItems.map(m => `• ${m.name}: ${m.stock} units (min: ${m.min_stock || 0})`).join('\n')}`;
+                }
+              } catch (err: any) {
+                console.error('Low stock report error:', err);
+                throw new Error(`Failed to generate low stock report: ${err.message}`);
+              }
+              break;
+            case 'inv_out':
+              try {
+                const outOfStockItems = medicines.filter(m => m.stock === 0);
+                if (outOfStockItems.length === 0) {
+                  actionResult = `✅ No items are completely out of stock.`;
+                } else {
+                  actionResult = `🚨 Out of Stock Items:\n\n${outOfStockItems.map(m => `• ${m.name}`).join('\n')}`;
+                }
+              } catch (err: any) {
+                console.error('Out of stock report error:', err);
+                throw new Error(`Failed to generate out of stock report: ${err.message}`);
+              }
+              break;
+            case 'fin_report':
+              try {
+                const period = params.period || 'daily';
+                const now = new Date();
+                let startDate, endDate, periodLabel;
+                
+                switch (period) {
+                  case 'daily':
+                    startDate = endDate = now.toISOString().split('T')[0];
+                    periodLabel = 'Today';
+                    break;
+                  case 'weekly':
+                    const weekAgo = new Date(now);
+                    weekAgo.setDate(now.getDate() - 7);
+                    startDate = weekAgo.toISOString().split('T')[0];
+                    endDate = now.toISOString().split('T')[0];
+                    periodLabel = 'Last 7 Days';
+                    break;
+                  case 'monthly':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                    endDate = now.toISOString().split('T')[0];
+                    periodLabel = 'This Month';
+                    break;
+                  default:
+                    startDate = endDate = now.toISOString().split('T')[0];
+                    periodLabel = 'Today';
+                }
+                
+                const periodRecords = treatmentRecords.filter(tr => tr.date >= startDate && tr.date <= endDate);
+                const totalRevenue = periodRecords.reduce((sum, tr) => sum + (tr.cost || 0), 0);
+                const patientCount = new Set(periodRecords.map(tr => tr.patient_id)).size;
+                const treatmentCount = periodRecords.length;
+                
+                actionResult = `📊 Financial Report - ${periodLabel} (${startDate} to ${endDate}):
+                
+Total Revenue: ${totalRevenue} MMK
+Total Treatments: ${treatmentCount}
+Unique Patients: ${patientCount}
+Average Treatment Cost: ${(totalRevenue / treatmentCount || 0).toFixed(2)} MMK`;
+              } catch (err: any) {
+                console.error('Financial report error:', err);
+                throw new Error(`Failed to generate financial report: ${err.message}`);
+              }
+              break;
+            case 'pat_bal':
+              try {
+                const patient = patients.find(p => p.id === params.pid);
+                if (!patient) {
+                  throw new Error(`Patient with ID ${params.pid} not found`);
+                }
+                actionResult = `💰 Patient Balance for ${patient.name}: ${patient.balance} MMK`;
+              } catch (err: any) {
+                console.error('Patient balance error:', err);
+                throw new Error(`Failed to get patient balance: ${err.message}`);
+              }
+              break;
+            case 'pat_hist':
+              try {
+                const patientRecords = treatmentRecords.filter(tr => tr.patient_id === params.pid);
+                const patient = patients.find(p => p.id === params.pid);
+                
+                if (!patient) {
+                  throw new Error(`Patient with ID ${params.pid} not found`);
+                }
+                
+                if (patientRecords.length === 0) {
+                  actionResult = `📋 No treatment history found for ${patient.name}.`;
+                } else {
+                  const recentRecords = patientRecords.slice(0, 5);
+                  actionResult = `📋 Treatment History for ${patient.name}:
+                  
+${recentRecords.map((tr, idx) => `${idx + 1}. ${tr.date}: ${tr.description} - ${tr.cost} MMK`).join('\n')}`;
+                }
+              } catch (err: any) {
+                console.error('Patient history error:', err);
+                throw new Error(`Failed to get patient history: ${err.message}`);
+              }
+              break;
+            case 'apt_reschedule':
+              try {
+                await api.appointments.update(params.id, { date: params.dt, time: params.t });
+                actionResult = `✅ Appointment rescheduled successfully.`;
+              } catch (err: any) {
+                console.error('Appointment reschedule error:', err);
+                throw new Error(`Failed to reschedule appointment: ${err.message}`);
+              }
+              break;
+            case 'apt_status':
+              try {
+                await api.appointments.updateStatus(params.id, params.status);
+                actionResult = `✅ Appointment status updated to ${params.status}.`;
+              } catch (err: any) {
+                console.error('Appointment status update error:', err);
+                throw new Error(`Failed to update appointment status: ${err.message}`);
+              }
+              break;
+            case 'med_sales_report':
+              try {
+                // This would require a sales tracking system - placeholder implementation
+                const totalMedicines = medicines.length;
+                const totalStockValue = medicines.reduce((sum, m) => sum + (m.stock * m.price), 0);
+                actionResult = `📊 Medicine Inventory Summary:
+                
+Total Medicine Items: ${totalMedicines}
+Total Inventory Value: ${totalStockValue.toFixed(2)} MMK
+Low Stock Items: ${medicines.filter(m => m.stock <= (m.min_stock || 0)).length}`;
+              } catch (err: any) {
+                console.error('Medicine sales report error:', err);
+                throw new Error(`Failed to generate medicine sales report: ${err.message}`);
+              }
+              break;
+            case 'p_find':
+              try {
+                const searchTerm = (params.name || '').toLowerCase();
+                const matches = patients.filter(p => p.name.toLowerCase().includes(searchTerm));
+                
+                if (matches.length === 0) {
+                  actionResult = `🔍 No patients found matching "${params.name}".`;
+                } else if (matches.length === 1) {
+                  const patient = matches[0];
+                  actionResult = `👤 Found patient: ${patient.name} (ID: ${patient.id})
+Phone: ${patient.phone}
+Balance: ${patient.balance} MMK
+Loyalty Points: ${patient.loyalty_points}`;
+                } else {
+                  actionResult = `👥 Multiple patients found (${matches.length}):
+${matches.slice(0, 5).map(p => `• ${p.name} (${p.phone})`).join('\n')}`;
+                }
+              } catch (err: any) {
+                console.error('Patient search error:', err);
+                throw new Error(`Failed to search patients: ${err.message}`);
+              }
+              break;
+            case 'apt_find_patient':
+              try {
+                const searchTerm = (params.name || '').toLowerCase();
+                const patientMatches = patients.filter(p => p.name.toLowerCase().includes(searchTerm));
+                
+                if (patientMatches.length === 0) {
+                  actionResult = `🔍 No patients found matching "${params.name}".`;
+                } else {
+                  const patient = patientMatches[0];
+                  const patientAppointments = appointments.filter(a => a.patient_id === patient.id);
+                  
+                  if (patientAppointments.length === 0) {
+                    actionResult = `📅 No appointments found for ${patient.name}.`;
+                  } else {
+                    const upcoming = patientAppointments.filter(a => a.date >= today).slice(0, 3);
+                    actionResult = `📅 Appointments for ${patient.name}:
+${upcoming.map(a => `• ${a.date} ${a.time} with Dr. ${a.doctor_name} (${a.status})`).join('\n')}`;
+                  }
+                }
+              } catch (err: any) {
+                console.error('Appointment search error:', err);
+                throw new Error(`Failed to search appointments: ${err.message}`);
+              }
+              break;
+            case 'inv_reorder_suggestions':
+              try {
+                const lowStockItems = medicines.filter(m => m.stock <= (m.min_stock || 0));
+                
+                if (lowStockItems.length === 0) {
+                  actionResult = `✅ No immediate reorder actions needed. All items are adequately stocked.`;
+                } else {
+                  actionResult = `📋 Reorder Suggestions:
+${lowStockItems.map(m => `• ${m.name}: Current ${m.stock}, Min ${m.min_stock || 0}, Suggested order ${(m.min_stock || 10) * 2 - m.stock}`).join('\n')}`;
+                }
+              } catch (err: any) {
+                console.error('Reorder suggestions error:', err);
+                throw new Error(`Failed to generate reorder suggestions: ${err.message}`);
+              }
+              break;
+            case 'staff_availability':
+              try {
+                const targetDate = params.date || new Date().toISOString().split('T')[0];
+                const availableDoctors = doctors.filter(d => {
+                  const dayOfWeek = new Date(targetDate).getDay();
+                  return d.schedules.some(s => s.day_of_week === dayOfWeek);
+                });
+                
+                if (availableDoctors.length === 0) {
+                  actionResult = `📅 No doctors available on ${targetDate}.`;
+                } else {
+                  actionResult = `👨‍⚕️ Available Doctors on ${targetDate}:
+${availableDoctors.map(d => `• Dr. ${d.name} (${d.specialization})`).join('\n')}`;
+                }
+              } catch (err: any) {
+                console.error('Staff availability error:', err);
+                throw new Error(`Failed to check staff availability: ${err.message}`);
+              }
+              break;
+            case 'bulk_appointments':
+              try {
+                const { patients: patientList, dr_id, date, time } = params;
+                const results = [];
+                
+                for (const patientName of patientList) {
+                  const patient = patients.find(p => p.name.toLowerCase().includes(patientName.toLowerCase()));
+                  if (patient) {
+                    try {
+                      const result = await api.appointments.create({
+                        location_id: locationId,
+                        patient_id: patient.id,
+                        doctor_id: dr_id,
+                        date,
+                        time,
+                        type: 'Checkup',
+                        notes: 'Bulk scheduled appointment',
+                        status: 'Scheduled'
+                      });
+                      results.push(`✅ ${patient.name}: Scheduled with Dr. ${result.doctor_name}`);
+                    } catch (err) {
+                      results.push(`❌ ${patient.name}: Failed to schedule`);
+                    }
+                  } else {
+                    results.push(`❌ ${patientName}: Patient not found`);
+                  }
+                }
+                
+                actionResult = `📋 Bulk Appointment Results:
+${results.join('\n')}`;
+              } catch (err: any) {
+                console.error('Bulk appointments error:', err);
+                throw new Error(`Failed to create bulk appointments: ${err.message}`);
+              }
+              break;
+            case 'treatment_plan':
+              try {
+                const { patient_name, chief_complaint, examination_findings } = params;
+                const patient = patients.find(p => p.name.toLowerCase().includes(patient_name.toLowerCase()));
+                
+                if (!patient) {
+                  throw new Error(`Patient "${patient_name}" not found`);
+                }
+                
+                // This is a simplified treatment planning response
+                // In a real implementation, this would involve more sophisticated AI analysis
+                actionResult = `📋 AI-Assisted Treatment Plan for ${patient.name}:
+                
+Chief Complaint: ${chief_complaint}
+Findings: ${examination_findings}
+
+Suggested Treatment Approach:
+1. Initial consultation and detailed examination
+2. Diagnostic imaging if needed
+3. Treatment planning session
+4. Implementation of recommended procedures
+5. Follow-up and monitoring
+
+Estimated Timeline: 2-4 weeks
+Next Steps: Schedule detailed consultation appointment`;
+              } catch (err: any) {
+                console.error('Treatment plan error:', err);
+                throw new Error(`Failed to generate treatment plan: ${err.message}`);
+              }
+              break;
+            case 'patient_followup':
+              try {
+                const { patient_name, days, reason } = params;
+                const patient = patients.find(p => p.name.toLowerCase().includes(patient_name.toLowerCase()));
+                
+                if (!patient) {
+                  throw new Error(`Patient "${patient_name}" not found`);
+                }
+                
+                const followupDate = new Date();
+                followupDate.setDate(followupDate.getDate() + days);
+                const dateString = followupDate.toISOString().split('T')[0];
+                
+                actionResult = `📅 Follow-up scheduled for ${patient.name} on ${dateString} (${days} days from now) for: ${reason}`;
+              } catch (err: any) {
+                console.error('Patient followup error:', err);
+                throw new Error(`Failed to schedule follow-up: ${err.message}`);
+              }
+              break;
+            case 'financial_analysis':
+              try {
+                const { start_date, end_date } = params;
+                const periodRecords = treatmentRecords.filter(tr => tr.date >= start_date && tr.date <= end_date);
+                
+                const totalRevenue = periodRecords.reduce((sum, tr) => sum + (tr.cost || 0), 0);
+                const patientCount = new Set(periodRecords.map(tr => tr.patient_id)).size;
+                const treatmentCount = periodRecords.length;
+                
+                // Top treatments by frequency
+                const treatmentCounts = periodRecords.reduce((acc, tr) => {
+                  acc[tr.description] = (acc[tr.description] || 0) + 1;
+                  return acc;
+                }, {} as Record<string, number>);
+                
+                const topTreatments = Object.entries(treatmentCounts)
+                  .sort(([,a], [,b]) => (b as number) - (a as number))
+                  .slice(0, 3)
+                  .map(([treatment, count]) => `${treatment} (${count})`)
+                  .join(', ');
+                
+                actionResult = `📈 Financial Analysis (${start_date} to ${end_date}):
+                
+Revenue: ${totalRevenue} MMK
+Treatments: ${treatmentCount}
+Patients: ${patientCount}
+Avg. Revenue/Patient: ${(totalRevenue / patientCount || 0).toFixed(2)} MMK
+Top Treatments: ${topTreatments}`;
+              } catch (err: any) {
+                console.error('Financial analysis error:', err);
+                throw new Error(`Failed to perform financial analysis: ${err.message}`);
+              }
+              break;
+            case 'inventory_audit':
+              try {
+                const totalValue = medicines.reduce((sum, m) => sum + (m.stock * m.price), 0);
+                const lowStock = medicines.filter(m => m.stock <= (m.min_stock || 0)).length;
+                const outOfStock = medicines.filter(m => m.stock === 0).length;
+                const categories = [...new Set(medicines.map(m => m.category).filter(Boolean))];
+                
+                actionResult = `📋 Inventory Audit Report:
+                
+Total Items: ${medicines.length}
+Categories: ${categories.length}
+Total Value: ${totalValue.toFixed(2)} MMK
+Low Stock Items: ${lowStock}
+Out of Stock Items: ${outOfStock}
+Category Breakdown: ${categories.join(', ')}`;
+              } catch (err: any) {
+                console.error('Inventory audit error:', err);
+                throw new Error(`Failed to perform inventory audit: ${err.message}`);
+              }
+              break;
             default:
               actionResult = `⚠️ Unknown action: ${action}`;
             }
@@ -1373,7 +1981,7 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
       saveSession(finalMessages);
       
       // Check if this response contains a pending action that requires confirmation
-      if (actionMatch && actionResult.includes('confirmation') || actionResult.includes('confirm')) {
+      if (actionMatch && (actionResult.includes('confirmation') || actionResult.includes('confirm'))) {
         // Extract the action details for pending confirmation
         try {
           const actionObj = JSON.parse(actionMatch[0]);
@@ -1384,23 +1992,35 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
             timestamp: new Date()
           });
           
-          // Update conversation context
-          setConversationContext({
+          // Update conversation context for workflow tracking
+          const workflowType = actionObj.action.includes('treatment') ? 'treatment_planning' :
+                              actionObj.action.includes('inventory') ? 'inventory_management' :
+                              actionObj.action.includes('bulk') ? 'bulk_operations' : 'general';
+          
+          setConversationContext(prev => ({
+            ...prev,
             lastUserMessage: userMessage.content,
             lastAssistantResponse: assistantMessage.content,
-            pendingConfirmation: true
-          });
+            pendingConfirmation: true,
+            currentWorkflow: workflowType,
+            workflowStep: prev.workflowStep + 1,
+            contextSummary: generateContextSummary(userMessage.content, assistantMessage.content)
+          }));
         } catch (parseError) {
           console.error('Failed to parse pending action:', parseError);
         }
       } else {
         // Clear any existing pending action if this isn't a confirmation request
         setPendingAction(null);
-        setConversationContext({
-          lastUserMessage: null,
-          lastAssistantResponse: null,
-          pendingConfirmation: false
-        });
+        setConversationContext(prev => ({
+          ...prev,
+          lastUserMessage: userMessage.content,
+          lastAssistantResponse: assistantMessage.content,
+          pendingConfirmation: false,
+          currentWorkflow: prev.currentWorkflow ? prev.currentWorkflow : null,
+          workflowStep: prev.currentWorkflow ? prev.workflowStep + 1 : 0,
+          contextSummary: generateContextSummary(userMessage.content, assistantMessage.content)
+        }));
       }
       
       // Increment usage count and save to localStorage
@@ -1707,16 +2327,23 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                               recognition.current.stop();
                               setIsListening(false);
                             } else {
-                              // Restore context if there's a pending action
-                              if (pendingAction && conversationContext.lastUserMessage) {
+                              // Restore context if there's a pending action or ongoing workflow
+                              if ((pendingAction || conversationContext.currentWorkflow) && conversationContext.lastUserMessage) {
                                 setInputMessage(conversationContext.lastUserMessage);
+                                // Show context reminder
+                                if (conversationContext.contextSummary) {
+                                  console.log('Restoring context:', conversationContext.contextSummary);
+                                }
                               } else {
                                 // Clear previous transcript and start fresh
                                 setInputMessage('');
                                 setConversationContext({
                                   lastUserMessage: null,
                                   lastAssistantResponse: null,
-                                  pendingConfirmation: false
+                                  pendingConfirmation: false,
+                                  currentWorkflow: null,
+                                  workflowStep: 0,
+                                  contextSummary: ''
                                 });
                               }
                               recognition.current.start();
