@@ -1227,6 +1227,125 @@ export const api = {
     }
   },
 
+  // Doctor Schedules API
+  doctorSchedules: {
+    getByDoctorId: async (doctorId: string): Promise<DoctorSchedule[]> => {
+      try {
+        const { data, error } = await supabase
+          .from('doctor_schedules')
+          .select('*')
+          .eq('doctor_id', doctorId)
+          .order('day_of_week');
+        
+        if (error) throw error;
+        return (data || []).map((sched: any) => ({
+          id: sched.id,
+          doctor_id: sched.doctor_id,
+          day_of_week: sched.day_of_week,
+          start_time: sched.start_time,
+          end_time: sched.end_time
+        }));
+      } catch (err) {
+        console.warn("Error fetching doctor schedules:", err);
+        return [];
+      }
+    },
+    create: async (data: Partial<DoctorSchedule>): Promise<DoctorSchedule> => {
+      const { data: result, error } = await supabase
+        .from('doctor_schedules')
+        .insert(data)
+        .select()
+        .single();
+      
+      if (error) throw new Error(error.message);
+      return {
+        id: result.id,
+        doctor_id: result.doctor_id,
+        day_of_week: result.day_of_week,
+        start_time: result.start_time,
+        end_time: result.end_time
+      };
+    },
+    update: async (id: string, data: Partial<DoctorSchedule>): Promise<DoctorSchedule> => {
+      const { data: result, error } = await supabase
+        .from('doctor_schedules')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw new Error(error.message);
+      return {
+        id: result.id,
+        doctor_id: result.doctor_id,
+        day_of_week: result.day_of_week,
+        start_time: result.start_time,
+        end_time: result.end_time
+      };
+    },
+    delete: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('doctor_schedules')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw new Error(error.message);
+    }
+  },
+
+  // Treatment Types API
+  treatmentTypes: {
+    getAll: async (locationId?: string): Promise<TreatmentType[]> => {
+      try {
+        let query = supabase
+          .from('treatment_types')
+          .select('*')
+          .order('name');
+        
+        if (locationId) {
+          query = query.eq('location_id', locationId);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.warn("Error fetching treatment types:", err);
+        return [];
+      }
+    },
+    create: async (data: Partial<TreatmentType>): Promise<TreatmentType> => {
+      const { data: result, error } = await supabase
+        .from('treatment_types')
+        .insert(data)
+        .select()
+        .single();
+      
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    update: async (id: string, data: Partial<TreatmentType>): Promise<TreatmentType> => {
+      const { data: result, error } = await supabase
+        .from('treatment_types')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    delete: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('treatment_types')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw new Error(error.message);
+    }
+  },
+
+  // Loyalty API
   loyalty: {
     getTransactions: async (patientId: string, locationId?: string): Promise<LoyaltyTransaction[]> => {
       try {

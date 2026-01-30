@@ -59,6 +59,7 @@ export interface PaymentRecord {
 
 export interface DoctorSchedule {
   id: string;
+  doctor_id: string;
   day_of_week: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   start_time: string; // HH:MM format
   end_time: string; // HH:MM format

@@ -616,7 +616,9 @@ Need more detailed help?
         a: appointments.length,
         d: doctors.length,
         t: treatmentTypes.length,
-        m: medicines.length
+        m: medicines.length,
+        u: users.length,
+        l: 1 // locations count
       }
     };
 
@@ -719,44 +721,90 @@ Need more detailed help?
   };
 
   const API_DOCS = `
-ACTIONS (Available in all modes):
+ACTIONS (Available in all modes - Full Database Access):
+
+PATIENT MANAGEMENT:
+- p_c(n, e, ph, m, lp): Create patient. n=name, e=email, ph=phone, m=medicalHistory, lp=loyalty_points.
+- p_u(id, data): Update patient. data: {name, email, phone, medicalHistory, balance, loyalty_points, etc}.
+- p_d(id): Delete patient.
+- p_find(name): Find patient by name (partial match).
+- pat_bal(pid): Get patient balance and loyalty points.
+- pat_hist(pid): Get patient treatment history.
+- pat_loyalty_history(pid): Get patient loyalty transaction history.
+
+APPOINTMENT MANAGEMENT:
 - apt_c(p_id, dr_id, dt, t, ty, n): Create appointment. p_id=patient id (or use "name"), dr_id=doctor id, dt=date(YYYY-MM-DD), t=time(HH:mm), ty=type, n=notes.
 - apt_u(id, data): Update appointment. data can include {date, time, status, doctor_id, etc}.
 - apt_d(id): Delete appointment.
-- p_c(n, e, ph, m): Create patient. n=name, e=email, ph=phone, m=medicalHistory.
-- p_u(id, data): Update patient. data: {name, email, phone, medicalHistory, etc}.
+- apt_reschedule(id, dt, t): Reschedule appointment.
+- apt_status(id, status): Update appointment status.
+- apt_find_patient(name): Find appointments for patient.
+- staff_availability(date, dr_id): Check doctor availability for date.
+- bulk_appointments(patients[], dr_id, date, time): Schedule multiple appointments.
+
+DOCTOR MANAGEMENT:
 - dr_c(n, e, ph, s, sch): Create doctor. n=name, e=email, ph=phone, s=specialization, sch=schedules.
 - dr_u(id, data): Update doctor.
 - dr_d(id): Delete doctor.
+- dr_schedule_add(dr_id, day, start, end): Add doctor schedule.
+- dr_schedule_update(id, data): Update doctor schedule.
+- dr_schedule_remove(id): Remove doctor schedule.
+
+MEDICATION INVENTORY:
 - m_c(n, d, u, p, s, ms, c): Create medicine. n=name, d=description, u=unit, p=price, s=stock, ms=min_stock, c=category.
 - m_u(id, data): Update medicine.
+- m_d(id): Delete medicine.
 - m_restock(id, qty): Restock medicine. id=medicine id, qty=quantity to add.
-- tr_create(pid, teeth[], desc, cost, meds[]): Record treatment. pid=patient id (or use "name"), teeth=array of tooth numbers, desc=description, cost=amount, meds=[{id, qty}].
-- tr_undo(id, pid, cost): Undo treatment record.
-- fin_pay(pid, amt): Process payment. pid=patient id (or use "name"), amt=amount.
+- m_sell(pid, mid, qty, tid): Sell medicine. pid=patient id, mid=medicine id, qty=quantity, tid=treatment id (optional).
 - inv_low(): Get low stock report.
 - inv_out(): Get out-of-stock items.
-- fin_report(period): Get financial report. period='daily'|'weekly'|'monthly'.
-- pat_bal(pid): Get patient balance. pid=patient id (or use "name").
-- pat_hist(pid): Get patient treatment history. pid=patient id (or use "name").
-- apt_reschedule(id, dt, t): Reschedule appointment.
-- apt_status(id, status): Update appointment status.
-- med_sales_report(): Get medicine sales summary.
-- p_find(name): Find patient by name (partial match).
-- apt_find_patient(name): Find appointments for patient.
 - inv_reorder_suggestions(): Get automatic reorder recommendations.
-- staff_availability(date): Check doctor availability for date.
-- bulk_appointments(patients[], dr_id, date, time): Schedule multiple appointments.
-- treatment_plan(patient_name, symptoms, proposed_treatments[]): AI-assisted treatment planning.
-- patient_followup(patient_name, days, reason): Schedule follow-up appointment.
-- financial_analysis(start_date, end_date): Detailed financial insights.
 - inventory_audit(): Complete inventory status and recommendations.
+- med_sales_report(): Get medicine sales summary.
+
+TREATMENT RECORDS:
+- tr_create(pid, teeth[], desc, cost, meds[]): Record treatment. pid=patient id (or use "name"), teeth=array of tooth numbers, desc=description, cost=amount, meds=[{id, qty}].
+- tr_undo(id, pid, cost): Undo treatment record.
+- treatment_plan(patient_name, symptoms, proposed_treatments[]): AI-assisted treatment planning.
+- treatment_types_get(): Get all treatment types.
+- treatment_type_create(name, cost, category): Create treatment type.
+- treatment_type_update(id, data): Update treatment type.
+- treatment_type_delete(id): Delete treatment type.
+
+FINANCIAL OPERATIONS:
+- fin_pay(pid, amt): Process payment. pid=patient id (or use "name"), amt=amount.
+- fin_report(period): Get financial report. period='daily'|'weekly'|'monthly'.
+- financial_analysis(start_date, end_date): Detailed financial insights.
+- patient_followup(patient_name, days, reason): Schedule follow-up appointment.
+
+LOYALTY SYSTEM:
+- loyalty_rules_get(): Get all loyalty rules.
+- loyalty_rule_create(name, event_type, points_per_unit, min_amount): Create loyalty rule.
+- loyalty_rule_update(id, data): Update loyalty rule.
+- loyalty_rule_delete(id): Delete loyalty rule.
+- loyalty_redeem(pid, points, amount): Redeem loyalty points for discount.
+- loyalty_reset_all(): Reset all loyalty points (ADMIN ONLY).
+
+USER MANAGEMENT:
+- user_get_all(): Get all users.
+- user_create(username, password, role): Create user.
+- user_update(id, data): Update user.
+- user_delete(id): Delete user.
+
+LOCATION MANAGEMENT:
+- location_get_all(): Get all locations.
+- location_create(name, address, phone, email): Create location.
 
 To perform an action, include a JSON block at the END of your message. 
 IMPORTANT: You can use "name" instead of "pid" or "p_id" for any patient-related action. The system will automatically look up the ID.
 
 Examples:
 { "action": "p_c", "params": { "n": "John Doe", "e": "john@example.com", "ph": "1234567890", "m": "No known allergies" } }
+{ "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2024-01-15", "t": "10:00", "ty": "Checkup", "n": "Routine checkup" } }
+{ "action": "tr_create", "params": { "name": "John Doe", "teeth": [18, 19], "desc": "Composite filling", "cost": 150 } }
+{ "action": "m_sell", "params": { "name": "Sarah Johnson", "mid": "medicine123", "qty": 2 } }
+{ "action": "loyalty_redeem", "params": { "name": "John Smith", "points": 100, "amount": 5000 } }
+{ "action": "dr_schedule_add", "params": { "dr_id": "doctor123", "day": 1, "start": "09:00", "end": "17:00" } }
 { "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2024-01-15", "t": "10:00", "ty": "Checkup", "n": "Routine checkup" } }
 { "action": "tr_create", "params": { "name": "John Doe", "teeth": [18, 19], "desc": "Composite filling", "cost": 150 } }
 { "action": "fin_pay", "params": { "name": "Sarah Johnson", "amt": 175 } }
@@ -1501,6 +1549,257 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           const locationId = users[0]?.location_id || 'main';
                 
           switch (action) {
+            // Doctor Schedule Actions
+            case 'dr_schedule_add':
+              try {
+                result = await api.doctorSchedules.create({
+                  doctor_id: params.dr_id,
+                  day_of_week: params.day,
+                  start_time: params.start,
+                  end_time: params.end
+                });
+                currentActionResult = `✅ Doctor schedule added successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to add doctor schedule: ${err.message}`;
+              }
+              break;
+            case 'dr_schedule_update':
+              try {
+                result = await api.doctorSchedules.update(params.id, params.data);
+                currentActionResult = `✅ Doctor schedule updated successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to update doctor schedule: ${err.message}`;
+              }
+              break;
+            case 'dr_schedule_remove':
+              try {
+                await api.doctorSchedules.delete(params.id);
+                currentActionResult = `✅ Doctor schedule removed successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to remove doctor schedule: ${err.message}`;
+              }
+              break;
+            
+            // Treatment Type Actions
+            case 'treatment_types_get':
+              try {
+                const types = await api.treatments.getTypes(locationId);
+                currentActionResult = types.length === 0 
+                  ? `📋 No treatment types found.`
+                  : `📋 Treatment Types:\n\n${types.map(t => `• ${t.name} (${t.category}): ${t.cost} MMK`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get treatment types: ${err.message}`;
+              }
+              break;
+            case 'treatment_type_create':
+              try {
+                result = await api.treatmentTypes.create({
+                  location_id: locationId,
+                  name: params.name,
+                  cost: params.cost,
+                  category: params.category
+                });
+                currentActionResult = `✅ Treatment type "${result.name}" created successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to create treatment type: ${err.message}`;
+              }
+              break;
+            case 'treatment_type_update':
+              try {
+                result = await api.treatmentTypes.update(params.id, params.data);
+                currentActionResult = `✅ Treatment type updated successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to update treatment type: ${err.message}`;
+              }
+              break;
+            case 'treatment_type_delete':
+              try {
+                await api.treatmentTypes.delete(params.id);
+                currentActionResult = `✅ Treatment type deleted successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to delete treatment type: ${err.message}`;
+              }
+              break;
+            
+            // Medicine Sale Actions
+            case 'm_sell':
+              try {
+                let patientId = params.pid;
+                if (!patientId && params.name) {
+                  const found = patients.find(p => p.name.toLowerCase().includes(params.name.toLowerCase()));
+                  if (found) patientId = found.id;
+                }
+                if (!patientId) throw new Error("Patient ID or Name is required for medicine sale.");
+                
+                result = await api.medicines.sell(patientId, params.mid, params.qty, locationId, params.tid);
+                currentActionResult = `✅ Sold ${params.qty} ${result.sale.medicine_name} to ${result.sale.patient_name} for ${result.sale.total_price} MMK. New stock: ${result.new_stock}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to sell medicine: ${err.message}`;
+              }
+              break;
+            
+            // Loyalty Actions
+            case 'loyalty_rules_get':
+              try {
+                const rules = await api.loyalty.getRules(locationId);
+                currentActionResult = rules.length === 0 
+                  ? `📋 No loyalty rules found.`
+                  : `📋 Loyalty Rules:\n\n${rules.map(r => `• ${r.name}: ${r.event_type} - ${r.points_per_unit} points per unit${r.min_amount ? `, min ${r.min_amount}` : ''}${r.active ? ' ✅' : ' ❌'}`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get loyalty rules: ${err.message}`;
+              }
+              break;
+            case 'loyalty_rule_create':
+              try {
+                result = await api.loyalty.createRule({
+                  location_id: locationId,
+                  name: params.name,
+                  event_type: params.event_type,
+                  points_per_unit: params.points_per_unit,
+                  min_amount: params.min_amount,
+                  active: true
+                });
+                currentActionResult = `✅ Loyalty rule "${result.name}" created successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to create loyalty rule: ${err.message}`;
+              }
+              break;
+            case 'loyalty_rule_update':
+              try {
+                result = await api.loyalty.updateRule(params.id, params.data);
+                currentActionResult = `✅ Loyalty rule updated successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to update loyalty rule: ${err.message}`;
+              }
+              break;
+            case 'loyalty_rule_delete':
+              try {
+                await api.loyalty.deleteRule(params.id);
+                currentActionResult = `✅ Loyalty rule deleted successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to delete loyalty rule: ${err.message}`;
+              }
+              break;
+            case 'loyalty_redeem':
+              try {
+                let patientId = params.pid;
+                if (!patientId && params.name) {
+                  const found = patients.find(p => p.name.toLowerCase().includes(params.name.toLowerCase()));
+                  if (found) patientId = found.id;
+                }
+                if (!patientId) throw new Error("Patient ID or Name is required for loyalty redemption.");
+                
+                result = await api.loyalty.redeemPoints(patientId, locationId, params.points, params.amount);
+                currentActionResult = `✅ Redeemed ${params.points} points for ${params.amount} MMK discount. New balance: ${result.new_balance} MMK, Points: ${result.new_points}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to redeem loyalty points: ${err.message}`;
+              }
+              break;
+            case 'loyalty_reset_all':
+              try {
+                // Check if user has admin rights
+                const currentUser = users.find(u => u.id === 'current');
+                if (currentUser?.role !== 'admin') {
+                  currentActionResult = `❌ Admin permission required to reset all loyalty points.`;
+                  break;
+                }
+                await api.loyalty.resetAllPoints();
+                currentActionResult = `✅ All loyalty points have been reset successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to reset loyalty points: ${err.message}`;
+              }
+              break;
+            case 'pat_loyalty_history':
+              try {
+                let patientId = params.pid;
+                if (!patientId && params.name) {
+                  const found = patients.find(p => p.name.toLowerCase().includes(params.name.toLowerCase()));
+                  if (found) patientId = found.id;
+                }
+                if (!patientId) throw new Error("Patient ID or Name is required.");
+                
+                const transactions = await api.loyalty.getTransactions(patientId, locationId);
+                const pName = patients.find(p => p.id === patientId)?.name || patientId;
+                
+                if (transactions.length === 0) {
+                  currentActionResult = `📋 No loyalty transactions found for ${pName}.`;
+                } else {
+                  currentActionResult = `📋 Loyalty History for ${pName}:\n\n${transactions.slice(0, 10).map(t => 
+                    `• ${t.date.split('T')[0]}: ${t.type} ${t.points > 0 ? '+' : ''}${t.points} points - ${t.description}`
+                  ).join('\n')}`;
+                }
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get loyalty history: ${err.message}`;
+              }
+              break;
+            
+            // User Management Actions
+            case 'user_get_all':
+              try {
+                const userList = await api.users.getAll();
+                currentActionResult = userList.length === 0 
+                  ? `👥 No users found.`
+                  : `👥 Users (${userList.length}):\n\n${userList.map(u => `• ${u.username} (${u.role})${u.location_id ? ` at location ${u.location_id}` : ''}`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get users: ${err.message}`;
+              }
+              break;
+            case 'user_create':
+              try {
+                result = await api.users.create({
+                  location_id: locationId,
+                  username: params.username,
+                  password: params.password,
+                  role: params.role || 'normal'
+                });
+                currentActionResult = `✅ User "${result.username}" created successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to create user: ${err.message}`;
+              }
+              break;
+            case 'user_update':
+              try {
+                result = await api.users.update(params.id, params.data);
+                currentActionResult = `✅ User updated successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to update user: ${err.message}`;
+              }
+              break;
+            case 'user_delete':
+              try {
+                await api.users.delete(params.id);
+                currentActionResult = `✅ User deleted successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to delete user: ${err.message}`;
+              }
+              break;
+            
+            // Location Management Actions
+            case 'location_get_all':
+              try {
+                const locations = await api.locations.getAll();
+                currentActionResult = locations.length === 0 
+                  ? `🏥 No locations found.`
+                  : `🏥 Locations (${locations.length}):\n\n${locations.map(l => `• ${l.name} - ${l.address} (${l.phone})`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get locations: ${err.message}`;
+              }
+              break;
+            case 'location_create':
+              try {
+                result = await api.locations.create({
+                  name: params.name,
+                  address: params.address,
+                  phone: params.phone,
+                  email: params.email
+                });
+                currentActionResult = `✅ Location "${result.name}" created successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to create location: ${err.message}`;
+              }
+              break;
+            
+            // Existing Actions (keep all existing cases)
             case 'apt_c':
               try {
                 let patientId = params.p_id || params.pid;
