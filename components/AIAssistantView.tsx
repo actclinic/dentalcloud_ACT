@@ -91,7 +91,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   users,
   medicines
 }) => {
-  const DAILY_LIMIT = 4;
+  const DAILY_LIMIT = 10;
 
   const getDefaultMessages = (): Message[] => [{
     id: '1',
