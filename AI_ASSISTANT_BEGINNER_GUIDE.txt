@@ -1,0 +1,531 @@
+AI ASSISTANT BEGINNER'S GUIDE
+=============================
+
+Welcome to the Dental Cloud AI Assistant! This guide will help you get started with using Loli, your AI-powered dental practice assistant. No technical experience is required - we'll walk through everything step by step.
+
+TABLE OF CONTENTS:
+1. GETTING STARTED
+2. UNDERSTANDING THE TWO MODES
+3. BASIC CONVERSATIONS
+4. MANAGING PATIENTS
+5. SCHEDULING APPOINTMENTS
+6. RECORDING TREATMENTS
+7. MANAGING MEDICATIONS
+8. HANDLING PAYMENTS
+9. COMMON WORKFLOWS
+10. TROUBLESHOOTING
+
+---
+
+1. GETTING STARTED
+==================
+
+What is the AI Assistant?
+-------------------------
+The AI Assistant (named Loli) is like having a knowledgeable dental office manager who can:
+- Answer questions about dental procedures
+- Help manage your patient records
+- Schedule appointments
+- Track treatments and payments
+- Manage medication inventory
+- Generate reports and insights
+
+Getting to the AI Assistant:
+1. Open your Dental Cloud application
+2. Look for the "AI Assistant" tab or section
+3. You'll see a chat interface with Loli ready to help
+
+Basic Interaction:
+- Type your questions in the text box at the bottom
+- Or click the microphone icon to speak naturally
+- Press Enter or click the Send button to submit
+- Loli will respond in the chat area above
+
+Example first conversation:
+You: "Hi, what can you help me with?"
+Loli: "Hello! I can help you manage patients, schedule appointments, record treatments, handle payments, and much more..."
+
+---
+
+2. UNDERSTANDING THE TWO MODES
+==============================
+
+ASK MODE (Default - Green Indicator)
+----------------------------------
+What it does:
+- Answers questions about dental topics
+- Provides treatment information
+- Gives general practice advice
+- Shows reports and statistics
+- Cannot make changes to your data
+
+When to use it:
+- Learning about dental procedures
+- Getting treatment recommendations
+- Viewing reports and analytics
+- Asking general questions
+
+AGENT MODE (Purple Indicator - More Powerful)
+--------------------------------------------
+What it does:
+- Everything Ask Mode can do, PLUS:
+- Create, update, and delete patient records
+- Schedule, modify, and cancel appointments
+- Record treatments and procedures
+- Process payments
+- Manage medication inventory
+- Perform administrative tasks
+
+When to use it:
+- Adding new patients to your system
+- Scheduling appointments
+- Recording completed treatments
+- Processing patient payments
+- Managing your medication stock
+
+How to switch modes:
+1. Look for the mode toggle buttons at the top of the AI Assistant
+2. Click "Ask Mode" for information-only tasks
+3. Click "Agent Mode" when you need to make changes or perform actions
+
+Important: Some actions require Agent Mode. If Loli says "Agent Mode Required," simply click the purple Agent Mode button and try again.
+
+---
+
+3. BASIC CONVERSATIONS
+======================
+
+Starting Conversations:
+----------------------
+Natural language works great! You don't need to use special commands for simple questions.
+
+Examples:
+"You: What are the symptoms of gum disease?"
+"Loli: Gum disease symptoms include red, swollen gums, bleeding when brushing, bad breath, and loose teeth..."
+
+"You: How should I treat a toothache?"
+"Loli: For toothache treatment, I recommend first assessing the pain level, checking for swelling, and considering possible causes like cavities, infection, or trauma..."
+
+Asking About Your Practice:
+--------------------------
+"You: How many patients do I have?"
+"Loli: You currently have 45 active patients in your system."
+
+"You: What appointments are scheduled for today?"
+"Loli: Today you have 8 scheduled appointments: 2 checkups, 3 fillings, 1 cleaning, and 2 consultations."
+
+"You: Which medicines are running low?"
+"Loli: You have 3 medicines below minimum stock levels: Amoxicillin (5 units left), Ibuprofen (2 units), and Dental Floss (0 units)."
+
+---
+
+4. MANAGING PATIENTS
+====================
+
+Finding Existing Patients:
+-------------------------
+Before adding a new patient, always check if they already exist!
+
+How to search:
+Method 1 - Natural language:
+"You: Do we have a patient named John Smith in our system?"
+
+Method 2 - Direct command:
+{ "action": "p_find", "params": { "name": "John Smith" } }
+
+What you'll see:
+- If found: Patient details including ID, contact info, and balance
+- If not found: "No patients found" message
+
+Adding New Patients:
+-------------------
+When to add: Only after confirming the patient doesn't already exist
+
+Step-by-step process:
+1. Switch to Agent Mode (click the purple toggle)
+2. Say or type: "Add new patient John Smith"
+3. Loli will guide you through the details:
+   - Full name
+   - Email address
+   - Phone number
+   - Medical history/allergies
+
+Example conversation:
+"You: Add patient Sarah Johnson"
+"Loli: I'll help you add Sarah Johnson. What is her email address?"
+"You: sarah.johnson@email.com"
+"Loli: What is her phone number?"
+"You: 555-0123"
+"Loli: Does she have any medical history or allergies I should note?"
+"You: No known allergies"
+"Loli: ✅ Patient Sarah Johnson has been added successfully!"
+
+Or use direct command:
+{ "action": "p_c", "params": { 
+  "n": "Sarah Johnson", 
+  "e": "sarah.johnson@email.com", 
+  "ph": "555-0123", 
+  "m": "No known allergies" 
+} }
+
+Updating Patient Information:
+----------------------------
+When a patient's contact info changes:
+
+"You: Update John Smith's phone number to 555-9999"
+OR
+{ "action": "p_u", "params": { 
+  "id": "patient123", 
+  "data": { "phone": "555-9999" } 
+} }
+
+Deleting Patients:
+-----------------
+Rarely needed, but when required:
+"You: Remove patient record for John Smith"
+OR
+{ "action": "p_d", "params": { "name": "John Smith" } }
+
+Checking Patient Balances:
+-------------------------
+"You: What is Sarah Johnson's account balance?"
+OR
+{ "action": "pat_bal", "params": { "pid": "patient123" } }
+
+Viewing Patient History:
+-----------------------
+"You: Show me Sarah Johnson's treatment history"
+OR
+{ "action": "pat_hist", "params": { "pid": "patient123" } }
+
+---
+
+5. SCHEDULING APPOINTMENTS
+==========================
+
+Creating New Appointments:
+-------------------------
+Step-by-step process:
+1. Make sure you know the patient's name
+2. Switch to Agent Mode
+3. Provide appointment details naturally
+
+Example conversation:
+"You: Book an appointment for Sarah Johnson next Tuesday at 2 PM with Dr. Wilson for a routine checkup"
+"Loli: I'll schedule that for you. Let me confirm: Tuesday, 2:00 PM with Dr. Wilson for Sarah Johnson - is that correct?"
+"You: Yes"
+"Loli: ✅ Appointment scheduled successfully!"
+
+Or use direct command:
+{ "action": "apt_c", "params": { 
+  "p_id": "patient123", 
+  "dr_id": "doctor456", 
+  "dt": "2024-02-20", 
+  "t": "14:00", 
+  "ty": "Checkup", 
+  "n": "Routine examination" 
+} }
+
+Finding Available Times:
+-----------------------
+"You: When is Dr. Wilson available next week?"
+"Loli will show available time slots"
+
+Rescheduling Appointments:
+-------------------------
+"You: Move Sarah Johnson's appointment to Thursday at 10 AM"
+OR
+{ "action": "apt_reschedule", "params": { 
+  "id": "appointment789", 
+  "dt": "2024-02-22", 
+  "t": "10:00" 
+} }
+
+Canceling Appointments:
+----------------------
+"You: Cancel John Smith's appointment for tomorrow"
+OR
+{ "action": "apt_d", "params": { "id": "appointment789" } }
+
+Checking Patient Appointments:
+-----------------------------
+"You: What appointments does Sarah Johnson have coming up?"
+OR
+{ "action": "apt_find_patient", "params": { "name": "Sarah Johnson" } }
+
+Updating Appointment Status:
+---------------------------
+"You: Mark appointment #123 as completed"
+OR
+{ "action": "apt_status", "params": { 
+  "id": "appointment789", 
+  "status": "Completed" 
+} }
+
+---
+
+6. RECORDING TREATMENTS
+=======================
+
+Recording Completed Treatments:
+------------------------------
+After treating a patient, record what was done:
+
+Step-by-step process:
+1. Switch to Agent Mode
+2. Have patient name and treatment details ready
+
+Example conversation:
+"You: Record that I completed a filling on tooth #18 for Sarah Johnson. The cost was 175 dollars."
+"Loli: I'll record that treatment. Just to confirm: Filling on tooth #18 for Sarah Johnson, cost $175 - is that correct?"
+"You: Yes"
+"Loli: ✅ Treatment recorded successfully. Sarah's account balance is now updated."
+
+Or use direct command:
+{ "action": "tr_create", "params": { 
+  "pid": "patient123", 
+  "teeth": [18], 
+  "desc": "Composite filling on tooth #18", 
+  "cost": 175 
+} }
+
+Recording Complex Treatments:
+----------------------------
+For treatments involving multiple teeth or procedures:
+
+"You: Record that I did cleanings on teeth 16, 17, 18, 26, 27, 28 for John Smith. Total cost 200 dollars."
+{ "action": "tr_create", "params": { 
+  "pid": "patient456", 
+  "teeth": [16, 17, 18, 26, 27, 28], 
+  "desc": "Professional cleaning - 6 teeth", 
+  "cost": 200 
+} }
+
+Including Medications:
+---------------------
+When you prescribe medication during treatment:
+
+{ "action": "tr_create", "params": { 
+  "pid": "patient123", 
+  "teeth": [19], 
+  "desc": "Root canal treatment", 
+  "cost": 800,
+  "meds": [
+    {"id": "med789", "qty": 1},  // Amoxicillin prescription
+    {"id": "med101", "qty": 2}   // Ibuprofen prescription
+  ]
+} }
+
+Undoing Mistakes:
+----------------
+If you record something incorrectly:
+"You: Oops, I need to undo that treatment record"
+OR
+{ "action": "tr_undo", "params": { 
+  "id": "treatment456", 
+  "pid": "patient123", 
+  "cost": 175 
+} }
+
+---
+
+7. MANAGING MEDICATIONS
+=======================
+
+Checking Inventory:
+------------------
+Regular checks help prevent running out of important supplies:
+
+"You: Which medications are running low?"
+"Loli: You have 3 items below minimum stock: Amoxicillin (5 units), Ibuprofen (2 units), Dental Floss (0 units)"
+
+"You: Show me all out-of-stock items"
+OR
+{ "action": "inv_out", "params": {} }
+
+Restocking Medications:
+----------------------
+When you receive new shipments:
+
+"You: Restock our Amoxicillin supply by 25 units"
+OR
+{ "action": "m_restock", "params": { 
+  "id": "medicine789", 
+  "qty": 25 
+} }
+
+Adding New Medications:
+----------------------
+For new products you want to stock:
+
+"You: Add Ibuprofen 400mg tablets to our inventory"
+OR
+{ "action": "m_c", "params": { 
+  "n": "Ibuprofen 400mg", 
+  "d": "Pain relief medication", 
+  "u": "tablet", 
+  "p": 15.99, 
+  "s": 50, 
+  "ms": 10, 
+  "c": "Pain Management" 
+} }
+
+Getting Reorder Suggestions:
+---------------------------
+"You: What should I reorder based on current stock levels?"
+OR
+{ "action": "inv_reorder_suggestions", "params": {} }
+
+Complete Inventory Audit:
+------------------------
+"You: Give me a complete inventory report"
+OR
+{ "action": "inventory_audit", "params": {} }
+
+---
+
+8. HANDLING PAYMENTS
+====================
+
+Processing Patient Payments:
+---------------------------
+When a patient pays for services:
+
+Step-by-step:
+1. Switch to Agent Mode
+2. Have patient name and payment amount ready
+
+Example:
+"You: Process a payment of 175 dollars from Sarah Johnson"
+"Loli: I'll process that payment. Confirming: $175 payment from Sarah Johnson - is that correct?"
+"You: Yes"
+"Loli: ✅ Payment processed successfully. Sarah's new balance is $0."
+
+Or use direct command:
+{ "action": "fin_pay", "params": { 
+  "pid": "patient123", 
+  "amt": 175 
+} }
+
+Checking Financial Reports:
+--------------------------
+Daily overview:
+"You: Show me today's revenue"
+OR
+{ "action": "fin_report", "params": { "period": "daily" } }
+
+Weekly summary:
+"You: What was this week's total revenue?"
+OR
+{ "action": "fin_report", "params": { "period": "weekly" } }
+
+Monthly analysis:
+"You: Give me a financial summary for January"
+OR
+{ "action": "financial_analysis", "params": { 
+  "start_date": "2024-01-01", 
+  "end_date": "2024-01-31" 
+} }
+
+---
+
+9. COMMON WORKFLOWS
+===================
+
+New Patient Registration Workflow:
+---------------------------------
+Step 1: Check if patient exists
+"You: Do we have a patient named Michael Brown?"
+
+Step 2: If not found, create new patient
+"You: Add Michael Brown as a new patient"
+(Follow Loli's prompts for email, phone, medical history)
+
+Step 3: Schedule initial appointment
+"You: Book Michael for a new patient exam next Monday at 9 AM with Dr. Wilson"
+
+Complete Treatment Session Workflow:
+-----------------------------------
+Step 1: Record the treatment
+"You: Record that I completed 2 fillings on teeth #14 and #15 for Michael Brown, total cost 300 dollars"
+
+Step 2: Process payment (if paid immediately)
+"You: Process his payment of 300 dollars"
+
+Step 3: Schedule follow-up (if needed)
+"You: Schedule a follow-up appointment for Michael in 6 months"
+
+Inventory Management Workflow:
+-----------------------------
+Step 1: Check current status
+"You: Show me low stock items"
+
+Step 2: Review reorder suggestions
+"You: What do you recommend reordering?"
+
+Step 3: Restock items
+"You: Restock Amoxicillin by 30 units and Ibuprofen by 20 units"
+
+Step 4: Verify update
+"You: Show me the updated inventory report"
+
+Daily Closing Workflow:
+----------------------
+Step 1: Review today's appointments
+"You: What appointments were scheduled for today?"
+
+Step 2: Check financial summary
+"You: Show me today's revenue report"
+
+Step 3: Review outstanding balances
+"You: Which patients have balances over 100 dollars?"
+
+Step 4: Check inventory needs
+"You: Any medications that need ordering soon?"
+
+---
+
+10. TROUBLESHOOTING
+==================
+
+Common Issues and Solutions:
+---------------------------
+
+"Agent Mode Required" Error:
+Solution: Click the purple "Agent Mode" toggle button at the top, then try your command again.
+
+"Patient not found":
+Solution: Use the patient search first: "Find patient [name]" to get the correct patient ID.
+
+"Invalid JSON format":
+Solution: When using direct commands, make sure:
+- All quotes are straight quotes (not curly quotes)
+- Brackets { } are properly matched
+- Commas separate items correctly
+
+"Insufficient stock":
+Solution: Check current inventory levels first, then either restock or adjust the quantity you're trying to use.
+
+"Doctor not available":
+Solution: Check doctor schedules: "When is Dr. [Name] available?" before booking appointments.
+
+"Payment processing failed":
+Solution: Verify the patient exists and has an account balance. Check that the amount is valid.
+
+Tips for Success:
+----------------
+1. Start with simple questions in Ask Mode
+2. Switch to Agent Mode only when making changes
+3. Use natural language - speak how you would to a colleague
+4. Loli will guide you through multi-step processes
+5. Always confirm details before finalizing actions
+6. Check inventory levels before prescribing medications
+7. Keep patient information updated regularly
+
+Need More Help?
+---------------
+- Click the "Help" button in the AI Assistant for quick reference
+- Refer to the detailed technical guide (AI_ASSISTANT_COMMANDS_GUIDE.txt)
+- Contact your system administrator for additional training
+
+Remember: The AI Assistant is here to help make your dental practice more efficient. Don't hesitate to ask questions or try different ways of phrasing your requests!

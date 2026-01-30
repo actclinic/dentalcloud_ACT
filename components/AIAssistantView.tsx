@@ -312,52 +312,107 @@ How can I assist you today?
   useEffect(() => {
     const loadHelpContent = async () => {
       try {
-        // In a real implementation, you might fetch this from a file or API
-        // For now, we'll use a simplified version
-        const content = `AI ASSISTANT COMMANDS GUIDE
+        // Load the beginner-friendly guide content
+        const content = `AI ASSISTANT BEGINNER'S GUIDE
+=============================
 
-MODES OF OPERATION:
-===================
-ASK MODE (Default): Read-only, provides dental knowledge
-AGENT MODE: Full CRUD capabilities, required for operational commands
+WELCOME!
+--------
+This is your friendly guide to using the Dental Cloud AI Assistant (Loli).
 
-PATIENT MANAGEMENT:
-==================
-Find patient: { "action": "p_find", "params": { "name": "John" } }
-Create patient: { "action": "p_c", "params": { "n": "John Smith", "e": "email", "ph": "phone", "m": "history" } }
-Update patient: { "action": "p_u", "params": { "id": "patient123", "data": { "phone": "new" } } }
-Delete patient: { "action": "p_d", "params": { "id": "patient123" } }
+GETTING STARTED
+---------------
+1. Type your questions naturally in the chat box below
+2. Click the microphone 🎤 to speak instead of typing
+3. Use "Ask Mode" for questions, "Agent Mode" for making changes
 
-APPOINTMENT OPERATIONS:
-======================
-Create appointment: { "action": "apt_c", "params": { "p_id": "patient123", "dr_id": "doctor456", "dt": "2024-02-15", "t": "10:30", "ty": "Checkup" } }
-Update appointment: { "action": "apt_u", "params": { "id": "apt789", "data": { "time": "11:00" } } }
-Delete appointment: { "action": "apt_d", "params": { "id": "apt789" } }
+BASIC COMMANDS
+==============
+Finding Patients:
+• "Do we have a patient named John Smith?"
+• "Find patient Sarah Johnson"
 
-TREATMENT PROCEDURES:
-====================
-Record treatment: { "action": "tr_create", "params": { "pid": "patient123", "teeth": [18], "desc": "filling", "cost": 150 } }
-Undo treatment: { "action": "tr_undo", "params": { "id": "treatment456", "pid": "patient123", "cost": 150 } }
+Adding Patients (Agent Mode):
+• "Add new patient Michael Brown" 
+• Follow the prompts for email, phone, and medical history
 
-MEDICINE MANAGEMENT:
-===================
-Restock medicine: { "action": "m_restock", "params": { "id": "medicine789", "qty": 25 } }
-Create medicine: { "action": "m_c", "params": { "n": "Amoxicillin", "p": 25.50, "s": 50, "ms": 10 } }
+Scheduling Appointments:
+• "Book Sarah Johnson for a checkup next Tuesday at 2 PM"
+• "When is Dr. Wilson available this week?"
 
-FINANCIAL OPERATIONS:
-====================
-Process payment: { "action": "fin_pay", "params": { "pid": "patient123", "amt": 150 } }
-Financial report: { "action": "fin_report", "params": { "period": "weekly" } }
+Recording Treatments (Agent Mode):
+• "Record that I completed a filling on tooth #18 for John Smith, cost $150"
+• "I did cleanings on teeth 16-18 and 26-28 for Mary Johnson, $200 total"
 
-CONFIRMATION RESPONSES:
-======================
-When asked for confirmation, respond with: "Yes", "Confirm", "Proceed", "OK", "Sure"
+Managing Medications:
+• "Which medicines are running low?"
+• "Restock Amoxicillin by 25 units"
+• "Add Ibuprofen 400mg to our inventory"
 
-For complete documentation, please refer to the AI_ASSISTANT_COMMANDS_GUIDE.txt file in your project directory.`;
+Processing Payments (Agent Mode):
+• "Process a payment of $175 from Sarah Johnson"
+• "Show me today's revenue"
+
+HELPFUL TIPS
+============
+✅ Always check if a patient exists before adding them
+✅ Switch to Agent Mode (purple button) for making changes
+✅ Speak naturally - Loli understands conversational language  
+✅ You can mix voice and text input
+✅ Loli will guide you through multi-step processes
+✅ Check inventory before prescribing medications
+
+COMMON WORKFLOWS
+================
+New Patient Visit:
+1. "Do we have patient Michael Brown?" 
+2. If new: "Add Michael Brown" (follow prompts)
+3. "Book him for an exam next Monday at 9 AM"
+
+Treatment Session:
+1. "Record filling on tooth #19 for John Smith, $175"
+2. "Process his payment of $175"
+3. "Schedule follow-up in 6 months"
+
+Inventory Management:
+1. "Show me low stock items"
+2. "Restock Amoxicillin by 30 units"
+3. "Verify updated inventory"
+
+MODE EXPLANATIONS
+=================
+ASK MODE (Green):
+• Answer questions about dental topics
+• Show reports and information
+• Provide treatment recommendations
+• Cannot make changes to your data
+
+AGENT MODE (Purple):
+• Create/update/delete patient records
+• Schedule and modify appointments  
+• Record treatments and procedures
+• Process payments
+• Manage medications
+• Required for all data-changing actions
+
+TROUBLESHOOTING
+===============
+"Agent Mode Required":
+→ Click the purple Agent Mode button, then try again
+
+"Patient not found":
+→ First search: "Find patient [name]" to verify they exist
+
+"Insufficient stock":
+→ Check inventory: "Which medicines are running low?"
+
+Need more detailed help? 
+→ Refer to AI_ASSISTANT_BEGINNER_GUIDE.txt in your project folder
+→ Or contact your system administrator`;
         setHelpContent(content);
       } catch (error) {
         console.error('Failed to load help content:', error);
-        setHelpContent('Help content could not be loaded. Please check the AI_ASSISTANT_COMMANDS_GUIDE.txt file.');
+        setHelpContent('Quick Reference Guide\n\nFor complete beginner documentation, please refer to the AI_ASSISTANT_BEGINNER_GUIDE.txt file in your project directory.');
       }
     };
 
@@ -2213,10 +2268,11 @@ Category Breakdown: ${categories.join(', ')}`;
           <button
             onClick={() => setShowHelpModal(true)}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
-            title="View AI Assistant Commands Guide"
+            title="Quick start guide and command reference"
           >
             <HelpCircle className="w-4 h-4" />
-            <span>Help</span>
+            <span className="hidden sm:inline">Quick Help</span>
+            <span className="sm:hidden">Help</span>
           </button>
 
           <button
@@ -2468,7 +2524,7 @@ Category Breakdown: ${categories.join(', ')}`;
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
                 <HelpCircle className="w-8 h-8 text-green-600" />
-                AI Assistant Commands Guide
+                Quick Start Guide
               </h2>
               <button
                 onClick={() => setShowHelpModal(false)}
