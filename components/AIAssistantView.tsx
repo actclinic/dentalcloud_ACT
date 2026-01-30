@@ -644,8 +644,34 @@ Need more detailed help?
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const sixMonthsAgoStr = sixMonthsAgo.toISOString().split('T')[0];
+
+    // Identify patients overdue for checkup (no treatments in 6 months)
+    const overdueCheckups = patients.filter(p => {
+      const lastTreatment = treatmentRecords.find(tr => tr.patient_id === p.id);
+      return !lastTreatment || lastTreatment.date < sixMonthsAgoStr;
+    }).slice(0, 5).map(p => ({ n: p.name, last: treatmentRecords.find(tr => tr.patient_id === p.id)?.date || 'Never' }));
+
+    // Identify high-priority stock issues
+    const criticalStock = medicines.filter(m => m.stock <= (m.min_stock || 0) * 0.2).map(m => ({ n: m.name, s: m.stock, m: m.min_stock }));
+
+    // Identify high outstanding balances
+    const highBalances = patients.filter(p => (p.balance || 0) > 500000).slice(0, 5).map(p => ({ n: p.name, b: p.balance }));
+
     return {
       ...baseData,
+      clinical_insights: {
+        overdue_checkups: overdueCheckups,
+        high_risk_conditions: patients.filter(p => p.medicalHistory?.match(/heart|diabetes|allergy/i)).slice(0, 5).map(p => ({ n: p.name, c: p.medicalHistory?.substring(0, 30) })),
+        upcoming_appointments: appointments.filter(a => a.date === today && a.status === 'Scheduled').length
+      },
+      operational_insights: {
+        critical_stock: criticalStock,
+        high_balances: highBalances,
+        doctors_free_today: doctors.filter(d => !appointments.some(a => a.doctor_id === d.id && a.date === today)).map(d => d.name)
+      },
       patients: patients.slice(0, 25).map(p => ({ 
         i: p.id, 
         n: p.name, 
@@ -860,12 +886,19 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
         getOptimizedContextData(isActionIntent || isAgentMode, 2000) : 
         getOptimizedContextData(isActionIntent || isAgentMode, 1500);
       
-      const systemPrompt = `You are Loli, a dental AI assistant by WinterArc Myanmar, designed by Min Thuta Saw Naing.
+      const systemPrompt = `You are Loli, a proactive dental clinical analyst and assistant by WinterArc Myanmar, designed by Min Thuta Saw Naing.
 Today: ${contextData.td}
 Current Mode: ${isAgentMode ? 'AGENT (Actions enabled)' : 'ASK (Read-only)'}
 Practice Data: ${JSON.stringify(contextData)}
 ${isAgentMode ? API_DOCS : 'You are in ASK mode. CRUD operations (creating, updating, deleting data) are only allowed in Agent Mode. If the user wants to perform such actions, ask them to switch to Agent Mode first.'}
 Verification by pros required. Identity: Loli by WinterArc Myanmar.
+
+INTELLIGENCE GUIDELINES:
+- BE PROACTIVE: Use clinical_insights and operational_insights to offer advice without being asked.
+- ANALYZE: Don't just list data; tell the user what it means (e.g., "3 patients are overdue for checkups, would you like me to find their contact info?").
+- PRIORITIZE: Highlight critical stock levels or high-risk patients immediately.
+- BE CONCISE: Direct and helpful, using bullet points for clarity.
+- CONTEXTUAL CONTINUITY: Reference previous parts of the conversation when relevant.
 
 OPTIMIZATION GUIDELINES:
 - Be concise and direct in responses
