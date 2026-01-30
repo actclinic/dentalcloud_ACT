@@ -56,6 +56,14 @@ interface Message {
   timestamp: Date;
 }
 
+// Interface for pending actions that require confirmation
+interface PendingAction {
+  action: string;
+  params: any;
+  originalRequest: string;
+  timestamp: Date;
+}
+
 interface ChatSession {
   id: string;
   title: string;
@@ -157,6 +165,18 @@ How can I assist you today?
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  // State for pending actions that require confirmation
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  // State for conversation context that persists across speech sessions
+  const [conversationContext, setConversationContext] = useState<{
+    lastUserMessage: string | null;
+    lastAssistantResponse: string | null;
+    pendingConfirmation: boolean;
+  }>({
+    lastUserMessage: null,
+    lastAssistantResponse: null,
+    pendingConfirmation: false
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   
@@ -200,6 +220,13 @@ How can I assist you today?
         
         // Update the input field with all transcripts (interim and final)
         setInputMessage(transcript);
+        
+        // Store the transcript in conversation context for persistence
+        setConversationContext(prev => ({
+          ...prev,
+          lastUserMessage: transcript,
+          pendingConfirmation: pendingAction !== null
+        }));
         
         // If we have a final result, we should consider stopping the recognition
         if (isFinal) {
@@ -884,6 +911,184 @@ I can provide guidance on:
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
+    // Check if this is a confirmation response for a pending action
+    const lowerInput = inputMessage.toLowerCase().trim();
+    const isConfirmation = 
+      lowerInput.includes('yes') || 
+      lowerInput.includes('confirm') || 
+      lowerInput.includes('proceed') ||
+      lowerInput.includes('ok') ||
+      lowerInput.includes('sure') ||
+      lowerInput === 'y';
+
+    if (pendingAction && isConfirmation) {
+      // Execute the pending action
+      try {
+        setIsLoading(true);
+        
+        // Add user confirmation message
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          role: 'user',
+          content: inputMessage.trim(),
+          timestamp: new Date()
+        };
+        
+        const updatedMessages = [...messages, userMessage];
+        setMessages(updatedMessages);
+        
+        // Execute the pending action
+        let result: any;
+        const locationId = users[0]?.location_id || 'main';
+        
+        switch (pendingAction.action) {
+          case 'apt_c':
+            result = await api.appointments.create({ 
+              location_id: locationId,
+              patient_id: pendingAction.params.p_id,
+              doctor_id: pendingAction.params.dr_id,
+              date: pendingAction.params.dt,
+              time: pendingAction.params.t,
+              type: pendingAction.params.ty,
+              notes: pendingAction.params.n,
+              status: 'Scheduled'
+            });
+            break;
+          case 'apt_d':
+            await api.appointments.delete(pendingAction.params.id);
+            break;
+          case 'p_c':
+            result = await api.patients.create({ 
+              location_id: locationId,
+              name: pendingAction.params.n,
+              email: pendingAction.params.e,
+              phone: pendingAction.params.ph,
+              medicalHistory: pendingAction.params.m
+            });
+            break;
+          case 'p_d':
+            // Handle patient deletion by name or ID
+            if (pendingAction.params.name || pendingAction.params.n) {
+              const patientName = pendingAction.params.name || pendingAction.params.n;
+              const patientToDelete = patients.find(p => 
+                p.name.toLowerCase().includes(patientName.toLowerCase())
+              );
+              
+              if (!patientToDelete) {
+                throw new Error(`Patient with name '${patientName}' not found`);
+              }
+              
+              await api.patients.delete(patientToDelete.id);
+              result = { name: patientToDelete.name };
+            } else {
+              await api.patients.delete(pendingAction.params.id);
+            }
+            break;
+          case 'dr_c':
+            result = await api.doctors.create({ 
+              location_id: locationId,
+              name: pendingAction.params.n,
+              email: pendingAction.params.e,
+              phone: pendingAction.params.ph,
+              specialization: pendingAction.params.s,
+              schedules: pendingAction.params.sch
+            });
+            break;
+          case 'dr_d':
+            await api.doctors.delete(pendingAction.params.id);
+            break;
+          case 'm_c':
+            result = await api.medicines.create({ 
+              location_id: locationId,
+              name: pendingAction.params.n,
+              description: pendingAction.params.d,
+              unit: pendingAction.params.u,
+              price: pendingAction.params.p,
+              stock: pendingAction.params.s,
+              min_stock: pendingAction.params.ms,
+              category: pendingAction.params.c
+            });
+            break;
+          default:
+            throw new Error(`Unknown action: ${pendingAction.action}`);
+        }
+
+        // Create success message
+        let successMessage = '';
+        switch (pendingAction.action) {
+          case 'apt_c':
+            successMessage = `✅ Appointment created successfully for ${result.patient_name} with Dr. ${result.doctor_name} at ${result.time}.`;
+            break;
+          case 'apt_d':
+            successMessage = `✅ Appointment deleted successfully.`;
+            break;
+          case 'p_c':
+            successMessage = `✅ Patient ${result.name} added successfully.`;
+            break;
+          case 'p_d':
+            successMessage = `✅ Patient ${result?.name || 'with ID ' + pendingAction.params.id} deleted successfully.`;
+            break;
+          case 'dr_c':
+            successMessage = `✅ Dr. ${result.name} added to the system.`;
+            break;
+          case 'dr_d':
+            successMessage = `✅ Doctor removed from system.`;
+            break;
+          case 'm_c':
+            successMessage = `✅ Medicine ${result.name} added to inventory.`;
+            break;
+        }
+
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: successMessage,
+          timestamp: new Date()
+        };
+
+        const finalMessages = [...updatedMessages, assistantMessage];
+        setMessages(finalMessages);
+        saveSession(finalMessages);
+        
+        // Clear pending action and conversation context
+        setPendingAction(null);
+        setConversationContext({
+          lastUserMessage: null,
+          lastAssistantResponse: null,
+          pendingConfirmation: false
+        });
+        setInputMessage('');
+
+        // Increment usage count
+        const newCount = dailyUsageCount + 1;
+        setDailyUsageCount(newCount);
+        const today = new Date().toDateString();
+        localStorage.setItem('loli_usage', JSON.stringify({ date: today, count: newCount }));
+
+      } catch (error: any) {
+        console.error('Action execution error:', error);
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `❌ Failed to perform action: ${error.message}`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        
+        // Clear pending action on error
+        setPendingAction(null);
+        setConversationContext({
+          lastUserMessage: null,
+          lastAssistantResponse: null,
+          pendingConfirmation: false
+        });
+      } finally {
+        setIsLoading(false);
+        inputRef.current?.focus();
+      }
+      return;
+    }
+
     // Check daily usage limit
     if (dailyUsageCount >= DAILY_LIMIT) {
       const limitMessage: Message = {
@@ -1166,6 +1371,37 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
       const finalMessages = [...updatedMessages, assistantMessage];
       setMessages(finalMessages);
       saveSession(finalMessages);
+      
+      // Check if this response contains a pending action that requires confirmation
+      if (actionMatch && actionResult.includes('confirmation') || actionResult.includes('confirm')) {
+        // Extract the action details for pending confirmation
+        try {
+          const actionObj = JSON.parse(actionMatch[0]);
+          setPendingAction({
+            action: actionObj.action,
+            params: actionObj.params,
+            originalRequest: userMessage.content,
+            timestamp: new Date()
+          });
+          
+          // Update conversation context
+          setConversationContext({
+            lastUserMessage: userMessage.content,
+            lastAssistantResponse: assistantMessage.content,
+            pendingConfirmation: true
+          });
+        } catch (parseError) {
+          console.error('Failed to parse pending action:', parseError);
+        }
+      } else {
+        // Clear any existing pending action if this isn't a confirmation request
+        setPendingAction(null);
+        setConversationContext({
+          lastUserMessage: null,
+          lastAssistantResponse: null,
+          pendingConfirmation: false
+        });
+      }
       
       // Increment usage count and save to localStorage
       const newCount = dailyUsageCount + 1;
@@ -1471,8 +1707,18 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                               recognition.current.stop();
                               setIsListening(false);
                             } else {
-                              // Clear previous transcript and start fresh
-                              setInputMessage('');
+                              // Restore context if there's a pending action
+                              if (pendingAction && conversationContext.lastUserMessage) {
+                                setInputMessage(conversationContext.lastUserMessage);
+                              } else {
+                                // Clear previous transcript and start fresh
+                                setInputMessage('');
+                                setConversationContext({
+                                  lastUserMessage: null,
+                                  lastAssistantResponse: null,
+                                  pendingConfirmation: false
+                                });
+                              }
                               recognition.current.start();
                               setIsListening(true);
                             }
@@ -1507,6 +1753,11 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                 <p className="text-xs text-indigo-500 text-center font-medium">AI guidance is for reference. Always verify with clinical judgment.</p>
                 {isProcessing && (
                   <p className="text-xs text-yellow-600 text-center font-medium animate-pulse">Processing your speech...</p>
+                )}
+                {pendingAction && (
+                  <div className="mt-2 px-3 py-1 bg-amber-100 border border-amber-300 rounded-full text-amber-800 text-xs font-medium animate-pulse">
+                    ⚠️ Waiting for confirmation...
+                  </div>
                 )}
               </div>
             </div>
