@@ -1426,14 +1426,37 @@ Thank you for using Loli! 🦷✨`,
     try {
       const aiResponse = await callAICompletionAPI(userMessage.content);
           
-      // Parse for action JSON block with improved validation
-      let actionResult = '';
-      // More precise regex to capture complete JSON objects with "action" property
-      let actionMatch = aiResponse.match(/\{[^{}]*"action"\s*:\s*"[^"]*"[^{}]*\}/);
-          
-      if (!actionMatch) {
+      // Parse for multiple action JSON blocks with improved validation
+      let actionResults: string[] = [];
+      let allActionMatches: string[] = [];
+      
+      // Find all JSON objects containing "action" property
+      const findAllActions = (text: string): string[] => {
+        const matches: string[] = [];
+        const openBraces: number[] = [];
+        
+        for (let i = 0; i < text.length; i++) {
+          if (text[i] === '{') {
+            openBraces.push(i);
+          } else if (text[i] === '}' && openBraces.length > 0) {
+            const start = openBraces.pop();
+            if (start !== undefined) {
+              const potentialJson = text.substring(start, i + 1);
+              if (potentialJson.includes('"action"')) {
+                matches.push(potentialJson);
+              }
+            }
+          }
+        }
+        return matches;
+      };
+      
+      // Get all action matches from AI response
+      allActionMatches = findAllActions(aiResponse);
+      
+      // If no actions found, use fallback parsing for single action
+      if (allActionMatches.length === 0) {
         // Fallback: manual parsing to find JSON objects containing "action"
-        let manualMatch = null;
         const openBraces = [];
         for (let i = 0; i < aiResponse.length; i++) {
           if (aiResponse[i] === '{') {
@@ -1442,21 +1465,18 @@ Thank you for using Loli! 🦷✨`,
             const start = openBraces.pop();
             const potentialJson = aiResponse.substring(start, i + 1);
             if (potentialJson.includes('"action"')) {
-              manualMatch = [potentialJson];
+              allActionMatches = [potentialJson];
               break;
             }
           }
         }
-            
-        if (manualMatch) {
-          actionMatch = manualMatch;
-        }
       }
           
-      if (actionMatch) {
+      // Process all found actions sequentially
+      for (const match of allActionMatches) {
         try {
           // Validate JSON structure before parsing
-          const jsonString = actionMatch[0].trim();
+          const jsonString = match.trim();
           // Ensure proper JSON formatting
           const sanitizedJson = jsonString
             .replace(/\s+/g, ' ') // Normalize whitespace
@@ -1466,11 +1486,13 @@ Thank you for using Loli! 🦷✨`,
               
           // Validate the sanitized JSON
           if (!isValidJson(sanitizedJson)) {
-            throw new SyntaxError(`Invalid JSON format after sanitization: ${sanitizedJson}`);
+            console.error(`Invalid JSON format: ${sanitizedJson}`);
+            continue;
           }
               
           const actionObj = JSON.parse(sanitizedJson);
           const { action, params } = actionObj;
+          let currentActionResult = '';
               
           // Check if action is a CRUD operation that requires Agent Mode
           const crudActions = [
@@ -1478,23 +1500,18 @@ Thank you for using Loli! 🦷✨`,
             'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
             'apt_status', 'bulk_appointments'
           ];
+          
           if (crudActions.includes(action) && mode !== 'agent') {
-            actionResult = `⚠️ Agent Mode Required
+            currentActionResult = `⚠️ Agent Mode Required for "${action}"
+This action requires Agent Mode to be enabled. Please switch to Agent Mode using the toggle button and try again.`;
+            actionResults.push(currentActionResult);
+            continue;
+          }
 
-This action requires Agent Mode to be enabled. Please switch to Agent Mode using the toggle button and try again.
-
-Agent Mode is needed for:
-• Creating/Updating/Deleting patients
-• Booking/Updating/Deleting appointments
-• Creating/Updating/Deleting doctors
-• Creating/Updating medicines
-
-Ask Mode is for: Information queries, treatment suggestions, and general assistance.`;
-          } else {
-            let result: any;
-            const locationId = users[0]?.location_id || 'main';
+          let result: any;
+          const locationId = users[0]?.location_id || 'main';
                 
-            switch (action) {
+          switch (action) {
             case 'apt_c':
               try {
                 result = await api.appointments.create({ 
@@ -1507,28 +1524,28 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                   notes: params.n,
                   status: 'Scheduled'
                 });
-                actionResult = `✅ Appointment created successfully for ${result.patient_name} with Dr. ${result.doctor_name} at ${result.time}.`;
+                currentActionResult = `✅ Appointment created successfully for ${result.patient_name} with Dr. ${result.doctor_name} at ${result.time}.`;
               } catch (err: any) {
                 console.error('Appointment creation error:', err);
-                throw new Error(`Failed to create appointment: ${err.message}`);
+                currentActionResult = `❌ Failed to create appointment: ${err.message}`;
               }
               break;
             case 'apt_u':
               try {
                 result = await api.appointments.update(params.id, params.data);
-                actionResult = `✅ Appointment updated successfully.`;
+                currentActionResult = `✅ Appointment updated successfully.`;
               } catch (err: any) {
                 console.error('Appointment update error:', err);
-                throw new Error(`Failed to update appointment: ${err.message}`);
+                currentActionResult = `❌ Failed to update appointment: ${err.message}`;
               }
               break;
             case 'apt_d':
               try {
                 await api.appointments.delete(params.id);
-                actionResult = `✅ Appointment deleted successfully.`;
+                currentActionResult = `✅ Appointment deleted successfully.`;
               } catch (err: any) {
                 console.error('Appointment deletion error:', err);
-                throw new Error(`Failed to delete appointment: ${err.message}`);
+                currentActionResult = `❌ Failed to delete appointment: ${err.message}`;
               }
               break;
             case 'p_c':
@@ -1540,45 +1557,40 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                   phone: params.ph,
                   medicalHistory: params.m
                 });
-                actionResult = `✅ Patient ${result.name} added successfully.`;
+                currentActionResult = `✅ Patient ${result.name} added successfully.`;
               } catch (err: any) {
                 console.error('Patient creation error:', err);
-                throw new Error(`Failed to create patient: ${err.message}`);
+                currentActionResult = `❌ Failed to create patient: ${err.message}`;
               }
               break;
             case 'p_u':
               try {
                 result = await api.patients.update(params.id, params.data);
-                actionResult = `✅ Patient information updated.`;
+                currentActionResult = `✅ Patient information updated.`;
               } catch (err: any) {
                 console.error('Patient update error:', err);
-                throw new Error(`Failed to update patient: ${err.message}`);
+                currentActionResult = `❌ Failed to update patient: ${err.message}`;
               }
               break;
             case 'p_d':
               try {
-                // First check if params contains name instead of id
                 if (params.name || params.n) {
-                  // Look up patient by name
                   const patientName = params.name || params.n;
                   const patientToDelete = patients.find(p => 
                     p.name.toLowerCase().includes(patientName.toLowerCase())
                   );
-                  
                   if (!patientToDelete) {
                     throw new Error(`Patient with name '${patientName}' not found`);
                   }
-                  
                   await api.patients.delete(patientToDelete.id);
-                  actionResult = `✅ Patient ${patientToDelete.name} deleted successfully.`;
+                  currentActionResult = `✅ Patient ${patientToDelete.name} deleted successfully.`;
                 } else {
-                  // Traditional ID-based deletion
                   await api.patients.delete(params.id);
-                  actionResult = `✅ Patient with ID ${params.id} deleted successfully.`;
+                  currentActionResult = `✅ Patient with ID ${params.id} deleted successfully.`;
                 }
               } catch (err: any) {
                 console.error('Patient deletion error:', err);
-                throw new Error(`Failed to delete patient: ${err.message}`);
+                currentActionResult = `❌ Failed to delete patient: ${err.message}`;
               }
               break;
             case 'dr_c':
@@ -1591,28 +1603,28 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                   specialization: params.s,
                   schedules: params.sch
                 });
-                actionResult = `✅ Dr. ${result.name} added to the system.`;
+                currentActionResult = `✅ Dr. ${result.name} added to the system.`;
               } catch (err: any) {
                 console.error('Doctor creation error:', err);
-                throw new Error(`Failed to create doctor: ${err.message}`);
+                currentActionResult = `❌ Failed to create doctor: ${err.message}`;
               }
               break;
             case 'dr_u':
               try {
                 result = await api.doctors.update(params.id, params.data);
-                actionResult = `✅ Doctor information updated.`;
+                currentActionResult = `✅ Doctor information updated.`;
               } catch (err: any) {
                 console.error('Doctor update error:', err);
-                throw new Error(`Failed to update doctor: ${err.message}`);
+                currentActionResult = `❌ Failed to update doctor: ${err.message}`;
               }
               break;
             case 'dr_d':
               try {
                 await api.doctors.delete(params.id);
-                actionResult = `✅ Doctor removed from system.`;
+                currentActionResult = `✅ Doctor removed from system.`;
               } catch (err: any) {
                 console.error('Doctor deletion error:', err);
-                throw new Error(`Failed to delete doctor: ${err.message}`);
+                currentActionResult = `❌ Failed to delete doctor: ${err.message}`;
               }
               break;
             case 'm_c':
@@ -1627,105 +1639,93 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                   min_stock: params.ms,
                   category: params.c
                 });
-                actionResult = `✅ Medicine ${result.name} added to inventory.`;
+                currentActionResult = `✅ Medicine ${result.name} added to inventory.`;
               } catch (err: any) {
                 console.error('Medicine creation error:', err);
-                throw new Error(`Failed to create medicine: ${err.message}`);
+                currentActionResult = `❌ Failed to create medicine: ${err.message}`;
               }
               break;
             case 'm_u':
               try {
                 result = await api.medicines.update(params.id, params.data);
-                actionResult = `✅ Inventory updated for ${result.name}.`;
+                currentActionResult = `✅ Inventory updated for ${result.name}.`;
               } catch (err: any) {
                 console.error('Medicine update error:', err);
-                throw new Error(`Failed to update medicine: ${err.message}`);
+                currentActionResult = `❌ Failed to update medicine: ${err.message}`;
               }
               break;
             case 'm_restock':
               try {
                 const medicine = medicines.find(m => m.id === params.id);
-                if (!medicine) {
-                  throw new Error(`Medicine with ID ${params.id} not found`);
-                }
-                
+                if (!medicine) throw new Error(`Medicine with ID ${params.id} not found`);
                 const newStock = (medicine.stock || 0) + (params.qty || 0);
                 result = await api.medicines.update(params.id, { stock: newStock });
-                actionResult = `✅ Restocked ${medicine.name}. New stock level: ${newStock} units.`;
+                currentActionResult = `✅ Restocked ${medicine.name}. New stock level: ${newStock} units.`;
               } catch (err: any) {
                 console.error('Medicine restock error:', err);
-                throw new Error(`Failed to restock medicine: ${err.message}`);
+                currentActionResult = `❌ Failed to restock medicine: ${err.message}`;
               }
               break;
             case 'tr_create':
               try {
+                let patientId = params.pid;
+                // Patient Name Lookup Enhancement
+                if (!patientId && (params.name || params.n)) {
+                  const pName = params.name || params.n;
+                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  if (found) patientId = found.id;
+                }
+                
+                if (!patientId) throw new Error("Patient ID or Name is required for treatment recording.");
+
                 result = await api.treatments.record({
                   location_id: locationId,
-                  patient_id: params.pid,
+                  patient_id: patientId,
                   teeth: params.teeth || [],
                   description: params.desc,
                   cost: params.cost || 0
                 });
                 
-                // Handle medicine sales if provided
                 if (params.meds && Array.isArray(params.meds)) {
                   for (const medSale of params.meds) {
                     const medicine = medicines.find(m => m.id === medSale.id);
                     if (medicine && medicine.stock >= medSale.qty) {
-                      const newStock = medicine.stock - medSale.qty;
-                      await api.medicines.update(medSale.id, { stock: newStock });
+                      await api.medicines.update(medSale.id, { stock: medicine.stock - medSale.qty });
                     }
                   }
                 }
-                
-                actionResult = `✅ Treatment recorded successfully. Patient balance updated to ${result.new_balance} MMK.`;
+                currentActionResult = `✅ Treatment recorded successfully for patient ID ${patientId}. Balance updated to ${result.new_balance} MMK.`;
               } catch (err: any) {
                 console.error('Treatment record error:', err);
-                throw new Error(`Failed to record treatment: ${err.message}`);
+                currentActionResult = `❌ Failed to record treatment: ${err.message}`;
               }
               break;
             case 'tr_undo':
               try {
                 await api.treatments.undoRecord(params.id, params.pid, params.cost);
-                actionResult = `✅ Treatment record undone successfully.`;
+                currentActionResult = `✅ Treatment record undone successfully.`;
               } catch (err: any) {
                 console.error('Treatment undo error:', err);
-                throw new Error(`Failed to undo treatment: ${err.message}`);
+                currentActionResult = `❌ Failed to undo treatment: ${err.message}`;
               }
               break;
             case 'fin_pay':
               try {
                 result = await api.finance.processPayment(params.pid, params.amt);
-                actionResult = `✅ Payment of ${params.amt} MMK processed. New balance: ${result.new_balance} MMK.`;
+                currentActionResult = `✅ Payment of ${params.amt} MMK processed. New balance: ${result.new_balance} MMK.`;
               } catch (err: any) {
                 console.error('Payment processing error:', err);
-                throw new Error(`Failed to process payment: ${err.message}`);
+                currentActionResult = `❌ Failed to process payment: ${err.message}`;
               }
               break;
             case 'inv_low':
               try {
                 const lowStockItems = medicines.filter(m => m.stock <= (m.min_stock || 0));
-                if (lowStockItems.length === 0) {
-                  actionResult = `✅ All inventory items are adequately stocked.`;
-                } else {
-                  actionResult = `⚠️ Low Stock Alert:\n\n${lowStockItems.map(m => `• ${m.name}: ${m.stock} units (min: ${m.min_stock || 0})`).join('\n')}`;
-                }
+                currentActionResult = lowStockItems.length === 0 
+                  ? `✅ All inventory items are adequately stocked.`
+                  : `⚠️ Low Stock Alert:\n\n${lowStockItems.map(m => `• ${m.name}: ${m.stock} units (min: ${m.min_stock || 0})`).join('\n')}`;
               } catch (err: any) {
-                console.error('Low stock report error:', err);
-                throw new Error(`Failed to generate low stock report: ${err.message}`);
-              }
-              break;
-            case 'inv_out':
-              try {
-                const outOfStockItems = medicines.filter(m => m.stock === 0);
-                if (outOfStockItems.length === 0) {
-                  actionResult = `✅ No items are completely out of stock.`;
-                } else {
-                  actionResult = `🚨 Out of Stock Items:\n\n${outOfStockItems.map(m => `• ${m.name}`).join('\n')}`;
-                }
-              } catch (err: any) {
-                console.error('Out of stock report error:', err);
-                throw new Error(`Failed to generate out of stock report: ${err.message}`);
+                currentActionResult = `❌ Failed to generate low stock report: ${err.message}`;
               }
               break;
             case 'fin_report':
@@ -1735,10 +1735,7 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                 let startDate, endDate, periodLabel;
                 
                 switch (period) {
-                  case 'daily':
-                    startDate = endDate = now.toISOString().split('T')[0];
-                    periodLabel = 'Today';
-                    break;
+                  case 'daily': startDate = endDate = now.toISOString().split('T')[0]; periodLabel = 'Today'; break;
                   case 'weekly':
                     const weekAgo = new Date(now);
                     weekAgo.setDate(now.getDate() - 7);
@@ -1751,342 +1748,58 @@ Ask Mode is for: Information queries, treatment suggestions, and general assista
                     endDate = now.toISOString().split('T')[0];
                     periodLabel = 'This Month';
                     break;
-                  default:
-                    startDate = endDate = now.toISOString().split('T')[0];
-                    periodLabel = 'Today';
+                  default: startDate = endDate = now.toISOString().split('T')[0]; periodLabel = 'Today';
                 }
                 
                 const periodRecords = treatmentRecords.filter(tr => tr.date >= startDate && tr.date <= endDate);
                 const totalRevenue = periodRecords.reduce((sum, tr) => sum + (tr.cost || 0), 0);
-                const patientCount = new Set(periodRecords.map(tr => tr.patient_id)).size;
                 const treatmentCount = periodRecords.length;
                 
-                actionResult = `📊 Financial Report - ${periodLabel} (${startDate} to ${endDate}):
-                
-Total Revenue: ${totalRevenue} MMK
-Total Treatments: ${treatmentCount}
-Unique Patients: ${patientCount}
-Average Treatment Cost: ${(totalRevenue / treatmentCount || 0).toFixed(2)} MMK`;
+                currentActionResult = `📊 Financial Report - ${periodLabel} (${startDate} to ${endDate}):\nTotal Revenue: ${totalRevenue} MMK\nTotal Treatments: ${treatmentCount}`;
               } catch (err: any) {
-                console.error('Financial report error:', err);
-                throw new Error(`Failed to generate financial report: ${err.message}`);
-              }
-              break;
-            case 'pat_bal':
-              try {
-                const patient = patients.find(p => p.id === params.pid);
-                if (!patient) {
-                  throw new Error(`Patient with ID ${params.pid} not found`);
-                }
-                actionResult = `💰 Patient Balance for ${patient.name}: ${patient.balance} MMK`;
-              } catch (err: any) {
-                console.error('Patient balance error:', err);
-                throw new Error(`Failed to get patient balance: ${err.message}`);
-              }
-              break;
-            case 'pat_hist':
-              try {
-                const patientRecords = treatmentRecords.filter(tr => tr.patient_id === params.pid);
-                const patient = patients.find(p => p.id === params.pid);
-                
-                if (!patient) {
-                  throw new Error(`Patient with ID ${params.pid} not found`);
-                }
-                
-                if (patientRecords.length === 0) {
-                  actionResult = `📋 No treatment history found for ${patient.name}.`;
-                } else {
-                  const recentRecords = patientRecords.slice(0, 5);
-                  actionResult = `📋 Treatment History for ${patient.name}:
-                  
-${recentRecords.map((tr, idx) => `${idx + 1}. ${tr.date}: ${tr.description} - ${tr.cost} MMK`).join('\n')}`;
-                }
-              } catch (err: any) {
-                console.error('Patient history error:', err);
-                throw new Error(`Failed to get patient history: ${err.message}`);
-              }
-              break;
-            case 'apt_reschedule':
-              try {
-                await api.appointments.update(params.id, { date: params.dt, time: params.t });
-                actionResult = `✅ Appointment rescheduled successfully.`;
-              } catch (err: any) {
-                console.error('Appointment reschedule error:', err);
-                throw new Error(`Failed to reschedule appointment: ${err.message}`);
-              }
-              break;
-            case 'apt_status':
-              try {
-                await api.appointments.updateStatus(params.id, params.status);
-                actionResult = `✅ Appointment status updated to ${params.status}.`;
-              } catch (err: any) {
-                console.error('Appointment status update error:', err);
-                throw new Error(`Failed to update appointment status: ${err.message}`);
-              }
-              break;
-            case 'med_sales_report':
-              try {
-                // This would require a sales tracking system - placeholder implementation
-                const totalMedicines = medicines.length;
-                const totalStockValue = medicines.reduce((sum, m) => sum + (m.stock * m.price), 0);
-                actionResult = `📊 Medicine Inventory Summary:
-                
-Total Medicine Items: ${totalMedicines}
-Total Inventory Value: ${totalStockValue.toFixed(2)} MMK
-Low Stock Items: ${medicines.filter(m => m.stock <= (m.min_stock || 0)).length}`;
-              } catch (err: any) {
-                console.error('Medicine sales report error:', err);
-                throw new Error(`Failed to generate medicine sales report: ${err.message}`);
+                currentActionResult = `❌ Failed to generate financial report: ${err.message}`;
               }
               break;
             case 'p_find':
               try {
                 const searchTerm = (params.name || '').toLowerCase();
                 const matches = patients.filter(p => p.name.toLowerCase().includes(searchTerm));
-                
                 if (matches.length === 0) {
-                  actionResult = `🔍 No patients found matching "${params.name}".`;
+                  currentActionResult = `🔍 No patients found matching "${params.name}".`;
                 } else if (matches.length === 1) {
                   const patient = matches[0];
-                  actionResult = `👤 Found patient: ${patient.name} (ID: ${patient.id})
-Phone: ${patient.phone}
-Balance: ${patient.balance} MMK
-Loyalty Points: ${patient.loyalty_points}`;
+                  currentActionResult = `👤 Found patient: ${patient.name} (ID: ${patient.id})\nPhone: ${patient.phone}\nBalance: ${patient.balance} MMK`;
                 } else {
-                  actionResult = `👥 Multiple patients found (${matches.length}):
-${matches.slice(0, 5).map(p => `• ${p.name} (${p.phone})`).join('\n')}`;
+                  currentActionResult = `👥 Multiple patients found:\n${matches.slice(0, 5).map(p => `• ${p.name} (${p.phone})`).join('\n')}`;
                 }
               } catch (err: any) {
-                console.error('Patient search error:', err);
-                throw new Error(`Failed to search patients: ${err.message}`);
-              }
-              break;
-            case 'apt_find_patient':
-              try {
-                const searchTerm = (params.name || '').toLowerCase();
-                const patientMatches = patients.filter(p => p.name.toLowerCase().includes(searchTerm));
-                
-                if (patientMatches.length === 0) {
-                  actionResult = `🔍 No patients found matching "${params.name}".`;
-                } else {
-                  const patient = patientMatches[0];
-                  const patientAppointments = appointments.filter(a => a.patient_id === patient.id);
-                  
-                  if (patientAppointments.length === 0) {
-                    actionResult = `📅 No appointments found for ${patient.name}.`;
-                  } else {
-                    const upcoming = patientAppointments.filter(a => a.date >= today).slice(0, 3);
-                    actionResult = `📅 Appointments for ${patient.name}:
-${upcoming.map(a => `• ${a.date} ${a.time} with Dr. ${a.doctor_name} (${a.status})`).join('\n')}`;
-                  }
-                }
-              } catch (err: any) {
-                console.error('Appointment search error:', err);
-                throw new Error(`Failed to search appointments: ${err.message}`);
-              }
-              break;
-            case 'inv_reorder_suggestions':
-              try {
-                const lowStockItems = medicines.filter(m => m.stock <= (m.min_stock || 0));
-                
-                if (lowStockItems.length === 0) {
-                  actionResult = `✅ No immediate reorder actions needed. All items are adequately stocked.`;
-                } else {
-                  actionResult = `📋 Reorder Suggestions:
-${lowStockItems.map(m => `• ${m.name}: Current ${m.stock}, Min ${m.min_stock || 0}, Suggested order ${(m.min_stock || 10) * 2 - m.stock}`).join('\n')}`;
-                }
-              } catch (err: any) {
-                console.error('Reorder suggestions error:', err);
-                throw new Error(`Failed to generate reorder suggestions: ${err.message}`);
-              }
-              break;
-            case 'staff_availability':
-              try {
-                const targetDate = params.date || new Date().toISOString().split('T')[0];
-                const availableDoctors = doctors.filter(d => {
-                  const dayOfWeek = new Date(targetDate).getDay();
-                  return d.schedules.some(s => s.day_of_week === dayOfWeek);
-                });
-                
-                if (availableDoctors.length === 0) {
-                  actionResult = `📅 No doctors available on ${targetDate}.`;
-                } else {
-                  actionResult = `👨‍⚕️ Available Doctors on ${targetDate}:
-${availableDoctors.map(d => `• Dr. ${d.name} (${d.specialization})`).join('\n')}`;
-                }
-              } catch (err: any) {
-                console.error('Staff availability error:', err);
-                throw new Error(`Failed to check staff availability: ${err.message}`);
-              }
-              break;
-            case 'bulk_appointments':
-              try {
-                const { patients: patientList, dr_id, date, time } = params;
-                const results = [];
-                
-                for (const patientName of patientList) {
-                  const patient = patients.find(p => p.name.toLowerCase().includes(patientName.toLowerCase()));
-                  if (patient) {
-                    try {
-                      const result = await api.appointments.create({
-                        location_id: locationId,
-                        patient_id: patient.id,
-                        doctor_id: dr_id,
-                        date,
-                        time,
-                        type: 'Checkup',
-                        notes: 'Bulk scheduled appointment',
-                        status: 'Scheduled'
-                      });
-                      results.push(`✅ ${patient.name}: Scheduled with Dr. ${result.doctor_name}`);
-                    } catch (err) {
-                      results.push(`❌ ${patient.name}: Failed to schedule`);
-                    }
-                  } else {
-                    results.push(`❌ ${patientName}: Patient not found`);
-                  }
-                }
-                
-                actionResult = `📋 Bulk Appointment Results:
-${results.join('\n')}`;
-              } catch (err: any) {
-                console.error('Bulk appointments error:', err);
-                throw new Error(`Failed to create bulk appointments: ${err.message}`);
-              }
-              break;
-            case 'treatment_plan':
-              try {
-                const { patient_name, chief_complaint, examination_findings } = params;
-                const patient = patients.find(p => p.name.toLowerCase().includes(patient_name.toLowerCase()));
-                
-                if (!patient) {
-                  throw new Error(`Patient "${patient_name}" not found`);
-                }
-                
-                // This is a simplified treatment planning response
-                // In a real implementation, this would involve more sophisticated AI analysis
-                actionResult = `📋 AI-Assisted Treatment Plan for ${patient.name}:
-                
-Chief Complaint: ${chief_complaint}
-Findings: ${examination_findings}
-
-Suggested Treatment Approach:
-1. Initial consultation and detailed examination
-2. Diagnostic imaging if needed
-3. Treatment planning session
-4. Implementation of recommended procedures
-5. Follow-up and monitoring
-
-Estimated Timeline: 2-4 weeks
-Next Steps: Schedule detailed consultation appointment`;
-              } catch (err: any) {
-                console.error('Treatment plan error:', err);
-                throw new Error(`Failed to generate treatment plan: ${err.message}`);
-              }
-              break;
-            case 'patient_followup':
-              try {
-                const { patient_name, days, reason } = params;
-                const patient = patients.find(p => p.name.toLowerCase().includes(patient_name.toLowerCase()));
-                
-                if (!patient) {
-                  throw new Error(`Patient "${patient_name}" not found`);
-                }
-                
-                const followupDate = new Date();
-                followupDate.setDate(followupDate.getDate() + days);
-                const dateString = followupDate.toISOString().split('T')[0];
-                
-                actionResult = `📅 Follow-up scheduled for ${patient.name} on ${dateString} (${days} days from now) for: ${reason}`;
-              } catch (err: any) {
-                console.error('Patient followup error:', err);
-                throw new Error(`Failed to schedule follow-up: ${err.message}`);
-              }
-              break;
-            case 'financial_analysis':
-              try {
-                const { start_date, end_date } = params;
-                const periodRecords = treatmentRecords.filter(tr => tr.date >= start_date && tr.date <= end_date);
-                
-                const totalRevenue = periodRecords.reduce((sum, tr) => sum + (tr.cost || 0), 0);
-                const patientCount = new Set(periodRecords.map(tr => tr.patient_id)).size;
-                const treatmentCount = periodRecords.length;
-                
-                // Top treatments by frequency
-                const treatmentCounts = periodRecords.reduce((acc, tr) => {
-                  acc[tr.description] = (acc[tr.description] || 0) + 1;
-                  return acc;
-                }, {} as Record<string, number>);
-                
-                const topTreatments = Object.entries(treatmentCounts)
-                  .sort(([,a], [,b]) => (b as number) - (a as number))
-                  .slice(0, 3)
-                  .map(([treatment, count]) => `${treatment} (${count})`)
-                  .join(', ');
-                
-                actionResult = `📈 Financial Analysis (${start_date} to ${end_date}):
-                
-Revenue: ${totalRevenue} MMK
-Treatments: ${treatmentCount}
-Patients: ${patientCount}
-Avg. Revenue/Patient: ${(totalRevenue / patientCount || 0).toFixed(2)} MMK
-Top Treatments: ${topTreatments}`;
-              } catch (err: any) {
-                console.error('Financial analysis error:', err);
-                throw new Error(`Failed to perform financial analysis: ${err.message}`);
-              }
-              break;
-            case 'inventory_audit':
-              try {
-                const totalValue = medicines.reduce((sum, m) => sum + (m.stock * m.price), 0);
-                const lowStock = medicines.filter(m => m.stock <= (m.min_stock || 0)).length;
-                const outOfStock = medicines.filter(m => m.stock === 0).length;
-                const categories = [...new Set(medicines.map(m => m.category).filter(Boolean))];
-                
-                actionResult = `📋 Inventory Audit Report:
-                
-Total Items: ${medicines.length}
-Categories: ${categories.length}
-Total Value: ${totalValue.toFixed(2)} MMK
-Low Stock Items: ${lowStock}
-Out of Stock Items: ${outOfStock}
-Category Breakdown: ${categories.join(', ')}`;
-              } catch (err: any) {
-                console.error('Inventory audit error:', err);
-                throw new Error(`Failed to perform inventory audit: ${err.message}`);
+                currentActionResult = `❌ Failed to search patients: ${err.message}`;
               }
               break;
             default:
-              actionResult = `⚠️ Unknown action: ${action}`;
-            }
+              currentActionResult = `⚠️ Action "${action}" not specifically handled yet or unknown.`;
+          }
+          
+          if (currentActionResult) {
+            actionResults.push(currentActionResult);
           }
         } catch (err: any) {
           console.error('Action Execution Error:', err);
-          // Log the problematic JSON for debugging
-          if (actionMatch && actionMatch[0]) {
-            console.error('Problematic JSON:', actionMatch[0]);
-            console.error('Sanitized JSON:', actionMatch[0]
-              .replace(/\s+/g, ' ')
-              .replace(/\s*([{}:,])\s*/g, '$1')
-              .replace(/,\s*\}/g, '}')
-              .replace(/,\s*\]/g, ']'));
-          }
-          // Provide more specific error messages
-          if (err instanceof SyntaxError) {
-            actionResult = `❌ Failed to parse action JSON. Please check the format: ${err.message}`;
-          } else {
-            actionResult = `❌ Failed to perform action: ${err.message}`;
-          }
+          actionResults.push(`❌ Failed to perform action: ${err.message}`);
         }
-      } else {
-        // Debug logging when no action match is found
-        console.log('No action match found in AI response');
       }
-            
+
+      const actionResultText = actionResults.join('\n\n---\n\n');
+      // Remove all JSON blocks from the AI response to clean it up
+      let cleanedAiResponse = aiResponse;
+      allActionMatches.forEach(match => {
+        cleanedAiResponse = cleanedAiResponse.replace(match, '');
+      });
+      
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: actionResult ? `${aiResponse.replace(actionMatch ? actionMatch[0] : '', '').trim()}\n\n${actionResult}` : aiResponse,
+        content: actionResultText ? `${cleanedAiResponse.trim()}\n\n${actionResultText}` : aiResponse,
         timestamp: new Date()
       };
 
@@ -2095,10 +1808,12 @@ Category Breakdown: ${categories.join(', ')}`;
       saveSession(finalMessages);
       
       // Check if this response contains a pending action that requires confirmation
-      if (actionMatch && (actionResult.includes('confirmation') || actionResult.includes('confirm'))) {
+      const needsConfirmation = actionResultText.toLowerCase().includes('confirmation') || actionResultText.toLowerCase().includes('confirm');
+      
+      if (allActionMatches.length > 0 && needsConfirmation) {
         // Extract the action details for pending confirmation
         try {
-          const actionObj = JSON.parse(actionMatch[0]);
+          const actionObj = JSON.parse(allActionMatches[0]);
           setPendingAction({
             action: actionObj.action,
             params: actionObj.params,
