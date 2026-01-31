@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X } from 'lucide-react';
-import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine } from '../types';
+import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense } from '../types';
 import { api } from '../services/api';
 
 // Custom CSS for animations
@@ -80,6 +80,7 @@ interface AIAssistantViewProps {
   treatmentTypes: TreatmentType[];
   users: UserType[];
   medicines: Medicine[];
+  expenses: Expense[];
 }
 
 const AIAssistantView: React.FC<AIAssistantViewProps> = ({ 
@@ -89,7 +90,8 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   doctors,
   treatmentTypes,
   users,
-  medicines
+  medicines,
+  expenses
 }) => {
   const DAILY_LIMIT = 10;
 
@@ -160,7 +162,15 @@ How can I assist you today?
   });
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState<'ask' | 'agent'>('ask');
+  const [mode, setMode] = useState<'ask' | 'agent'>(() => {
+    const saved = localStorage.getItem('loli_mode');
+    return (saved === 'ask' || saved === 'agent') ? saved : 'ask';
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('loli_mode', mode);
+  }, [mode]);
+
   const [apiStatus, setApiStatus] = useState<'ready' | 'mock' | 'error'>('mock');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -660,6 +670,20 @@ Need more detailed help?
     // Identify high outstanding balances
     const highBalances = patients.filter(p => (p.balance || 0) > 500000).slice(0, 5).map(p => ({ n: p.name, b: p.balance }));
 
+    const monthlyRevenue = treatmentRecords.filter(tr => {
+      const recordDate = new Date(tr.date);
+      const currentDate = new Date();
+      return recordDate.getMonth() === currentDate.getMonth() && 
+             recordDate.getFullYear() === currentDate.getFullYear();
+    }).reduce((sum, tr) => sum + (tr.cost || 0), 0);
+
+    const monthlyExpenses = expenses.filter(exp => {
+      const expDate = new Date(exp.date);
+      const currentDate = new Date();
+      return expDate.getMonth() === currentDate.getMonth() && 
+             expDate.getFullYear() === currentDate.getFullYear();
+    }).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
     return {
       ...baseData,
       clinical_insights: {
@@ -716,15 +740,21 @@ Need more detailed help?
         c: tr.cost,
         dt: tr.date
       })),
+      expenses: expenses.slice(0, 20).map(exp => ({
+        i: exp.id,
+        d: exp.description,
+        a: exp.amount,
+        c: exp.category,
+        dt: exp.date
+      })),
       financial_summary: {
         daily_revenue: treatmentRecords.filter(tr => tr.date === today).reduce((sum, tr) => sum + (tr.cost || 0), 0),
         weekly_revenue: treatmentRecords.filter(tr => tr.date >= sevenDaysAgoStr).reduce((sum, tr) => sum + (tr.cost || 0), 0),
-        monthly_revenue: treatmentRecords.filter(tr => {
-          const recordDate = new Date(tr.date);
-          const currentDate = new Date();
-          return recordDate.getMonth() === currentDate.getMonth() && 
-                 recordDate.getFullYear() === currentDate.getFullYear();
-        }).reduce((sum, tr) => sum + (tr.cost || 0), 0)
+        monthly_revenue: monthlyRevenue,
+        daily_expenses: expenses.filter(exp => exp.date === today).reduce((sum, exp) => sum + (exp.amount || 0), 0),
+        weekly_expenses: expenses.filter(exp => exp.date >= sevenDaysAgoStr).reduce((sum, exp) => sum + (exp.amount || 0), 0),
+        monthly_expenses: monthlyExpenses,
+        monthly_profit: monthlyRevenue - monthlyExpenses
       },
       inventory_insights: {
         low_stock_items: medicines.filter(m => m.stock <= (m.min_stock || 0)).length,
@@ -802,6 +832,12 @@ FINANCIAL OPERATIONS:
 - fin_report(period): Get financial report. period='daily'|'weekly'|'monthly'.
 - financial_analysis(start_date, end_date): Detailed financial insights.
 - patient_followup(patient_name, days, reason): Schedule follow-up appointment.
+
+EXPENSE MANAGEMENT:
+- exp_get_all(): Get all expenses.
+- exp_c(desc, amt, cat, dt): Create expense. desc=description, amt=amount, cat=category, dt=date(YYYY-MM-DD).
+- exp_u(id, data): Update expense.
+- exp_d(id): Delete expense.
 
 LOYALTY SYSTEM:
 - loyalty_rules_get(): Get all loyalty rules.
@@ -1598,7 +1634,7 @@ Thank you for using Loli! 🦷✨`,
           const crudActions = [
             'apt_c', 'apt_u', 'apt_d', 'p_c', 'p_u', 'p_d', 'dr_c', 'dr_u', 'dr_d', 
             'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
-            'apt_status', 'bulk_appointments'
+            'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d'
           ];
           
           if (crudActions.includes(action) && mode !== 'agent') {
@@ -1681,6 +1717,48 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 currentActionResult = `✅ Treatment type deleted successfully.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to delete treatment type: ${err.message}`;
+              }
+              break;
+            
+            // Expense Actions
+            case 'exp_get_all':
+              try {
+                const exps = await api.expenses.getAll(locationId);
+                currentActionResult = exps.length === 0 
+                  ? `📋 No expenses found.`
+                  : `📋 Expenses:\n\n${exps.map(e => `• ${e.date}: ${e.description} (${e.category}) - ${e.amount} MMK`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get expenses: ${err.message}`;
+              }
+              break;
+            case 'exp_c':
+              try {
+                result = await api.expenses.create({
+                  location_id: locationId,
+                  description: params.desc,
+                  amount: params.amt,
+                  category: params.cat,
+                  date: params.dt || new Date().toISOString().split('T')[0]
+                });
+                currentActionResult = `✅ Expense "${result.description}" of ${result.amount} MMK recorded.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to record expense: ${err.message}`;
+              }
+              break;
+            case 'exp_u':
+              try {
+                result = await api.expenses.update(params.id, params.data);
+                currentActionResult = `✅ Expense updated successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to update expense: ${err.message}`;
+              }
+              break;
+            case 'exp_d':
+              try {
+                await api.expenses.delete(params.id);
+                currentActionResult = `✅ Expense deleted successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to delete expense: ${err.message}`;
               }
               break;
             

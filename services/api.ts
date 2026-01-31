@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense } from '../types';
 
 // Utility: map DB snake_case fields to app camelCase
 const mapPatient = (row: any): Patient => ({
@@ -790,6 +790,54 @@ export const api = {
         .from(PATIENT_FILES_BUCKET)
         .remove([path]);
 
+      if (error) throw new Error(error.message);
+    }
+  },
+
+  expenses: {
+    getAll: async (locationId?: string): Promise<Expense[]> => {
+      try {
+        let query = supabase
+          .from('expenses')
+          .select('*')
+          .order('date', { ascending: false });
+        
+        if (locationId) {
+          query = query.eq('location_id', locationId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.warn("Error fetching expenses:", err);
+        return [];
+      }
+    },
+    create: async (data: Partial<Expense>): Promise<Expense> => {
+      const { data: result, error } = await supabase
+        .from('expenses')
+        .insert(data)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    update: async (id: string, data: Partial<Expense>): Promise<Expense> => {
+      const { data: result, error } = await supabase
+        .from('expenses')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    delete: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
       if (error) throw new Error(error.message);
     }
   },

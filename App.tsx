@@ -33,8 +33,9 @@ import {
   User, 
   Medicine, 
   Location,
-  LoyaltyRule,
-  LoyaltyTransaction
+  LoyaltyRule, 
+  LoyaltyTransaction,
+  Expense
 } from './types';
 import { TREATMENT_CATEGORIES } from './constants';
 import { api } from './services/api';
@@ -83,6 +84,7 @@ const App: React.FC = () => {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loyaltyRules, setLoyaltyRules] = useState<LoyaltyRule[]>([]);
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -266,14 +268,15 @@ const App: React.FC = () => {
         localStorage.setItem('currentLocationId', locId);
       }
       
-      const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData] = await Promise.all([
+      const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData] = await Promise.all([
         api.patients.getAll(locId),
         api.appointments.getAll(locId),
         api.doctors.getAll(locId),
         api.treatments.getTypes(locId),
         api.treatments.getAllRecords(locId),
         api.medicines.getAll(locId),
-        api.loyalty.getRules(locId)
+        api.loyalty.getRules(locId),
+        api.expenses.getAll(locId)
       ]);
       setPatients(patData);
       setAppointments(aptData);
@@ -282,6 +285,7 @@ const App: React.FC = () => {
       setGlobalRecords(recordsData);
       setMedicines(medData);
       setLoyaltyRules(loyaltyData);
+      setExpenses(expenseData);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Failed to connect to database. Please check your network.");
@@ -1001,6 +1005,7 @@ const App: React.FC = () => {
               treatmentTypes={treatmentTypes}
               users={users}
               medicines={medicines}
+              expenses={expenses}
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 

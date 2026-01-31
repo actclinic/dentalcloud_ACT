@@ -151,3 +151,14 @@ export interface LoyaltyTransaction {
   description: string;
   date: string;
 }
+
+export interface Expense {
+  id: string;
+  location_id: string;
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  created_at?: string;
+  updated_at?: string;
+}
