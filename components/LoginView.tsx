@@ -58,7 +58,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         <div>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-white overflow-hidden rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
-              <img src="/assets/WinterArcLogo.jpg" alt="WinterArc Logo" className="w-full h-full object-cover" />
+              <img src="/assets/WinterArcLogo.png" alt="WinterArc Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-xl font-black text-white tracking-tight">DentalCloud<span className="text-indigo-300">Pro</span></h1>
           </div>
@@ -115,7 +115,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         <div className="w-full max-w-sm">
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl mb-4 shadow-xl overflow-hidden border border-gray-100">
-              <img src="/assets/WinterArcLogo.jpg" alt="WinterArc Logo" className="w-full h-full object-cover" />
+              <img src="/assets/WinterArcLogo.png" alt="WinterArc Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-xl font-black text-gray-900 mb-2 tracking-tight">Welcome Back</h1>
             <p className="text-gray-600 font-medium text-sm">Sign in to your DentalCloud Pro account</p>
