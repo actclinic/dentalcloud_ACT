@@ -933,12 +933,42 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
         getOptimizedContextData(isActionIntent || isAgentMode, 2000) : 
         getOptimizedContextData(isActionIntent || isAgentMode, 1500);
       
-      const systemPrompt = `You are Loli, a proactive dental clinical analyst and assistant by WinterArc Myanmar, designed by Min Thuta Saw Naing.
+      const systemPrompt = `You are Loli, an expert dental clinical assistant with advanced reasoning capabilities by WinterArc Myanmar, designed by Min Thuta Saw Naing.
+
+**YOUR ENHANCED CAPABILITIES:**
+- Multi-step problem solving with Chain of Thought reasoning
+- Proactive clinical insights and prevention recommendations  
+- Complex workflow orchestration across multiple systems
+- Evidence-based decision making with risk assessment
+- Contextual continuity across conversations
+
+**ADVANCED THINKING PROCESS:**
+When users ask complex questions, think through this framework:
+1. CLINICAL ASSESSMENT: Analyze the medical/dental implications
+2. DATA SYNTHESIS: Combine practice data with clinical knowledge
+3. RISK EVALUATION: Identify potential complications or concerns
+4. SOLUTION DESIGN: Create comprehensive, actionable plans
+5. VALIDATION CHECK: Ensure safety and clinical appropriateness
+
+**PROACTIVE INSIGHTS YOU MUST PROVIDE:**
+- Patient risk stratification
+- Treatment timing optimization
+- Cost-effectiveness analysis
+- Prevention strategies
+- Follow-up recommendations
+- Alternative treatment options
+
 Today: ${contextData.td}
-Current Mode: ${isAgentMode ? 'AGENT (Actions enabled)' : 'ASK (Read-only)'}
+Current Mode: ${isAgentMode ? 'AGENT (Full CRUD access)' : 'ASK (Read-only analysis)'}
 Practice Data: ${JSON.stringify(contextData)}
-${isAgentMode ? API_DOCS : 'You are in ASK mode. CRUD operations (creating, updating, deleting data) are only allowed in Agent Mode. If the user wants to perform such actions, ask them to switch to Agent Mode first.'}
-Verification by pros required. Identity: Loli by WinterArc Myanmar.
+${isAgentMode ? API_DOCS : 'Limited to analysis mode - switch to Agent for actions'}
+
+CLINICAL DENTAL EXPERTISE:
+- Diagnostic reasoning (chief complaint → systemic factors → urgent care → restorative)
+- Treatment prioritization protocols
+- Evidence-based guidelines integration
+- Risk factor identification (cardiac, diabetic, allergic conditions)
+- SOAP documentation standards
 
 INTELLIGENCE GUIDELINES:
 - BE PROACTIVE: Use clinical_insights and operational_insights to offer advice without being asked.
@@ -949,25 +979,39 @@ INTELLIGENCE GUIDELINES:
 - COMPOUND ACTIONS: You can fulfill complex requests by outputting MULTIPLE JSON action blocks in a single response. Use "Chain of Thought" reasoning to determine the sequence.
 - CHAIN OF THOUGHT: Briefly explain your reasoning before providing the JSON actions for transparency.
 
-CLINICAL DENTAL KNOWLEDGE:
-- DIAGNOSTIC PRIORITY: Focus on chief complaint, then systemic health, then urgent care (pain/infection), then restorative, then elective.
-- STANDARD PROTOCOLS:
-  * RCT: Requires diagnosis, access, cleaning/shaping, obturation, and final restoration (often crown). Usually 1-2 visits.
-  * PROPHYLAXIS: Scaling and polishing. Recommended every 6 months.
-  * RESTORATIONS: Class I-V. Use composite for aesthetics, amalgam/zirconia for strength.
-- DOCUMENTATION (SOAP): Subjective (chief complaint), Objective (clinical findings), Assessment (diagnosis), Plan (treatment proposal).
-- RISK FACTORS: Identify heart disease (antibiotic prophylaxis?), diabetes (slow healing?), and allergies (PCN/Latex) immediately.
-- PROCEDURE CODES (Simplified):
-  * D0120: Periodic Oral Eval | D0210: Intraoral X-rays | D1110: Adult Prophy
-  * D2140: Amalgam Filling | D2330: Composite Filling | D3310: Endodontic Therapy (RCT)
-  * D6010: Surgical Implant | D7140: Simple Extraction | D2750: PFM Crown
-
 OPTIMIZATION GUIDELINES:
 - Be concise and direct in responses
 - Use bullet points for lists
 - Prioritize essential information
 - Keep explanations focused on dental practice needs
-- For complex analyses, provide key insights first, then details`;
+- For complex analyses, provide key insights first, then details
+
+VERIFICATION: Identity - Loli by WinterArc Myanmar.
+
+**DATA ANALYSIS RESPONSE PROTOCOL:**
+When responding to analysis requests, ALWAYS format data in structured tables with:
+- Clear headers and row labels
+- Specific numerical data with units
+- Percentages where relevant for comparisons
+- Comparative data (current vs previous periods)
+- Actionable insights with specific recommendations
+
+**TABLE FORMATTING STANDARDS:**
+- Use markdown table format with proper alignment
+- Include totals and subtotals where appropriate
+- Add trend indicators (↑ increase, ↓ decrease)
+- Provide context for all numerical values
+
+**ANALYSIS CATEGORIES AND FORMATS:**
+1. FINANCIAL ANALYSIS: Revenue breakdowns, expense categories, profit margins
+2. PATIENT ANALYSIS: Demographics, treatment frequencies, appointment patterns
+3. INVENTORY ANALYSIS: Stock levels, turnover rates, reorder recommendations
+4. TREATMENT ANALYSIS: Procedure volumes, success rates, seasonal trends
+
+Example table format:
+| Category | Current Period | Previous Period | Change | % Change | Insights |
+|----------|----------------|-----------------|--------|----------|----------|
+| [Data]   | [Value]        | [Value]         | [Diff] | [Pct]    | [Action] |`
 
       const response = await fetch(
         `https://api.apifree.ai/v1/chat/completions`,
@@ -1272,20 +1316,31 @@ OPTIMIZATION GUIDELINES:
 - Adequate bone-implant contact
 
 📊 *Success rate: >95% for properly selected cases.*`);
-        } else if (lowerMessage.includes('patient') && lowerMessage.includes('records')) {
+        } else if (lowerMessage.includes('patient') && lowerMessage.includes('records') || lowerMessage.includes('patient analysis') || lowerMessage.includes('demographic')) {
           const contextData: any = getContextualData();
-          resolve(`📊 **Practice Overview:**
+          
+          // Generate structured patient analysis table
+          const patientData = contextData.patients || [];
+          const totalPatients = patientData.length;
+          const withHighBalance = patientData.filter((p: any) => (p.b || 0) > 500000).length;
+          const withLoyaltyPoints = patientData.filter((p: any) => (p.lp || 0) > 0).length;
+          
+          resolve(`📊 **Patient Demographics Analysis**
 
-**Current Statistics:**
-- Total Active Patients: ${contextData.s.p}
-- Recent Treatments: ${contextData.s.a}
+| Demographic Category | Count | Percentage | Insights |
+|---------------------|-------|------------|----------|
+| Total Active Patients | ${totalPatients} | 100% | Baseline population |
+| High Balance (>500K MMK) | ${withHighBalance} | ${totalPatients ? Math.round((withHighBalance/totalPatients)*100) : 0}% | Revenue opportunity segment ↑ |
+| Loyalty Program Members | ${withLoyaltyPoints} | ${totalPatients ? Math.round((withLoyaltyPoints/totalPatients)*100) : 0}% | Engagement level indicator |
+| Average Balance | ${totalPatients ? Math.round(patientData.reduce((sum: number, p: any) => sum + (p.b || 0), 0) / totalPatients).toLocaleString() : 0} MMK | N/A | Financial health metric ↓ |
 
-**Recent Activity:**
-${contextData.tr ? contextData.tr.map((r: any) => 
-  `• ${r.p}: ${r.d} (${new Date(r.dt).toLocaleDateString()})`
-).join('\n') : 'No recent activity data available.'}
+**Key Insights:**
+• ${withHighBalance} patients represent high-revenue opportunities
+• ${withLoyaltyPoints} patients are engaged with your loyalty program
+• Consider targeted payment plans for high-balance patients
+• Loyalty program shows ${withLoyaltyPoints > totalPatients/2 ? 'strong' : 'moderate'} adoption rate
 
-💡 *This is real data from your practice. What specific aspect would you like to discuss?*`);
+💡 *Data reflects current practice statistics. Would you like deeper analysis of specific patient segments?*`);
         } else if (lowerMessage.includes('inventory') || lowerMessage.includes('stock') || lowerMessage.includes('item') || lowerMessage.includes('medicine') || lowerMessage.includes('medication')) {
           const contextData: any = getContextualData();
           resolve(`📦 **Inventory Overview:**
@@ -1301,6 +1356,103 @@ ${contextData.inv?.top_items ? contextData.inv.top_items.map((item: any) =>
 ).join('\n') : 'No inventory breakdown available.'}
 
 💡 *This is real-time inventory data from your clinic. What specific inventory information do you need?*`);
+        } else if (lowerMessage.includes('financial') || lowerMessage.includes('revenue') || lowerMessage.includes('profit') || lowerMessage.includes('income') || lowerMessage.includes('expense')) {
+          const contextData: any = getContextualData();
+          const financialData = contextData.financial_summary || {};
+          
+          // Calculate comparative data
+          const dailyRevenue = financialData.daily_revenue || 0;
+          const weeklyRevenue = financialData.weekly_revenue || 0;
+          const monthlyRevenue = financialData.monthly_revenue || 0;
+          const dailyExpenses = financialData.daily_expenses || 0;
+          const weeklyExpenses = financialData.weekly_expenses || 0;
+          const monthlyExpenses = financialData.monthly_expenses || 0;
+          const monthlyProfit = financialData.monthly_profit || 0;
+          
+          resolve(`💰 **Financial Performance Analysis**
+
+| Financial Category | Daily (MMK) | Weekly (MMK) | Monthly (MMK) | Trend |
+|-------------------|-------------|--------------|---------------|-------|
+| Revenue           | ${dailyRevenue.toLocaleString()} | ${weeklyRevenue.toLocaleString()} | ${monthlyRevenue.toLocaleString()} | ${dailyRevenue > (weeklyRevenue/7) ? '↑' : '↓'} |
+| Expenses          | ${dailyExpenses.toLocaleString()} | ${weeklyExpenses.toLocaleString()} | ${monthlyExpenses.toLocaleString()} | ${dailyExpenses > (weeklyExpenses/7) ? '↑' : '↓'} |
+| Net Profit        | ${(dailyRevenue - dailyExpenses).toLocaleString()} | ${(weeklyRevenue - weeklyExpenses).toLocaleString()} | ${monthlyProfit.toLocaleString()} | ${monthlyProfit > (monthlyRevenue * 0.15) ? '↑ Strong' : monthlyProfit > 0 ? '→ Stable' : '↓ Concern'} |
+
+**Key Financial Insights:**
+• Monthly profit margin: ${monthlyRevenue ? Math.round((monthlyProfit/monthlyRevenue)*100) : 0}%
+• Revenue trend: ${dailyRevenue > (weeklyRevenue/7) ? 'Improving' : 'Declining'}
+• Expense management: ${dailyExpenses < (weeklyExpenses/7) ? 'Under control' : 'Requires attention'}
+• Break-even analysis: Need ${Math.round(monthlyExpenses/30).toLocaleString()} MMK daily revenue
+
+**Recommendations:**
+1. Focus on high-margin services to improve profit margin
+2. Monitor expense categories for optimization opportunities
+3. Consider promotional campaigns during slower periods
+4. Track daily revenue to maintain positive trend
+
+📈 *Financial data updated in real-time. Would you like detailed category breakdowns?*`);
+        } else if (lowerMessage.includes('treatment') && (lowerMessage.includes('analysis') || lowerMessage.includes('trend') || lowerMessage.includes('frequency') || lowerMessage.includes('volume'))) {
+          const contextData: any = getContextualData();
+          const treatments = contextData.treatment_records || [];
+          
+          // Categorize treatments by type
+          const treatmentCategories: Record<string, {count: number, totalCost: number, avgCost: number}> = {};
+          
+          treatments.forEach((treatment: any) => {
+            const cost = treatment.c || 0;
+            if (treatmentCategories[treatment.d]) {
+              treatmentCategories[treatment.d].count++;
+              treatmentCategories[treatment.d].totalCost += cost;
+            } else {
+              treatmentCategories[treatment.d] = {
+                count: 1,
+                totalCost: cost,
+                avgCost: cost
+              };
+            }
+          });
+          
+          // Calculate averages
+          Object.values(treatmentCategories).forEach(cat => {
+            cat.avgCost = Math.round(cat.totalCost / cat.count);
+          });
+          
+          // Sort by frequency
+          const sortedCategories = Object.entries(treatmentCategories)
+            .sort(([,a], [,b]) => b.count - a.count)
+            .slice(0, 5);
+          
+          let tableContent = '| Treatment Type | Frequency | Total Revenue (MMK) | Avg. Cost (MMK) | Revenue Share | Trend |\n';
+          tableContent += '|----------------|-----------|-------------------|----------------|---------------|-------|\n';
+          
+          let totalRevenue = 0;
+          sortedCategories.forEach(([type, data]) => {
+            totalRevenue += data.totalCost;
+          });
+          
+          sortedCategories.forEach(([type, data]) => {
+            const revenueShare = totalRevenue ? Math.round((data.totalCost / totalRevenue) * 100) : 0;
+            const trend = data.count > 3 ? '↑ Popular' : data.count > 1 ? '→ Standard' : '↓ Low Volume';
+            tableContent += `| ${type.substring(0, 20)} | ${data.count} | ${data.totalCost.toLocaleString()} | ${data.avgCost.toLocaleString()} | ${revenueShare}% | ${trend} |
+`;
+          });
+          
+          resolve(`📊 **Treatment Volume & Revenue Analysis**
+
+${tableContent}
+
+**Treatment Insights:**
+• Top service: ${sortedCategories[0] ? sortedCategories[0][0] : 'None'} (${sortedCategories[0] ? sortedCategories[0][1].count : 0} procedures)
+• Revenue concentration: ${sortedCategories[0] ? Math.round((sortedCategories[0][1].totalCost / totalRevenue) * 100) : 0}% from top service
+• Average procedure value: ${totalRevenue && treatments.length ? Math.round(totalRevenue / treatments.length).toLocaleString() : 0} MMK
+• Service diversity: ${Object.keys(treatmentCategories).length} different treatment types
+
+**Strategic Recommendations:**
+1. Promote high-value services (${sortedCategories[0] ? sortedCategories[0][0] : ''})
+2. Cross-train staff on popular procedures
+3. Bundle complementary services
+4. Monitor low-volume treatments for discontinuation
+
+📈 *Treatment data reflects recent practice activity. Would you like geographic or temporal breakdowns?*`);
         } else {
           resolve(`🤖 **I'm here to help with clinical dental assistance!**
 
@@ -1326,15 +1478,17 @@ I can provide guidance on:
 - Orthodontics
 - Periodontal therapy
 
-📊 **Practice Management:**
-- Patient records analysis
-- Treatment planning
+📊 **Data Analysis:**
+- Financial reports with detailed tables
+- Patient demographics and trends
+- Inventory analysis with reorder recommendations
+- Treatment volume and revenue analysis
 
-**Example questions you can ask:**
-- "What's the protocol for a root canal treatment?"
-- "How should I manage acute dental pain?"
-- "Guidelines for pediatric cavity treatment?"
-- "Crown preparation steps?"
+**Example analysis questions:**
+- "Show me financial performance with revenue breakdowns"
+- "Analyze patient demographics in table format"
+- "What's our inventory status with stock levels?"
+- "Treatment volume analysis with revenue trends"
 
 *Note: Currently using simulated responses. Connect your Gemini API key for AI-powered answers!*`);
         }
