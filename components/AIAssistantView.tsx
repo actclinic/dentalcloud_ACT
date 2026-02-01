@@ -884,6 +884,31 @@ Examples:
 { "action": "pat_hist", "params": { "name": "John Smith" } }
 `
 
+  // Post-process AI responses to remove internal processing artifacts
+  const cleanAIResponse = (response: string): string => {
+    let cleaned = response;
+    
+    // Remove Chain of Thought sections
+    cleaned = cleaned.replace(/\*\*Chain of Thought:\*\*[^\n]*\n?/gi, '');
+    cleaned = cleaned.replace(/Chain of Thought:[^\n]*\n?/gi, '');
+    
+    // Remove action planning sections
+    cleaned = cleaned.replace(/\*\*Action:\*\*[^\n]*\n?/gi, '');
+    cleaned = cleaned.replace(/Action planning:[^\n]*\n?/gi, '');
+    cleaned = cleaned.replace(/Processing steps:[^\n]*\n?/gi, '');
+    
+    // Remove raw JSON action blocks
+    cleaned = cleaned.replace(/\{\s*"action"\s*:\s*"[^"]*"[^}]*\}/g, '');
+    
+    // Remove internal commentary
+    cleaned = cleaned.replace(/\(internal processing\)/gi, '');
+    cleaned = cleaned.replace(/\[processing\]/gi, '');
+    
+    // Clean up extra whitespace (removed due to syntax issues)
+    
+    return cleaned;
+  };
+
   const callAICompletionAPI = async (userMessage: string, history: Message[] = []): Promise<string> => {
     const apiKey = process.env.AI_API_KEY || MOCK_API_KEY;
     
@@ -976,8 +1001,15 @@ INTELLIGENCE GUIDELINES:
 - PRIORITIZE: Highlight critical stock levels or high-risk patients immediately.
 - BE CONCISE: Direct and helpful, using bullet points for clarity.
 - CONTEXTUAL CONTINUITY: Reference previous parts of the conversation when relevant.
-- COMPOUND ACTIONS: You can fulfill complex requests by outputting MULTIPLE JSON action blocks in a single response. Use "Chain of Thought" reasoning to determine the sequence.
-- CHAIN OF THOUGHT: Briefly explain your reasoning before providing the JSON actions for transparency.
+- COMPOUND ACTIONS: Process complex requests efficiently using internal reasoning to determine optimal action sequences.
+- INTERNAL PROCESSING: All analytical thinking and planning occurs internally. Only present final, formatted results to users.
+
+RESPONSE FORMATTING RULES:
+- NEVER display internal reasoning, Chain of Thought, or processing steps
+- NEVER show raw JSON action blocks or technical implementation details
+- ALWAYS present final results in clean, professional format
+- For analysis requests, use structured tables with clear headers and numerical data
+- Focus on actionable insights without exposing internal workflows
 
 OPTIMIZATION GUIDELINES:
 - Be concise and direct in responses
@@ -995,6 +1027,12 @@ When responding to analysis requests, ALWAYS format data in structured tables wi
 - Percentages where relevant for comparisons
 - Comparative data (current vs previous periods)
 - Actionable insights with specific recommendations
+
+**IMPORTANT FORMATTING RULES:**
+- NEVER include internal processing notes or Chain of Thought reasoning
+- NEVER display JSON action blocks or technical implementation details
+- ONLY show the final formatted analysis results
+- Present all information in clean, professional table format
 
 **TABLE FORMATTING STANDARDS:**
 - Use markdown table format with proper alignment
@@ -2475,8 +2513,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       }
 
       const actionResultText = actionResults.join('\n\n---\n\n');
+      // Clean the AI response to remove internal processing artifacts
+      let cleanedAiResponse = cleanAIResponse(aiResponse);
       // Remove all JSON blocks from the AI response to clean it up
-      let cleanedAiResponse = aiResponse;
       allActionMatches.forEach(match => {
         cleanedAiResponse = cleanedAiResponse.replace(match, '');
       });
@@ -2961,3 +3000,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 };
 
 export default AIAssistantView;
+
+
+
+
