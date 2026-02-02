@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS patient_auth (
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
   email VARCHAR(255) UNIQUE,
   phone VARCHAR(20),
-  password_hash VARCHAR(255),
+  password VARCHAR(255),
   is_verified BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

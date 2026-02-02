@@ -281,23 +281,37 @@ export const api = {
 
       if (!defaultLocationId) throw new Error('No clinic location found. Please contact admin.');
 
-      // 2. Create patient record
-      const { data: patient, error: pError } = await supabase
+      // 2. Check if patient already exists
+      let { data: existingPatient, error: fetchError } = await supabase
         .from('patients')
-        .insert({ 
-          name: email.split('@')[0], 
-          email: email,
-          location_id: defaultLocationId
-        })
-        .select()
+        .select('id, name, email')
+        .eq('email', email)
         .single();
 
-      if (pError) throw new Error(pError.message);
+      let patient;
+      if (fetchError || !existingPatient) {
+        // Patient doesn't exist, create new one
+        const { data: newPatient, error: pError } = await supabase
+          .from('patients')
+          .insert({ 
+            name: email.split('@')[0], 
+            email: email,
+            location_id: defaultLocationId
+          })
+          .select()
+          .single();
 
-      // 3. Create auth record with user-defined password
+        if (pError) throw new Error(pError.message);
+        patient = newPatient;
+      } else {
+        // Patient already exists, use existing one
+        patient = existingPatient;
+      }
+
+      // 3. Create or update auth record with user-defined password
       const { error: aError } = await supabase
         .from('patient_auth')
-        .insert({
+        .upsert({
           patient_id: patient.id,
           email: email,
           password: password,
