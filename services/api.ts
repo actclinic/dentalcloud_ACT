@@ -231,16 +231,16 @@ export const api = {
       }
     },
     
-    // Authenticate patient with phone or name + password
+    // Authenticate patient with email, phone or name + password
     authenticate: async (identifier: string, password: string): Promise<Patient | null> => {
       try {
         const trimmedIdentifier = identifier.trim();
         
-        // 1. Find the patient first by phone or name
+        // 1. Find the patient first by email, phone or name
         let { data: patientData, error: pError } = await supabase
           .from('patients')
           .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
-          .or(`phone.eq."${trimmedIdentifier}",name.eq."${trimmedIdentifier}"`)
+          .or(`email.eq."${trimmedIdentifier}",phone.eq."${trimmedIdentifier}",name.eq."${trimmedIdentifier}"`)
           .maybeSingle();
 
         if (pError || !patientData) {
