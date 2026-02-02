@@ -1,0 +1,358 @@
+# Dental Cloud Application - Comprehensive AI Assistant Documentation
+
+## Table of Contents
+1. [Overview](#overview)
+2. [Architecture & Components](#architecture--components)
+3. [Business Workflows](#business-workflows)
+4. [Data Models & Relationships](#data-models--relationships)
+5. [AI Interaction Patterns](#ai-interaction-patterns)
+6. [API Actions & Endpoints](#api-actions--endpoints)
+7. [Technical Implementation](#technical-implementation)
+
+## Overview
+
+The Dental Cloud application is a comprehensive dental clinic management system with an integrated AI assistant (Loli) designed to help dental professionals with clinical decision support, administrative tasks, and data analysis. The system handles patient management, appointments, treatments, inventory, and financial operations.
+
+### Core Features:
+- Patient management with medical histories
+- Appointment scheduling and management
+- Treatment recording and tracking
+- Inventory management for medicines and supplies
+- Financial operations and reporting
+- Doctor scheduling and management
+- Loyalty program management
+- AI-powered clinical assistance
+
+## Architecture & Components
+
+### AI Assistant View (AIAssistantView.tsx)
+The main component responsible for AI interactions, featuring:
+- Dual-mode operation: Ask Mode (read-only analysis) and Agent Mode (CRUD operations)
+- Context-aware conversation management
+- Markdown-enhanced response rendering
+- Session management and history
+- Speech-to-text functionality
+- Mock API simulation for development
+
+### Core Data Models
+- **Patient**: Personal information, medical history, contact details, balance, loyalty points
+- **Appointment**: Patient-doctor-date-time relationship with status tracking
+- **ClinicalRecord/Treatment**: Treatment descriptions, costs, teeth involved
+- **Doctor**: Medical professionals with specializations and schedules
+- **TreatmentType**: Standardized treatment procedures with costs
+- **Medicine**: Inventory items with stock levels, pricing, categories
+- **Expense**: Business expenses with categories and dates
+- **User**: System users with roles and permissions
+
+## Business Workflows
+
+### 1. Patient Management Workflow
+**Primary Operations:**
+- Patient registration and profile creation
+- Medical history documentation
+- Contact information management
+- Balance and payment tracking
+- Loyalty point management
+
+**Key Processes:**
+```
+1. Patient Inquiry
+2. Registration (if new patient)
+3. Medical History Review
+4. Treatment Planning
+5. Appointment Scheduling
+6. Treatment Execution
+7. Payment Processing
+8. Follow-up Scheduling
+```
+
+**AI Integration Points:**
+- Patient search and lookup
+- Medical history analysis
+- Balance checking
+- Loyalty program management
+- Patient communication templates
+
+### 2. Appointment Scheduling Workflow
+**Primary Operations:**
+- Booking appointments between patients and doctors
+- Rescheduling and cancellation
+- Status tracking (Scheduled, Completed, Cancelled)
+- Availability checking for doctors
+
+**Key Processes:**
+```
+1. Patient Identification
+2. Doctor Selection
+3. Time Slot Selection
+4. Appointment Creation
+5. Confirmation
+6. Pre-visit Reminders
+7. Status Updates
+8. Follow-up Scheduling
+```
+
+**AI Integration Points:**
+- Availability checking
+- Conflict resolution
+- Bulk appointment scheduling
+- Doctor workload balancing
+
+### 3. Treatment Recording Workflow
+**Primary Operations:**
+- Recording completed treatments
+- Associated tooth numbering
+- Cost calculation and billing
+- Medicine prescription and dispensing
+- Treatment history maintenance
+
+**Key Processes:**
+```
+1. Patient Verification
+2. Clinical Examination
+3. Treatment Planning
+4. Treatment Execution
+5. Documentation
+6. Billing/Payment Processing
+7. Follow-up Recommendation
+8. Progress Tracking
+```
+
+**AI Integration Points:**
+- Treatment type suggestions
+- Cost estimation
+- Medicine inventory checks
+- Clinical protocol guidance
+- Insurance claim preparation
+
+### 4. Inventory Management Workflow
+**Primary Operations:**
+- Medicine/Supply tracking
+- Stock level monitoring
+- Reordering alerts
+- Sales tracking
+- Expiration date management
+
+**Key Processes:**
+```
+1. Initial Stock Setup
+2. Usage Tracking
+3. Low Stock Alerts
+4. Reorder Suggestions
+5. Purchase Order Generation
+6. Stock Receiving
+7. Inventory Auditing
+8. Expiration Monitoring
+```
+
+**AI Integration Points:**
+- Automated reorder suggestions
+- Stock level optimization
+- Supplier recommendations
+- Cost analysis
+- Fast-moving item identification
+
+### 5. Financial Operations Workflow
+**Primary Operations:**
+- Payment processing
+- Revenue tracking
+- Expense management
+- Financial reporting
+- Insurance claims processing
+
+**Key Processes:**
+```
+1. Service/Billing Generation
+2. Payment Collection
+3. Revenue Recording
+4. Expense Tracking
+5. Account Reconciliation
+6. Financial Reporting
+7. Tax Preparation
+8. Audit Trail Maintenance
+```
+
+**AI Integration Points:**
+- Revenue forecasting
+- Expense categorization
+- Profit margin analysis
+- Financial trend identification
+- Payment plan recommendations
+
+## Data Models & Relationships
+
+### Patient Model
+- `id`: Unique identifier
+- `name`: Patient's full name
+- `email`, `phone`: Contact information
+- `medicalHistory`: Medical conditions, allergies, medications
+- `balance`: Outstanding balance in MMK
+- `loyalty_points`: Accumulated loyalty points
+- `created_at`, `updated_at`: Timestamps
+
+### Appointment Model
+- `id`: Unique identifier
+- `patient_id`, `doctor_id`: Foreign keys
+- `date`, `time`: Scheduled date/time
+- `status`: Scheduled, Completed, Cancelled, No-show
+- `type`: Appointment type (checkup, cleaning, emergency, etc.)
+- `notes`: Additional information
+
+### Clinical Record/Treatment Model
+- `id`: Unique identifier
+- `patient_id`: Foreign key to patient
+- `teeth`: Array of affected tooth numbers
+- `description`: Treatment details
+- `cost`: Treatment cost in MMK
+- `date`: Date of treatment
+
+### Medicine Model
+- `id`: Unique identifier
+- `name`, `description`: Product information
+- `stock`, `min_stock`: Inventory levels
+- `price`: Unit price in MMK
+- `category`: Classification (antibiotic, analgesic, etc.)
+- `unit`: Measurement unit
+
+## AI Interaction Patterns
+
+### Ask Mode (Read-Only Analysis)
+- Querying existing data
+- Generating reports and analysis
+- Providing clinical guidance
+- Answering informational questions
+- No data modifications allowed
+
+### Agent Mode (Full CRUD Access)
+- Creating new records (patients, appointments, etc.)
+- Updating existing records
+- Deleting records
+- Processing payments
+- Managing inventory
+- Performing administrative tasks
+
+### Command Structure
+AI commands follow this JSON format:
+```
+{ "action": "action_code", "params": { "param1": "value1", "param2": "value2" } }
+```
+
+### Supported Commands
+
+#### Patient Management
+- `p_c(n, e, ph, m, lp)`: Create patient (n=name, e=email, ph=phone, m=medicalHistory, lp=loyalty_points)
+- `p_u(id, data)`: Update patient
+- `p_d(id)`: Delete patient
+- `p_find(name)`: Find patient by name
+- `pat_bal(pid)`: Get patient balance
+- `pat_hist(pid)`: Get patient treatment history
+
+#### Appointment Management
+- `apt_c(p_id, dr_id, dt, t, ty, n)`: Create appointment
+- `apt_u(id, data)`: Update appointment
+- `apt_d(id)`: Delete appointment
+- `apt_reschedule(id, dt, t)`: Reschedule appointment
+- `apt_status(id, status)`: Update appointment status
+- `apt_find_patient(name)`: Find appointments for patient
+
+#### Treatment Records
+- `tr_create(pid, teeth[], desc, cost, meds[])`: Record treatment
+- `tr_undo(id, pid, cost)`: Undo treatment record
+- `treatment_types_get()`: Get all treatment types
+- `treatment_type_create(name, cost, category)`: Create treatment type
+
+#### Financial Operations
+- `fin_pay(pid, amt)`: Process payment
+- `fin_report(period)`: Get financial report (daily/weekly/monthly)
+
+#### Medicine/Inventory Management
+- `m_c(n, d, u, p, s, ms, c)`: Create medicine
+- `m_u(id, data)`: Update medicine
+- `m_restock(id, qty)`: Restock medicine
+- `m_sell(pid, mid, qty, tid)`: Sell medicine
+- `inv_low()`: Get low stock report
+
+## API Actions & Endpoints
+
+The system uses a service-oriented architecture with API endpoints managed through the `api` service object:
+
+### Services Available
+- `api.patients` - Patient management
+- `api.appointments` - Appointment management  
+- `api.treatments` - Treatment recording
+- `api.doctors` - Doctor management
+- `api.medicines` - Inventory management
+- `api.finance` - Financial operations
+- `api.loyalty` - Loyalty program management
+- `api.expenses` - Expense tracking
+
+### Common API Patterns
+- `create(data)` - Create new records
+- `update(id, data)` - Update existing records
+- `delete(id)` - Delete records
+- `getAll()` - Retrieve all records
+- `getById(id)` - Retrieve specific record
+
+## Technical Implementation
+
+### Context Compression Strategy
+The AI assistant uses a token-optimized context building strategy:
+- **Ask Mode**: Compressed data focusing on essential information
+- **Agent Mode**: Extended context with detailed data for operations
+- **Complex Queries**: Enhanced context with analytical data
+
+### Session Management
+- LocalStorage-based session persistence
+- Automatic cleanup of sessions older than 3 days
+- Conversation continuity tracking
+- Multi-turn conversation awareness
+
+### Response Processing
+- Markdown-enhanced responses using ReactMarkdown and remark-gfm
+- Internal processing artifact removal
+- Chain of Thought reasoning (internal only)
+- Action planning and execution
+
+### Error Handling
+- Graceful degradation from real API to mock responses
+- Comprehensive error messaging
+- Usage limit tracking
+- API connection status monitoring
+
+### Security Considerations
+- Input validation for all AI-generated actions
+- Role-based access controls
+- Secure API key management
+- Data sanitization for XSS prevention
+
+## Clinical Decision Support
+
+The AI assistant provides evidence-based clinical guidance including:
+- Treatment protocol recommendations
+- Medication interaction warnings
+- Risk factor assessments
+- Preventive care suggestions
+- Referral recommendations
+- Follow-up scheduling guidance
+
+## Data Analysis Capabilities
+
+The system provides analytical insights on:
+- Patient demographics and trends
+- Treatment volume and revenue analysis
+- Inventory turnover and optimization
+- Financial performance metrics
+- Doctor workload distribution
+- Appointment scheduling efficiency
+
+## Integration Points
+
+The AI assistant seamlessly integrates with all system modules:
+- Real-time data access from all entities
+- Transactional integrity for all operations
+- Audit trail maintenance
+- Notification systems
+- Reporting engines
+- Third-party service connections
+
+This documentation provides the AI assistant with comprehensive understanding of the Dental Cloud application's workflows, enabling it to effectively assist users with both clinical and administrative tasks while maintaining system integrity and data consistency.
