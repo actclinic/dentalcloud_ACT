@@ -26,6 +26,7 @@ interface ClinicalViewProps {
   onToggleFlatRate: (value: boolean) => void;
   onUndoTreatment?: (record: ClinicalRecord) => void;
   onRedeemPoints?: (points: number, amount: number) => void;
+  onUpdateAccount?: (patient: Patient, password: string) => void;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
   loyaltyTransactions?: LoyaltyTransaction[];
@@ -53,6 +54,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onToggleFlatRate,
   onUndoTreatment,
   onRedeemPoints,
+  onUpdateAccount,
   loyaltyEnabled,
   loyaltyRules = [],
   loyaltyTransactions = []
@@ -306,6 +308,24 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                  <ReceiptIcon size={16} /> Generate Receipt
                </button>
                
+               {onUpdateAccount && selectedPatient && (
+                 <button 
+                  className="w-full bg-amber-100 text-amber-700 py-3 rounded-xl font-bold text-sm mt-2 hover:bg-amber-200 transition-all flex items-center justify-center gap-2 border border-amber-200"
+                  onClick={() => {
+                    const pass = prompt(`Set Portal Password for ${selectedPatient.name}:`, "");
+                    if (pass !== null) {
+                      if (pass.length < 4) {
+                        alert("Password too short! Please use at least 4 characters.");
+                        return;
+                      }
+                      onUpdateAccount(selectedPatient, pass);
+                    }
+                  }}
+                 >
+                   <User size={16} /> Set Portal Account
+                 </button>
+               )}
+
                <button 
                 className="w-full bg-gray-900 text-white py-3 rounded-xl font-bold text-sm mt-2 hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
                 onClick={onClosePatient}

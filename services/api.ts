@@ -59,7 +59,7 @@ export const api = {
         return []; // Return empty array instead of crashing
       }
     },
-    create: async (data: Partial<Patient>): Promise<Patient> => {
+    create: async (data: Partial<Patient> & { password?: string }): Promise<Patient> => {
       // First, check if the patients table exists
       try {
         const { error: tableError } = await supabase
@@ -136,6 +136,23 @@ export const api = {
         .single();
 
       if (error) throw new Error(error.message);
+
+      // If password is provided, create auth record
+      if (data.password) {
+        const { error: authError } = await supabase
+          .from('patient_auth')
+          .insert({
+            patient_id: result.id,
+            email: data.email || null,
+            password: data.password,
+            is_verified: true
+          });
+        
+        if (authError) {
+          console.warn('Patient created but auth record failed:', authError.message);
+        }
+      }
+
       return mapPatient(result);
     },
     update: async (id: string, data: Partial<Patient>): Promise<Patient> => {
@@ -164,6 +181,36 @@ export const api = {
         .eq('id', id);
 
       if (error) throw new Error(error.message);
+    },
+
+    // Update or create patient auth record
+    updateAccount: async (patientId: string, email: string | null, password: string): Promise<void> => {
+      // Check if auth record exists
+      const { data: existing } = await supabase
+        .from('patient_auth')
+        .select('id')
+        .eq('patient_id', patientId)
+        .maybeSingle();
+
+      if (existing) {
+        // Update
+        const { error } = await supabase
+          .from('patient_auth')
+          .update({ password, email })
+          .eq('patient_id', patientId);
+        if (error) throw new Error(error.message);
+      } else {
+        // Create
+        const { error } = await supabase
+          .from('patient_auth')
+          .insert({
+            patient_id: patientId,
+            email: email,
+            password: password,
+            is_verified: true
+          });
+        if (error) throw new Error(error.message);
+      }
     },
     
     // Authenticate patient with phone or name + password

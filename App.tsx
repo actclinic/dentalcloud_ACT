@@ -141,7 +141,7 @@ const App: React.FC = () => {
   
   // -- Form State --
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [newPatientData, setNewPatientData] = useState<Partial<Patient>>({ name: '', email: '', phone: '', medicalHistory: '' });
+  const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({ name: '', email: '', phone: '', medicalHistory: '', password: '' });
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: 'Preventative' });
   const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', schedules: [] });
@@ -385,7 +385,7 @@ const App: React.FC = () => {
       await api.patients.create({ ...newPatientData, location_id: currentLocationId });
       setShowPatientModal(false);
       fetchInitialData(); 
-      setNewPatientData({ name: '', email: '', phone: '', medicalHistory: '' });
+      setNewPatientData({ name: '', email: '', phone: '', medicalHistory: '', password: '' });
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -1066,6 +1066,14 @@ const App: React.FC = () => {
                 onToggleFlatRate={setUseFlatRate}
                 onUndoTreatment={handleUndoTreatment}
                 onRedeemPoints={handleRedeemPoints}
+                onUpdateAccount={async (patient, password) => {
+                  try {
+                    await api.patients.updateAccount(patient.id, patient.email || null, password);
+                    alert('Patient account updated successfully!');
+                  } catch (err: any) {
+                    alert('Error: ' + err.message);
+                  }
+                }}
                 loyaltyEnabled={loyaltyEnabled}
                 loyaltyRules={loyaltyRules}
                 loyaltyTransactions={loyaltyTransactions}
@@ -1083,6 +1091,19 @@ const App: React.FC = () => {
                <Input label="Primary Email" type="email" value={newPatientData.email} onChange={(e: any) => setNewPatientData({...newPatientData, email: e.target.value})} />
                <Input label="Mobile Contact" required value={newPatientData.phone} onChange={(e: any) => setNewPatientData({...newPatientData, phone: e.target.value})} />
             </div>
+            
+            <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+              <p className="text-[10px] font-black text-indigo-600 uppercase mb-2">Patient Portal Account (Optional)</p>
+              <Input 
+                label="Set Password" 
+                type="password" 
+                placeholder="Leave blank to create without account"
+                value={newPatientData.password} 
+                onChange={(e: any) => setNewPatientData({...newPatientData, password: e.target.value})} 
+              />
+              <p className="text-[10px] text-indigo-400 mt-2 italic">If set, patient can log in using their Name/Phone and this password.</p>
+            </div>
+
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Relevant Medical History</label>
               <textarea className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" rows={4}
