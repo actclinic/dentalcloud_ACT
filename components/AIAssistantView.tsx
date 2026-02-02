@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense } from '../types';
 import { api } from '../services/api';
 
@@ -28,6 +30,127 @@ const customStyles = `
   
   .animate-shake {
     animation: shake 0.5s ease-in-out;
+  }
+  
+  /* Markdown styling for AI responses */
+  .ai-markdown {
+    line-height: 1.6;
+  }
+  
+  .ai-markdown h1, .ai-markdown h2, .ai-markdown h3, .ai-markdown h4, .ai-markdown h5, .ai-markdown h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.75em;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  
+  .ai-markdown h1 { font-size: 1.5em; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.3em; }
+  .ai-markdown h2 { font-size: 1.3em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em; }
+  .ai-markdown h3 { font-size: 1.15em; }
+  .ai-markdown h4 { font-size: 1.1em; }
+  
+  .ai-markdown p {
+    margin-bottom: 1em;
+  }
+  
+  .ai-markdown ul, .ai-markdown ol {
+    margin: 1em 0;
+    padding-left: 1.5em;
+  }
+  
+  .ai-markdown li {
+    margin-bottom: 0.5em;
+  }
+  
+  .ai-markdown code {
+    background-color: #f1f5f9;
+    padding: 0.2em 0.4em;
+    border-radius: 0.375rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.875em;
+    color: #dc2626;
+  }
+  
+  .ai-markdown pre {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 1em;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+  
+  .ai-markdown pre code {
+    background-color: transparent;
+    padding: 0;
+    color: #334155;
+    font-size: 0.875em;
+  }
+  
+  .ai-markdown blockquote {
+    border-left: 4px solid #94a3b8;
+    padding-left: 1em;
+    margin: 1em 0;
+    color: #64748b;
+    font-style: italic;
+  }
+  
+  .ai-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    background-color: white;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+  
+  .ai-markdown th {
+    background-color: #f1f5f9;
+    font-weight: 600;
+    text-align: left;
+    padding: 0.75em 1em;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  
+  .ai-markdown td {
+    padding: 0.75em 1em;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .ai-markdown tr:last-child td {
+    border-bottom: none;
+  }
+  
+  .ai-markdown tr:hover {
+    background-color: #f8fafc;
+  }
+  
+  .ai-markdown a {
+    color: #4f46e5;
+    text-decoration: underline;
+    font-weight: 500;
+  }
+  
+  .ai-markdown a:hover {
+    color: #4338ca;
+  }
+  
+  .ai-markdown hr {
+    border: none;
+    height: 1px;
+    background-color: #e2e8f0;
+    margin: 1.5em 0;
+  }
+  
+  .ai-markdown strong {
+    font-weight: 600;
+    color: #1e293b;
+  }
+  
+  .ai-markdown em {
+    font-style: italic;
+    color: #64748b;
   }
 `;
 
@@ -2817,7 +2940,49 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                             : 'bg-white/80 backdrop-blur-sm text-gray-900 rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-indigo-100'
                         }`}
                       >
-                        <div className="text-sm md:text-base whitespace-pre-wrap leading-relaxed break-words">{message.content}</div>
+                        {message.role === 'assistant' ? (
+                          <div className="ai-markdown">
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                // Custom component overrides for better styling
+                                p: ({node, ...props}) => <p className="mb-3" {...props} />,
+                                ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-3 space-y-1" {...props} />,
+                                ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-3 space-y-1" {...props} />,
+                                li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                                h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2 pb-2 border-b border-gray-200" {...props} />,
+                                h2: ({node, ...props}) => <h2 className="text-lg font-semibold mt-3 mb-2 pb-1 border-b border-gray-100" {...props} />,
+                                h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-3 mb-2" {...props} />,
+                                h4: ({node, ...props}) => <h4 className="text-sm font-semibold mt-2 mb-1" {...props} />,
+                                code: ({node, className, children, ...props}) => {
+                                  const match = /language-(\w+)/.exec(className || '');
+                                  return match ? (
+                                    <code className="block bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm font-mono text-gray-700 overflow-x-auto" {...props}>
+                                      {children}
+                                    </code>
+                                  ) : (
+                                    <code className="bg-gray-100 px-1.5 py-0.5 rounded text-red-600 text-sm font-mono" {...props}>
+                                      {children}
+                                    </code>
+                                  );
+                                },
+                                pre: ({node, ...props}) => <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 my-3 overflow-x-auto" {...props} />,
+                                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-4 my-3 text-gray-600 italic" {...props} />,
+                                table: ({node, ...props}) => <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm my-3 overflow-hidden" {...props} />,
+                                th: ({node, ...props}) => <th className="bg-gray-50 px-4 py-2 text-left text-sm font-semibold text-gray-900 border-b border-gray-200" {...props} />,
+                                td: ({node, ...props}) => <td className="px-4 py-2 text-sm text-gray-700 border-b border-gray-100" {...props} />,
+                                a: ({node, ...props}) => <a className="text-indigo-600 hover:text-indigo-800 underline font-medium" {...props} />,
+                                hr: ({node, ...props}) => <hr className="my-4 border-gray-200" {...props} />,
+                                strong: ({node, ...props}) => <strong className="font-semibold text-gray-900" {...props} />,
+                                em: ({node, ...props}) => <em className="italic text-gray-600" {...props} />
+                              }}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <div className="text-sm md:text-base whitespace-pre-wrap leading-relaxed break-words">{message.content}</div>
+                        )}
                         <div className={`flex items-center gap-2 mt-2 pt-2 border-t ${
                           message.role === 'user' ? 'border-indigo-400/50' : 'border-gray-200'
                         }`}>

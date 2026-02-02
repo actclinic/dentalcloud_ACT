@@ -40,8 +40,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         return;
       }
 
-      const expected = captchaDigits.join('');
-      await auth.login(username, password, captchaAnswer, expected);
+      const expected = parseInt(captchaDigits.join(''), 10);
+      await auth.login(username, password, parseInt(captchaAnswer, 10), expected);
       onLoginSuccess();
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.');
