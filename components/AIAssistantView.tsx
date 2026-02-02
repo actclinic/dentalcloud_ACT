@@ -177,6 +177,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  feedback?: 'helpful' | 'not-helpful' | null;
 }
 
 // Interface for pending actions that require confirmation
@@ -300,6 +301,10 @@ How can I assist you today?
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   // State for pending actions that require confirmation
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  
+  // Feedback system state
+  const [feedbackStatus, setFeedbackStatus] = useState<Record<string, 'helpful' | 'not-helpful' | null>>({});
+  
   // Enhanced conversation context with multi-turn awareness
   const [conversationContext, setConversationContext] = useState<{
     lastUserMessage: string | null;
@@ -308,13 +313,23 @@ How can I assist you today?
     currentWorkflow: string | null; // Track ongoing workflows
     workflowStep: number; // Track progress in multi-step processes
     contextSummary: string; // Brief summary of conversation context
+    feedbackPatterns: {
+      helpfulCount: number;
+      notHelpfulCount: number;
+      lastFeedbackTime: Date | null;
+    }; // Track feedback patterns for AI improvement
   }>({
     lastUserMessage: null,
     lastAssistantResponse: null,
     pendingConfirmation: false,
     currentWorkflow: null,
     workflowStep: 0,
-    contextSummary: ''
+    contextSummary: '',
+    feedbackPatterns: {
+      helpfulCount: 0,
+      notHelpfulCount: 0,
+      lastFeedbackTime: null
+    }
   });
   // Help modal state
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
@@ -441,7 +456,7 @@ How can I assist you today?
     inputRef.current?.focus();
   }, []);
 
-  // Load help content on component mount
+  // Load help content and feedback on component mount
   useEffect(() => {
     const loadHelpContent = async () => {
       try {
@@ -550,6 +565,7 @@ Need more detailed help?
     };
 
     loadHelpContent();
+    loadStoredFeedback(); // Load feedback data
   }, []);
 
   // Cleanup old chat sessions on mount and at regular intervals
@@ -583,6 +599,56 @@ Need more detailed help?
     } catch (err) {
       console.error('Failed to copy:', err);
     }
+  };
+
+  // Feedback system functions
+  const handleFeedback = (messageId: string, feedback: 'helpful' | 'not-helpful') => {
+    // Update local feedback state
+    setFeedbackStatus(prev => ({
+      ...prev,
+      [messageId]: feedback
+    }));
+    
+    // Update the message with feedback
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, feedback } : msg
+    ));
+    
+    // Update conversation context with feedback patterns
+    setConversationContext(prev => {
+      const countKey = feedback === 'helpful' ? 'helpfulCount' : 'notHelpfulCount';
+      const newPattern = {
+        ...prev.feedbackPatterns,
+        [countKey]: prev.feedbackPatterns[countKey] + 1,
+        lastFeedbackTime: new Date()
+      };
+      
+      return {
+        ...prev,
+        feedbackPatterns: newPattern
+      };
+    });
+    
+    // Store feedback in localStorage for persistence
+    const storedFeedback = JSON.parse(localStorage.getItem('loli_feedback') || '{}');
+    storedFeedback[messageId] = {
+      feedback,
+      timestamp: new Date().toISOString(),
+      contentPreview: messages.find(m => m.id === messageId)?.content.substring(0, 50) || ''
+    };
+    localStorage.setItem('loli_feedback', JSON.stringify(storedFeedback));
+  };
+
+  // Function to load feedback from localStorage on component mount
+  const loadStoredFeedback = () => {
+    const storedFeedback = JSON.parse(localStorage.getItem('loli_feedback') || '{}');
+    const initialFeedbackStatus: Record<string, 'helpful' | 'not-helpful' | null> = {};
+    
+    Object.keys(storedFeedback).forEach(messageId => {
+      initialFeedbackStatus[messageId] = storedFeedback[messageId].feedback;
+    });
+    
+    setFeedbackStatus(initialFeedbackStatus);
   };
 
   const createNewSession = () => {
@@ -1089,6 +1155,13 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
 - Complex workflow orchestration across multiple systems
 - Evidence-based decision making with risk assessment
 - Contextual continuity across conversations
+- LEARNING from user feedback to improve response quality
+
+**FEEDBACK-AWARE ADAPTATION:**
+- Pay attention to user satisfaction signals
+- Adjust response style based on previous ratings
+- If users marked responses as not helpful, provide more detailed explanations
+- If users found responses helpful, maintain that approach
 
 **ADVANCED THINKING PROCESS:**
 When users ask complex questions, think through this framework:
@@ -1124,6 +1197,7 @@ INTELLIGENCE GUIDELINES:
 - PRIORITIZE: Highlight critical stock levels or high-risk patients immediately.
 - BE CONCISE: Direct and helpful, using bullet points for clarity.
 - CONTEXTUAL CONTINUITY: Reference previous parts of the conversation when relevant.
+- FEEDBACK INTEGRATION: Adapt your response style based on user feedback patterns (adjust detail level, format, or approach as needed).
 - COMPOUND ACTIONS: Process complex requests efficiently using internal reasoning to determine optimal action sequences.
 - INTERNAL PROCESSING: All analytical thinking and planning occurs internally. Only present final, formatted results to users.
 
@@ -1140,6 +1214,7 @@ OPTIMIZATION GUIDELINES:
 - Prioritize essential information
 - Keep explanations focused on dental practice needs
 - For complex analyses, provide key insights first, then details
+- ADAPT based on user feedback: if previous responses were marked as not helpful, provide more detailed explanations or alternative approaches
 
 VERIFICATION: Identity - Loli by WinterArc Myanmar.
 
@@ -1807,7 +1882,12 @@ I can provide guidance on:
           pendingConfirmation: false,
           currentWorkflow: null,
           workflowStep: 0,
-          contextSummary: ''
+          contextSummary: '',
+          feedbackPatterns: {
+            helpfulCount: 0,
+            notHelpfulCount: 0,
+            lastFeedbackTime: null
+          }
         });
         setInputMessage('');
 
@@ -1835,7 +1915,12 @@ I can provide guidance on:
           pendingConfirmation: false,
           currentWorkflow: null,
           workflowStep: 0,
-          contextSummary: ''
+          contextSummary: '',
+          feedbackPatterns: {
+            helpfulCount: 0,
+            notHelpfulCount: 0,
+            lastFeedbackTime: null
+          }
         });
       } finally {
         setIsLoading(false);
@@ -2680,7 +2765,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             pendingConfirmation: true,
             currentWorkflow: workflowType,
             workflowStep: prev.workflowStep + 1,
-            contextSummary: generateContextSummary(userMessage.content, assistantMessage.content)
+            contextSummary: generateContextSummary(userMessage.content, assistantMessage.content),
+            feedbackPatterns: prev.feedbackPatterns // Preserve feedback patterns
           }));
         } catch (parseError) {
           console.error('Failed to parse pending action:', parseError);
@@ -2695,7 +2781,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           pendingConfirmation: false,
           currentWorkflow: prev.currentWorkflow ? prev.currentWorkflow : null,
           workflowStep: prev.currentWorkflow ? prev.workflowStep + 1 : 0,
-          contextSummary: generateContextSummary(userMessage.content, assistantMessage.content)
+          contextSummary: generateContextSummary(userMessage.content, assistantMessage.content),
+          feedbackPatterns: prev.feedbackPatterns // Preserve feedback patterns
         }));
       }
       
@@ -2991,6 +3078,42 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                           }`}>
                             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
+                          
+                          {message.role === 'assistant' && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleFeedback(message.id, 'helpful')}
+                                className={`p-1.5 rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 transform hover:scale-110 ${
+                                  feedbackStatus[message.id] === 'helpful' 
+                                    ? 'text-green-600 bg-green-100 focus:ring-green-500' 
+                                    : 'text-gray-400 hover:text-green-600 hover:bg-green-100 focus:ring-green-400'
+                                }`}
+                                title="Rate as helpful"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-thumbs-up">
+                                  <path d="M7 10v12"></path>
+                                  <path d="M15 5.88 14.12 5A2 2 0 0 0 12.43 4.22l-2.1-.5a2 2 0 0 0-1.31.1l-1.55.6a2 2 0 0 0-.9 1.2L3 12"></path>
+                                  <path d="M21.5 15.5a2.5 2.5 0 0 0 0-4L17 7"></path>
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(message.id, 'not-helpful')}
+                                className={`p-1.5 rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 transform hover:scale-110 ${
+                                  feedbackStatus[message.id] === 'not-helpful' 
+                                    ? 'text-red-600 bg-red-100 focus:ring-red-500' 
+                                    : 'text-gray-400 hover:text-red-600 hover:bg-red-100 focus:ring-red-400'
+                                }`}
+                                title="Rate as not helpful"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-thumbs-down">
+                                  <path d="M17 14V2"></path>
+                                  <path d="M9 18.12 9.88 19a2 2 0 0 0 1.69.7L13.12 19l2.1-.5a2 2 0 0 0 1.31-.1l1.55-.6a2 2 0 0 0 .9-1.2l1.5-6"></path>
+                                  <path d="M3.5 12.5a2.5 2.5 0 0 0 0 4L8 21"></path>
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                          
                           <button
                             onClick={() => copyToClipboard(message.content, message.id)}
                             className={`ml-auto p-1.5 rounded-lg hover:bg-opacity-20 transition-all duration-300 focus:outline-none focus:ring-2 transform hover:scale-110 ${
@@ -3072,7 +3195,12 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                   pendingConfirmation: false,
                                   currentWorkflow: null,
                                   workflowStep: 0,
-                                  contextSummary: ''
+                                  contextSummary: '',
+                                  feedbackPatterns: {
+                                    helpfulCount: 0,
+                                    notHelpfulCount: 0,
+                                    lastFeedbackTime: null
+                                  }
                                 });
                               }
                               recognition.current.start();
