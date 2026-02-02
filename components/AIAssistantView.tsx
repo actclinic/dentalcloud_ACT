@@ -3090,11 +3090,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                 }`}
                                 title="Rate as helpful"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-thumbs-up">
-                                  <path d="M7 10v12"></path>
-                                  <path d="M15 5.88 14.12 5A2 2 0 0 0 12.43 4.22l-2.1-.5a2 2 0 0 0-1.31.1l-1.55.6a2 2 0 0 0-.9 1.2L3 12"></path>
-                                  <path d="M21.5 15.5a2.5 2.5 0 0 0 0-4L17 7"></path>
-                                </svg>
+                                👍
                               </button>
                               <button
                                 onClick={() => handleFeedback(message.id, 'not-helpful')}
@@ -3105,11 +3101,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                 }`}
                                 title="Rate as not helpful"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-thumbs-down">
-                                  <path d="M17 14V2"></path>
-                                  <path d="M9 18.12 9.88 19a2 2 0 0 0 1.69.7L13.12 19l2.1-.5a2 2 0 0 0 1.31-.1l1.55-.6a2 2 0 0 0 .9-1.2l1.5-6"></path>
-                                  <path d="M3.5 12.5a2.5 2.5 0 0 0 0 4L8 21"></path>
-                                </svg>
+                                👎
                               </button>
                             </div>
                           )}
