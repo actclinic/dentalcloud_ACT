@@ -501,7 +501,7 @@ export const api = {
         return [];
       }
     },
-    create: async (data: Partial<Doctor>): Promise<Doctor> => {
+    create: async (data: Partial<Doctor> | any): Promise<Doctor> => {
       // First create the doctor
       const { data: doctorData, error: doctorError } = await supabase
         .from('doctors')
@@ -571,7 +571,7 @@ export const api = {
         created_at: completeDoctor.created_at
       };
     },
-    update: async (id: string, data: Partial<Doctor>): Promise<Doctor> => {
+    update: async (id: string, data: Partial<Doctor> | any): Promise<Doctor> => {
       // Update doctor info
       const { error: doctorError } = await supabase
         .from('doctors')

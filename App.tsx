@@ -29,7 +29,9 @@ import {
   ClinicalRecord,
   PatientFile,
   Doctor,
+  DoctorInput,
   DoctorSchedule,
+  DoctorScheduleInput,
   User, 
   Medicine, 
   Location,
@@ -141,7 +143,7 @@ const App: React.FC = () => {
   const [newPatientData, setNewPatientData] = useState<Partial<Patient>>({ name: '', email: '', phone: '', medicalHistory: '' });
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: 'Preventative' });
-  const [newDoctorData, setNewDoctorData] = useState<Partial<Doctor>>({ name: '', email: '', phone: '', specialization: '', schedules: [] });
+  const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', schedules: [] });
   const [newUserData, setNewUserData] = useState<Partial<User>>({ username: '', password: '', role: 'normal' });
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });
@@ -447,7 +449,12 @@ const App: React.FC = () => {
         return false;
       }
       return true;
-    });
+    }).map(sched => ({
+      // Remove id if present (will be auto-generated) and ensure proper structure
+      day_of_week: sched.day_of_week,
+      start_time: sched.start_time,
+      end_time: sched.end_time
+    }));
 
     // Check for duplicate day_of_week entries
     const daySet = new Set(schedules.map(s => s.day_of_week));

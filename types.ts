@@ -65,6 +65,14 @@ export interface DoctorSchedule {
   end_time: string; // HH:MM format
 }
 
+// For creating/updating doctors - schedule without doctor_id since it's not known yet
+export interface DoctorScheduleInput {
+  id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
 export interface Doctor {
   id: string;
   location_id: string;
@@ -73,6 +81,18 @@ export interface Doctor {
   phone?: string;
   specialization?: string;
   schedules: DoctorSchedule[]; // Array of schedules for different days/times
+  created_at?: string;
+}
+
+// For creating/updating doctors
+export interface DoctorInput {
+  id?: string;
+  location_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  specialization?: string;
+  schedules?: DoctorScheduleInput[];
   created_at?: string;
 }
 
