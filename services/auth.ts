@@ -1,4 +1,4 @@
-import { User } from '../types';
+import { User, Patient } from '../types';
 import { api } from './api';
 
 // Default admin credentials
@@ -14,9 +14,10 @@ const SESSION_USER_KEY = 'dental_auth_user';
 export interface AuthSession {
   userId: string;
   username: string;
-  role: 'admin' | 'normal';
+  role: 'admin' | 'normal' | 'patient';
   location_id: string | null;
   loginTime: number;
+  patientId?: string; // For patient sessions
 }
 
 export const auth = {
@@ -124,6 +125,42 @@ export const auth = {
   // Get current user
   getCurrentUser(): AuthSession | null {
     return this.getSession();
+  },
+
+  // Patient login with phone or name + password
+  async patientLogin(identifier: string, password: string): Promise<AuthSession> {
+    try {
+      const patient = await api.patients.authenticate(identifier, password);
+      if (!patient) {
+        throw new Error('Invalid credentials');
+      }
+
+      const session: AuthSession = {
+        userId: patient.id,
+        username: patient.name,
+        role: 'patient',
+        location_id: patient.location_id || null,
+        loginTime: Date.now(),
+        patientId: patient.id
+      };
+      
+      this.setSession(session);
+      return session;
+    } catch (error: any) {
+      throw new Error(error.message || 'Invalid patient credentials');
+    }
+  },
+
+  // Check if user is patient
+  isPatient(): boolean {
+    const session = this.getSession();
+    return session?.role === 'patient' || false;
+  },
+
+  // Get current patient ID
+  getCurrentPatientId(): string | null {
+    const session = this.getSession();
+    return session?.patientId || null;
   }
 };
 

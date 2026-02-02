@@ -164,6 +164,55 @@ export const api = {
         .eq('id', id);
 
       if (error) throw new Error(error.message);
+    },
+    
+    // Authenticate patient with phone or name + password
+    authenticate: async (identifier: string, password: string): Promise<Patient | null> => {
+      try {
+        const trimmedIdentifier = identifier.trim();
+        
+        // First try to find by phone
+        let { data, error } = await supabase
+          .from('patients')
+          .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
+          .eq('phone', trimmedIdentifier);
+        
+        // If not found by phone, try by name
+        if (!data || data.length === 0) {
+          ({ data, error } = await supabase
+            .from('patients')
+            .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
+            .eq('name', trimmedIdentifier));
+        }
+        
+        if (error) {
+          console.error('Patient authentication error:', error);
+          return null;
+        }
+        
+        if (!data || data.length === 0) {
+          console.log('No patient found with identifier:', trimmedIdentifier);
+          return null;
+        }
+        
+        const patient = data[0];
+        
+        // For now, we'll use a simple password check
+        // In production, you should implement proper password hashing
+        // This is a temporary solution - in reality, you'd want to store hashed passwords
+        const expectedPassword = `patient_${patient.id.substring(0, 8)}`; // Simple deterministic password
+        
+        if (password === expectedPassword) {
+          console.log('Patient authentication successful for:', trimmedIdentifier);
+          return mapPatient(patient);
+        }
+        
+        console.log('Password mismatch for patient:', trimmedIdentifier);
+        return null;
+      } catch (err) {
+        console.error('Error authenticating patient:', err);
+        return null;
+      }
     }
   },
 

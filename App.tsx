@@ -57,6 +57,7 @@ const SettingsView = React.lazy(() => import('./components/SettingsView'));
 const Receipt = React.lazy(() => import('./components/Receipt'));
 const TreatmentSelectionModal = React.lazy(() => import('./components/TreatmentSelectionModal'));
 const LoginView = React.lazy(() => import('./components/LoginView'));
+const PatientDashboardView = React.lazy(() => import('./components/PatientDashboardView'));
 const UsersView = React.lazy(() => import('./components/UsersView'));
 const InventoryView = React.lazy(() => import('./components/InventoryView'));
 const MedicineSelectionModal = React.lazy(() => import('./components/MedicineSelectionModal'));
@@ -197,8 +198,11 @@ const App: React.FC = () => {
         localStorage.setItem('currentLocationId', session.location_id);
       }
       
-      fetchInitialData();
-      fetchUsers();
+      // For patients, don't fetch admin data
+      if (session.role !== 'patient') {
+        fetchInitialData();
+        fetchUsers();
+      }
     }
   };
 
@@ -208,6 +212,19 @@ const App: React.FC = () => {
     setIsAdmin(false);
     setCurrentUser('');
     setCurrentView('dashboard');
+    // Reset all data state
+    setPatients([]);
+    setAppointments([]);
+    setDoctors([]);
+    setTreatmentHistory([]);
+    setGlobalRecords([]);
+    setTreatmentTypes([]);
+    setPatientFiles([]);
+    setUsers([]);
+    setMedicines([]);
+    setLoyaltyRules([]);
+    setLoyaltyTransactions([]);
+    setExpenses([]);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -841,6 +858,19 @@ const App: React.FC = () => {
     setPatientFiles([]);
     setUseFlatRate(false); // Reset flat rate when closing patient
   };
+
+  // Show patient dashboard if patient is logged in
+  if (isAuthenticated && auth.isPatient()) {
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
+        </div>
+      }>
+        <PatientDashboardView onLogout={handleLogout} />
+      </Suspense>
+    );
+  }
 
   // Show login if not authenticated
   if (!isAuthenticated) {
