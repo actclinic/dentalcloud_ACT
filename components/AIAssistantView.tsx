@@ -358,79 +358,157 @@ How can I assist you today?
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   
-  // Speech recognition for Chrome and Edge
+  // Enhanced speech recognition with SpeechGrammarList for better accuracy
   const recognition = useRef<any>(null);
   
   useEffect(() => {
     if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition;
       recognition.current = new SpeechRecognition();
-      recognition.current.continuous = true;
-      recognition.current.interimResults = true;
-      recognition.current.lang = 'en-US';
       
-      // Configure for better pause handling
-      recognition.current.maxAlternatives = 1;
+      // Optimized settings for better accuracy
+      recognition.current.continuous = false;  // Single utterance mode for better control
+      recognition.current.interimResults = false;  // Only final results for cleaner output
+      recognition.current.lang = 'my-MM';  // Myanmar language support
       
-      // Additional configuration for better pause handling
-      // These are browser-specific properties that may help with pause detection
-      if ('webkitSpeechGrammar' in window) {
-        // Try to set properties that might help with pause detection
+      // Enhanced configuration for better performance
+      recognition.current.maxAlternatives = 3;  // Multiple recognition options
+      
+      // SpeechGrammarList for dental/medical vocabulary
+      if ('SpeechGrammarList' in window) {
         try {
-          (recognition.current as any).interimResults = true;
-          (recognition.current as any).maxAlternatives = 1;
-        } catch (e) {
-          console.log('Speech recognition property configuration not supported');
+          const grammarList = new (window as any).SpeechGrammarList();
+          
+          // Custom grammar for dental clinic terminology
+          const dentalGrammar = `#JSGF V1.0;
+            grammar dental;
+            
+            public <patient> = patient | customers | client | လူနာ | လူေနာ |
+                                ပါတိုင္ | လူနာကို | လူေနာကို;
+            
+            public <medical> = medicine | medicines | drugs | ဆေး | ဆေးဝါး |
+                              treatment | treatments | ကုသမှု | ကုသခြင်း |
+                              appointment | appointments | ခ်ိန်းတွေ့ | ချိန်းတွေ့ |
+                              doctor | doctors | ဆရာဝန် | ဆရာဝန်ကြီး;
+            
+            public <dental> = tooth | teeth | သွား | သွားများ |
+                             filling | fillings | ဖြည့်ဆည်းခြင်း | ဖြည့်ဆည်း |
+                             cleaning | cleanings | သန့်ရှင်းရေး | သန့်ရှင်း |
+                             extraction | extractions | ထုတ်ယူခြင်း | ထုတ်ယူ |
+                             checkup | checkups | စစ်ဆေးခြင်း | စစ်ဆေး;
+            
+            public <actions> = book | schedule | record | process | create | add |
+                              စာရင္းသြင္း | စာရင္း | ခ်ိန္းတြဲ |
+                              ခ်ိန္း | သိမ္းဆည္း | ဖတ္ရန္ |
+                              ဖတ္ပါ | ဖတ္ေပးပါ;
+            
+            public <numbers> = one | two | three | four | five | six | seven | eight | nine | ten |
+                              တစ္ | နွစ္ | သံုး | လေး | ငါး | ခြောက် |
+                              ခုနစ္ | ရှစ္ | ကိုး | တစ္ဆယ္;
+            
+            public <common> = today | tomorrow | next | this | please | help | need |
+                             ယနေ့ | မနက်ဖြန် | နောက် | ဒီ | ကျေးဇူးပြုပြီး |
+                             ကူညီပေးပါ | လိုအပ် | လိုအပ္;`;
+          
+          grammarList.addFromString(dentalGrammar, 1);
+          recognition.current.grammars = grammarList;
+        } catch (error) {
+          console.log('SpeechGrammarList not supported or failed to load');
         }
       }
       
+      // Speech recognition is now configured with optimized settings above
+      
       recognition.current.onresult = (event: any) => {
         let transcript = '';
-        let isFinal = false;
+        let confidence = 0;
         
-        // Process all results, with special handling for final results
+        // Process results with confidence scoring
         for (let i = 0; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            isFinal = true;
-          }
+          const result = event.results[i][0];
+          transcript += result.transcript;
+          confidence = Math.max(confidence, result.confidence);
         }
         
-        // Update the input field with all transcripts (interim and final)
-        setInputMessage(transcript);
+        // Clean up the transcript
+        transcript = transcript.trim();
         
-        // Store the transcript in conversation context for persistence
-        setConversationContext(prev => ({
-          ...prev,
-          lastUserMessage: transcript,
-          pendingConfirmation: pendingAction !== null,
-          contextSummary: prev.contextSummary || generateContextSummary(transcript, prev.lastAssistantResponse || '')
-        }));
-        
-        // If we have a final result, we should consider stopping the recognition
-        if (isFinal) {
-          // Optionally stop recognition after final result if desired
-          // recognition.current.stop();
+        // Only update if we have meaningful content
+        if (transcript.length > 0) {
+          // Update the input field
+          setInputMessage(transcript);
+          
+          // Store in conversation context
+          setConversationContext(prev => ({
+            ...prev,
+            lastUserMessage: transcript,
+            pendingConfirmation: pendingAction !== null,
+            contextSummary: prev.contextSummary || generateContextSummary(transcript, prev.lastAssistantResponse || '')
+          }));
+          
+          console.log(`Speech recognized with ${Math.round(confidence * 100)}% confidence: ${transcript}`);
         }
       };
       
       recognition.current.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
+        console.error('Speech recognition error:', event.error);
         setIsListening(false);
+        setIsProcessing(false);
+        
+        // Provide user-friendly error messages
+        let errorMessage = 'Speech recognition failed. ';
+        switch(event.error) {
+          case 'no-speech':
+            errorMessage += 'No speech detected. Please try again.';
+            break;
+          case 'audio-capture':
+            errorMessage += 'Microphone access denied or not available.';
+            break;
+          case 'not-allowed':
+            errorMessage += 'Please allow microphone access in your browser settings.';
+            break;
+          case 'network':
+            errorMessage += 'Network error. Please check your connection.';
+            break;
+          default:
+            errorMessage += 'Please check your microphone and try again.';
+        }
+        
+        // Show error in UI
+        const errorId = Date.now().toString();
+        const errorMessageObj: Message = {
+          id: errorId,
+          role: 'assistant',
+          content: `⚠️ ${errorMessage}`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessageObj]);
       };
       
       recognition.current.onend = () => {
-        // Set processing state while handling final transcript
-        setIsProcessing(true);
+        // Recognition ended - check if we have valid input
+        const currentInput = inputMessage.trim();
         
-        // Get the final transcript when recognition ends
-        // We don't need to set it again as it should already be in the input field
-        
-        // Small delay to show processing state
-        setTimeout(() => {
+        if (currentInput.length > 0) {
+          // Valid speech captured - show processing state
+          setIsProcessing(true);
+          
+          // Small delay to show processing, then auto-send if in listening mode
+          setTimeout(() => {
+            setIsListening(false);
+            setIsProcessing(false);
+            
+            // Auto-send the message if it's a reasonable length
+            if (currentInput.length > 1) {
+              console.log('Auto-sending recognized speech:', currentInput);
+              handleSendMessage();
+            }
+          }, 500);
+        } else {
+          // No valid input - just stop listening
           setIsListening(false);
           setIsProcessing(false);
-        }, 300);
+        }
       };
     }
   }, []);
