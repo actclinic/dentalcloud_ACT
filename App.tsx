@@ -287,26 +287,46 @@ const App: React.FC = () => {
         localStorage.setItem('currentLocationId', locId);
       }
       
-      const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData] = await Promise.all([
-        api.patients.getAll(locId),
-        api.appointments.getAll(locId),
-        api.doctors.getAll(locId),
-        api.treatments.getTypes(locId),
-        api.treatments.getAllRecords(locId),
-        api.medicines.getAll(locId),
-        api.loyalty.getRules(locId),
-        api.expenses.getAll(locId)
-      ]);
-      setPatients(patData);
-      setAppointments(aptData);
-      setDoctors(docData);
-      setTreatmentTypes(typeData);
-      setGlobalRecords(recordsData);
-      setMedicines(medData);
-      setLoyaltyRules(loyaltyData);
-      setExpenses(expenseData);
+      // If still no location, try to create a default one
+      if (!locId) {
+        try {
+          const defaultLocation = await api.locations.create({
+            name: 'Main Clinic',
+            address: 'Default Address',
+            phone: '000-000-0000'
+          });
+          locId = defaultLocation.id;
+          setCurrentLocationId(locId);
+          localStorage.setItem('currentLocationId', locId);
+          setLocations([defaultLocation]);
+        } catch (createError) {
+          console.error('Failed to create default location:', createError);
+        }
+      }
+      
+      // Only fetch data if we have a valid location
+      if (locId) {
+        const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData] = await Promise.all([
+          api.patients.getAll(locId),
+          api.appointments.getAll(locId),
+          api.doctors.getAll(locId),
+          api.treatments.getTypes(locId),
+          api.treatments.getAllRecords(locId),
+          api.medicines.getAll(locId),
+          api.loyalty.getRules(locId),
+          api.expenses.getAll(locId)
+        ]);
+        setPatients(patData);
+        setAppointments(aptData);
+        setDoctors(docData);
+        setTreatmentTypes(typeData);
+        setGlobalRecords(recordsData);
+        setMedicines(medData);
+        setLoyaltyRules(loyaltyData);
+        setExpenses(expenseData);
+      }
     } catch (err: any) {
-      console.error(err);
+      console.error('Error fetching initial data:', err);
       setError(err.message || "Failed to connect to database. Please check your network.");
     } finally {
       setLoading(false);
@@ -382,12 +402,14 @@ const App: React.FC = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      console.log('Creating patient with location_id:', currentLocationId);
       await api.patients.create({ ...newPatientData, location_id: currentLocationId });
       setShowPatientModal(false);
       fetchInitialData(); 
       setNewPatientData({ name: '', email: '', phone: '', medicalHistory: '', password: '' });
     } catch (err: any) {
-      alert(err.message);
+      console.error('Patient creation error:', err);
+      alert(`Error creating patient: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }

@@ -69,38 +69,41 @@ export const api = {
         
         if (tableError) throw new Error(`Patients table access failed: ${tableError.message}`);
       } catch (tableCheckError: any) {
-        throw new Error(`Database table error: ${tableCheckError.message}`);
+        console.error('Table check error:', tableCheckError);
+        throw new Error(`Database table error: ${tableCheckError.message || 'Failed to connect to database'}`);
       }
       
-      // Check if the location exists (if location_id is provided)
-      if (data.location_id && data.location_id !== 'main') {
-        try {
-          const { error: locationError } = await supabase
-            .from('locations')
-            .select('id')
-            .eq('id', data.location_id)
-            .single();
-          
-          if (locationError) throw new Error(`Location not found: ${data.location_id}`);
-        } catch (locationCheckError: any) {
-          throw new Error(`Location validation error: ${locationCheckError.message}`);
-        }
-      }
-      
-      // If location_id is 'main', we need to handle it differently
+      // Handle location assignment
       let finalLocationId = data.location_id;
-      if (data.location_id === 'main') {
+      
+      // If no location_id provided or it's 'main', get or create default location
+      if (!finalLocationId || finalLocationId === 'main') {
         try {
+          // Try to get existing locations
           const { data: locations, error: locationsError } = await supabase
             .from('locations')
             .select('id')
             .limit(1);
           
-          if (locationsError) throw new Error(`Failed to fetch locations: ${locationsError.message}`);
-          
-          if (locations && locations.length > 0) {
+          if (locationsError) {
+            console.warn('Failed to fetch locations:', locationsError.message);
+            // Create default location if none exist
+            const { data: newLocation, error: createError } = await supabase
+              .from('locations')
+              .insert({
+                name: 'Main Clinic',
+                address: 'Default Address',
+                phone: '000-000-0000'
+              })
+              .select()
+              .single();
+            
+            if (createError) throw new Error(`Failed to create default location: ${createError.message}`);
+            finalLocationId = newLocation.id;
+          } else if (locations && locations.length > 0) {
             finalLocationId = locations[0].id;
           } else {
+            // No locations exist, create one
             const { data: newLocation, error: createError } = await supabase
               .from('locations')
               .insert({
@@ -115,7 +118,22 @@ export const api = {
             finalLocationId = newLocation.id;
           }
         } catch (locationHandlingError: any) {
+          console.error('Location handling error:', locationHandlingError);
           throw new Error(`Location handling error: ${locationHandlingError.message}`);
+        }
+      } else {
+        // Check if the provided location exists
+        try {
+          const { error: locationError } = await supabase
+            .from('locations')
+            .select('id')
+            .eq('id', finalLocationId)
+            .single();
+          
+          if (locationError) throw new Error(`Location not found: ${finalLocationId}`);
+        } catch (locationCheckError: any) {
+          console.error('Location check error:', locationCheckError);
+          throw new Error(`Location validation error: ${locationCheckError.message}`);
         }
       }
       
