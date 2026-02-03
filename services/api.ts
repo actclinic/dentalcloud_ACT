@@ -192,6 +192,23 @@ export const api = {
         .single();
 
       if (error) throw new Error(error.message);
+      
+      // If phone number or email was updated, also update it in patient_auth table
+      if (data.phone !== undefined || data.email !== undefined) {
+        const authUpdateData: any = {};
+        if (data.phone !== undefined) authUpdateData.phone = data.phone;
+        if (data.email !== undefined) authUpdateData.email = data.email;
+        
+        const { error: authError } = await supabase
+          .from('patient_auth')
+          .update(authUpdateData)
+          .eq('patient_id', id);
+          
+        if (authError) {
+          console.warn('Email/phone updated in patients table but failed to update in patient_auth table:', authError.message);
+        }
+      }
+      
       return mapPatient(result);
     },
     delete: async (id: string): Promise<void> => {
