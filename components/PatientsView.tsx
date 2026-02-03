@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Loader2, ChevronRight, FileDown, Award, User, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Search, Plus, Loader2, ChevronRight, FileDown, Award, User, ShieldCheck, ShieldAlert, Key } from 'lucide-react';
 import { Patient, LoyaltyRule } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
+import { Modal, Input } from './Shared';
 
 interface PatientsViewProps {
   patients: Patient[];
@@ -31,6 +32,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [authModal, setAuthModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
+  const [newPassword, setNewPassword] = useState('');
   const itemsPerPage = 10;
 
   // Filtered data based on search term
@@ -200,14 +203,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const input = prompt(`Update Portal Password for ${patient.name}:`, "");
-                          if (input !== null) {
-                            if (input.length < 4) {
-                              alert("Password too short! Use at least 4 characters.");
-                              return;
-                            }
-                            if (onUpdatePatientAuth) onUpdatePatientAuth(patient, input);
-                          }
+                          setAuthModal({ open: true, patient });
+                          setNewPassword('');
                         }}
                         className="text-amber-600 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
                         title={patient.has_account ? "Change password" : "Create portal account"}
@@ -276,6 +273,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   Medical Review Required
                 </div>
               )}
+
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAuthModal({ open: true, patient });
+                  setNewPassword('');
+                }}
+                className="w-full mt-3 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-100 flex items-center justify-center gap-2"
+              >
+                <User size={14} /> {patient.has_account ? 'Update Portal Account' : 'Setup Portal Account'}
+              </button>
             </div>
           ))}
         </div>
@@ -290,6 +298,64 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         showAll={showAll}
         onToggleShowAll={() => setShowAll(!showAll)}
       />
+    )}
+
+    {authModal.open && authModal.patient && (
+      <Modal 
+        title={authModal.patient.has_account ? "Update Portal Account" : "Setup Portal Account"} 
+        onClose={() => setAuthModal({ open: false, patient: null })}
+      >
+        <div className="space-y-6">
+          <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm">
+              <User className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Patient Name</p>
+              <h4 className="text-lg font-black text-indigo-900">{authModal.patient.name}</h4>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500 leading-relaxed">
+              {authModal.patient.has_account 
+                ? "Update the password for this patient's portal access. They will use their name/phone to login."
+                : "Create a portal account for this patient. Setting a password will allow them to login and view their history."}
+            </p>
+            
+            <Input 
+              label="New Portal Password" 
+              type="password" 
+              placeholder="Enter at least 4 characters"
+              value={newPassword}
+              onChange={(e: any) => setNewPassword(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button 
+              onClick={() => setAuthModal({ open: false, patient: null })}
+              className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-50 transition-all border border-transparent"
+            >
+              Cancel
+            </button>
+            <button 
+              disabled={newPassword.length < 4}
+              onClick={() => {
+                if (onUpdatePatientAuth && authModal.patient) {
+                  onUpdatePatientAuth(authModal.patient, newPassword);
+                  setAuthModal({ open: false, patient: null });
+                }
+              }}
+              className="flex-1 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Key size={18} />
+              {authModal.patient.has_account ? "Update Password" : "Create Account"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     )}
   </div>
   );
