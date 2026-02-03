@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, FileText, User, LogOut, Settings } from 'lucide-react';
+import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
 import { Patient, Appointment, ClinicalRecord } from '../types';
+import { Modal, Input } from './Shared';
+import Receipt from './Receipt';
 
 interface PatientDashboardProps {
   onLogout: () => void;
@@ -15,7 +17,46 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
   const [treatmentRecords, setTreatmentRecords] = useState<ClinicalRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  
+  // State for appointment management
+  const [showCreateAppointment, setShowCreateAppointment] = useState(false);
+  const [newAppointment, setNewAppointment] = useState({
+    date: '',
+    time: '',
+    type: '',
+    notes: ''
+  });
+  
+  // State for profile editing
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileChanges, setProfileChanges] = useState({
+    name: '',
+    email: '',
+    phone: ''
+  });
+  
+  // State for password change
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordChange, setPasswordChange] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  
+  // State for receipts
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [selectedTreatment, setSelectedTreatment] = useState<ClinicalRecord | null>(null);
+  
+  // State for showing/hiding passwords
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false
+  });
+  
+  // State for cancellation
+  const [cancellingAppointment, setCancellingAppointment] = useState<string | null>(null);
+  
   useEffect(() => {
     fetchPatientData();
   }, []);
@@ -38,6 +79,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
       }
       setPatient(patientData);
       
+      // Initialize profile changes with current values
+      setProfileChanges({
+        name: patientData.name,
+        email: patientData.email,
+        phone: patientData.phone || ''
+      });
+      
       // Fetch appointments
       const allAppointments = await api.appointments.getAll(patientData.location_id);
       const patientAppointments = allAppointments.filter(apt => apt.patient_id === patientId);
@@ -58,7 +106,110 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
     auth.logout();
     onLogout();
   };
-
+  
+  const handleCreateAppointment = async () => {
+    if (!patient) return;
+    
+    try {
+      await api.appointments.create({
+        patient_id: patient.id,
+        doctor_id: 'default', // Will be assigned by admin
+        date: newAppointment.date,
+        time: newAppointment.time,
+        type: newAppointment.type,
+        notes: newAppointment.notes,
+        location_id: patient.location_id,
+        status: 'Scheduled'
+      });
+      
+      setShowCreateAppointment(false);
+      setNewAppointment({
+        date: '',
+        time: '',
+        type: '',
+        notes: ''
+      });
+      
+      // Refresh appointments
+      fetchPatientData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create appointment');
+    }
+  };
+  
+  const handleCancelAppointment = async (appointmentId: string) => {
+    try {
+      await api.appointments.delete(appointmentId);
+      
+      // Refresh appointments
+      fetchPatientData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel appointment');
+    }
+  };
+  
+  const handleUpdateProfile = async () => {
+    if (!patient) return;
+    
+    try {
+      const updatedPatient = await api.patients.update(patient.id, {
+        name: profileChanges.name,
+        email: profileChanges.email,
+        phone: profileChanges.phone
+      });
+      
+      setPatient(updatedPatient);
+      setEditingProfile(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update profile');
+    }
+  };
+  
+  const handleChangePassword = async () => {
+    if (!patient) return;
+    
+    if (passwordChange.newPassword !== passwordChange.confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+    
+    try {
+      // First authenticate with current password
+      const authenticated = await api.patients.authenticate(
+        patient.email || patient.phone || patient.name, 
+        passwordChange.currentPassword
+      );
+      
+      if (!authenticated) {
+        setError('Current password is incorrect');
+        return;
+      }
+      
+      // Update the password
+      await api.patients.updateAccount(
+        patient.id,
+        patient.email || null,
+        passwordChange.newPassword,
+        patient.phone || null
+      );
+      
+      // Reset password change form
+      setChangingPassword(false);
+      setPasswordChange({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to change password');
+    }
+  };
+  
+  const handleDownloadReceipt = (treatment: ClinicalRecord) => {
+    setSelectedTreatment(treatment);
+    setShowReceipt(true);
+  };
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -146,8 +297,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
 
             {/* Upcoming Appointments */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100">
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900">Upcoming Appointments</h2>
+                <button
+                  onClick={() => setActiveTab('appointments')}
+                  className="text-indigo-600 text-sm font-medium hover:underline"
+                >
+                  View All
+                </button>
               </div>
               <div className="p-4">
                 {appointments.filter(apt => apt.status === 'Scheduled').length > 0 ? (
@@ -181,8 +338,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
 
             {/* Recent Treatments */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100">
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900">Recent Treatments</h2>
+                <button
+                  onClick={() => setActiveTab('records')}
+                  className="text-indigo-600 text-sm font-medium hover:underline"
+                >
+                  View All
+                </button>
               </div>
               <div className="p-4">
                 {treatmentRecords.length > 0 ? (
@@ -198,6 +361,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
                             <p className="font-medium text-gray-900">{record.description}</p>
                             <p className="text-sm text-gray-600">{record.date}</p>
                           </div>
+                          <button
+                            onClick={() => handleDownloadReceipt(record)}
+                            className="p-2 text-gray-600 hover:text-indigo-600"
+                            title="Download Receipt"
+                          >
+                            <Download className="w-5 h-5" />
+                          </button>
                         </div>
                       ))}
                   </div>
@@ -215,8 +385,15 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
         {activeTab === 'appointments' && (
           <div className="p-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100">
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900">My Appointments</h2>
+                <button
+                  onClick={() => setShowCreateAppointment(true)}
+                  className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Appointment
+                </button>
               </div>
               <div className="p-4">
                 {appointments.length > 0 ? (
@@ -246,6 +423,21 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
                         {apt.notes && (
                           <p className="text-sm text-gray-500 mt-2">{apt.notes}</p>
                         )}
+                        {apt.status === 'Scheduled' && (
+                          <div className="mt-3 flex justify-end">
+                            <button
+                              onClick={() => {
+                                if (window.confirm('Are you sure you want to cancel this appointment?')) {
+                                  handleCancelAppointment(apt.id);
+                                }
+                              }}
+                              className="flex items-center gap-1 text-red-600 hover:text-red-800 text-sm"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Cancel Appointment
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -254,6 +446,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
                     <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No Appointments</h3>
                     <p className="text-gray-500">You don't have any appointments scheduled.</p>
+                    <button
+                      onClick={() => setShowCreateAppointment(true)}
+                      className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      Schedule Appointment
+                    </button>
                   </div>
                 )}
               </div>
@@ -274,14 +472,20 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
                       <div key={record.id} className="p-4 border border-gray-200 rounded-lg">
                         <div className="flex justify-between items-start mb-2">
                           <h3 className="font-medium text-gray-900">{record.description}</h3>
-                          <span className="text-sm text-gray-500">{record.date}</span>
+                          <button
+                            onClick={() => handleDownloadReceipt(record)}
+                            className="p-2 text-gray-600 hover:text-indigo-600"
+                            title="Download Receipt"
+                          >
+                            <Download className="w-5 h-5" />
+                          </button>
                         </div>
                         <p className="text-gray-600 mb-2">
                           <FileText className="w-4 h-4 inline mr-1" />
-                          Treatment Record
+                          Date: {record.date}
                         </p>
                         {record.teeth && record.teeth.length > 0 && (
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-gray-500 mb-2">
                             Teeth: {record.teeth.join(', ')}
                           </p>
                         )}
@@ -308,8 +512,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
         {activeTab === 'profile' && (
           <div className="p-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100">
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900">My Profile</h2>
+                <button
+                  onClick={() => setEditingProfile(true)}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                >
+                  Edit Profile
+                </button>
               </div>
               <div className="p-4 space-y-4">
                 <div className="flex items-center gap-4">
@@ -334,7 +544,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
                   </div>
                   
                   <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-500">Account Balance</p>
+                    <p className="text-sm text-gray-500">Debt</p>
                     <p className="font-medium text-gray-900">{patient.balance.toLocaleString()} MMK</p>
                   </div>
                   
@@ -350,6 +560,15 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
                     <p className="text-gray-900">{patient.medicalHistory}</p>
                   </div>
                 )}
+                
+                <div className="pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setChangingPassword(true)}
+                    className="w-full bg-gray-100 text-gray-800 py-3 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Change Password
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -408,6 +627,179 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
           </button>
         </div>
       </div>
+      
+      {/* Create Appointment Modal */}
+      {showCreateAppointment && (
+        <Modal title="Schedule New Appointment" onClose={() => setShowCreateAppointment(false)}>
+          <div className="space-y-4">
+            <Input
+              label="Date"
+              type="date"
+              value={newAppointment.date}
+              onChange={(e) => setNewAppointment({...newAppointment, date: e.target.value})}
+              required
+            />
+            <Input
+              label="Time"
+              type="time"
+              value={newAppointment.time}
+              onChange={(e) => setNewAppointment({...newAppointment, time: e.target.value})}
+              required
+            />
+            <Input
+              label="Type"
+              value={newAppointment.type}
+              onChange={(e) => setNewAppointment({...newAppointment, type: e.target.value})}
+              placeholder="e.g., Checkup, Cleaning, Filling"
+              required
+            />
+            <Input
+              label="Notes"
+              value={newAppointment.notes}
+              onChange={(e) => setNewAppointment({...newAppointment, notes: e.target.value})}
+              placeholder="Any special notes for the dentist"
+            />
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => setShowCreateAppointment(false)}
+                className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateAppointment}
+                className="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Schedule
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      
+      {/* Edit Profile Modal */}
+      {editingProfile && (
+        <Modal title="Edit Profile" onClose={() => setEditingProfile(false)}>
+          <div className="space-y-4">
+            <Input
+              label="Name"
+              value={profileChanges.name}
+              onChange={(e) => setProfileChanges({...profileChanges, name: e.target.value})}
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={profileChanges.email}
+              onChange={(e) => setProfileChanges({...profileChanges, email: e.target.value})}
+            />
+            <Input
+              label="Phone"
+              value={profileChanges.phone}
+              onChange={(e) => setProfileChanges({...profileChanges, phone: e.target.value})}
+            />
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => setEditingProfile(false)}
+                className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateProfile}
+                className="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      
+      {/* Change Password Modal */}
+      {changingPassword && (
+        <Modal title="Change Password" onClose={() => setChangingPassword(false)}>
+          <div className="space-y-4">
+            <div className="relative">
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Current Password</label>
+              <input
+                type={showPasswords.current ? 'text' : 'password'}
+                value={passwordChange.currentPassword}
+                onChange={(e) => setPasswordChange({...passwordChange, currentPassword: e.target.value})}
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-300"
+                placeholder="Enter current password"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-10 text-gray-500"
+                onClick={() => setShowPasswords({...showPasswords, current: !showPasswords.current})}
+              >
+                {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            
+            <div className="relative">
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">New Password</label>
+              <input
+                type={showPasswords.new ? 'text' : 'password'}
+                value={passwordChange.newPassword}
+                onChange={(e) => setPasswordChange({...passwordChange, newPassword: e.target.value})}
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-300"
+                placeholder="Enter new password"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-10 text-gray-500"
+                onClick={() => setShowPasswords({...showPasswords, new: !showPasswords.new})}
+              >
+                {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            
+            <div className="relative">
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Confirm New Password</label>
+              <input
+                type={showPasswords.confirm ? 'text' : 'password'}
+                value={passwordChange.confirmPassword}
+                onChange={(e) => setPasswordChange({...passwordChange, confirmPassword: e.target.value})}
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-300"
+                placeholder="Confirm new password"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-10 text-gray-500"
+                onClick={() => setShowPasswords({...showPasswords, confirm: !showPasswords.confirm})}
+              >
+                {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => setChangingPassword(false)}
+                className="flex-1 bg-gray-200 text-gray-800 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleChangePassword}
+                className="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Change Password
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      
+      {/* Receipt Modal */}
+      {showReceipt && selectedTreatment && (
+        <Receipt 
+          patient={patient}
+          treatments={[selectedTreatment]}
+          currency={'MMK'}
+          onClose={() => setShowReceipt(false)}
+        />
+      )}
     </div>
   );
 };
