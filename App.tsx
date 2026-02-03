@@ -1032,6 +1032,16 @@ const App: React.FC = () => {
                 loyaltyRules={loyaltyRules}
                 onSelectPatient={handlePatientSelect} 
                 onAddPatient={() => setShowPatientModal(true)} 
+                onUpdatePatient={async (id, data) => {
+                  try {
+                    await api.patients.update(id, data);
+                    fetchInitialData();
+                    alert('Patient profile updated successfully!');
+                  } catch (err: any) {
+                    alert('Error: ' + err.message);
+                    throw err;
+                  }
+                }}
                 onRedeemPoints={(patient, points, amount) => handleRedeemPoints(points, amount, patient)}
                 onUpdatePatientAuth={async (patient, password) => {
                   try {
@@ -1097,6 +1107,18 @@ const App: React.FC = () => {
                 onToggleFlatRate={setUseFlatRate}
                 onUndoTreatment={handleUndoTreatment}
                 onRedeemPoints={handleRedeemPoints}
+                onUpdatePatient={async (id, data) => {
+                  try {
+                    await api.patients.update(id, data);
+                    fetchInitialData();
+                    // update selectedPatient to reflect changes
+                    const updated = await api.patients.getAll();
+                    const p = updated.find(x => x.id === id);
+                    if (p) setSelectedPatient(p);
+                  } catch (err: any) {
+                    alert('Error: ' + err.message);
+                  }
+                }}
                 onUpdateAccount={async (patient, password) => {
                   try {
                     await api.patients.updateAccount(patient.id, patient.email || null, password, patient.phone || null);

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Loader2, ChevronRight, FileDown, Award, User, ShieldCheck, ShieldAlert, Key } from 'lucide-react';
+import { Search, Plus, Loader2, ChevronRight, FileDown, Award, User, ShieldCheck, ShieldAlert, Key, Edit } from 'lucide-react';
 import { Patient, LoyaltyRule } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
@@ -12,6 +12,7 @@ interface PatientsViewProps {
   currency: Currency;
   onSelectPatient: (patient: Patient) => void;
   onAddPatient: () => void;
+  onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
   onRedeemPoints?: (patient: Patient, points: number, amount: number) => void;
   onUpdatePatientAuth?: (patient: Patient, password: string) => void;
   loyaltyEnabled: boolean;
@@ -24,6 +25,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   currency, 
   onSelectPatient, 
   onAddPatient, 
+  onUpdatePatient,
   onRedeemPoints, 
   onUpdatePatientAuth,
   loyaltyEnabled, 
@@ -33,7 +35,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [authModal, setAuthModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
+  const [editModal, setEditModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
+  const [editData, setEditData] = useState({ name: '', email: '', phone: '', medicalHistory: '' });
   const [newPassword, setNewPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const itemsPerPage = 10;
 
   // Filtered data based on search term
@@ -211,6 +216,22 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       >
                         <User size={14} /> {patient.has_account ? 'Update Auth' : 'Setup Auth'}
                       </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditModal({ open: true, patient });
+                          setEditData({
+                            name: patient.name,
+                            email: patient.email || '',
+                            phone: patient.phone || '',
+                            medicalHistory: patient.medicalHistory || ''
+                          });
+                        }}
+                        className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                        title="Edit patient profile"
+                      >
+                        <Edit size={14} /> Edit
+                      </button>
                       <button className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1">
                         View Chart <ChevronRight size={14} />
                       </button>
@@ -277,10 +298,26 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
+                  setEditModal({ open: true, patient });
+                  setEditData({
+                    name: patient.name,
+                    email: patient.email || '',
+                    phone: patient.phone || '',
+                    medicalHistory: patient.medicalHistory || ''
+                  });
+                }}
+                className="w-full mt-2 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100 flex items-center justify-center gap-2"
+              >
+                <Edit size={14} /> Edit Profile
+              </button>
+              
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
                   setAuthModal({ open: true, patient });
                   setNewPassword('');
                 }}
-                className="w-full mt-3 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-100 flex items-center justify-center gap-2"
+                className="w-full mt-2 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-100 flex items-center justify-center gap-2"
               >
                 <User size={14} /> {patient.has_account ? 'Update Portal Account' : 'Setup Portal Account'}
               </button>
@@ -355,6 +392,58 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             </button>
           </div>
         </div>
+      </Modal>
+    )}
+
+    {editModal.open && editModal.patient && (
+      <Modal title="Edit Patient Profile" onClose={() => setEditModal({ open: false, patient: null })}>
+        <form 
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (isSubmitting) return;
+            setIsSubmitting(true);
+            try {
+              if (onUpdatePatient && editModal.patient) {
+                await onUpdatePatient(editModal.patient.id, editData);
+                setEditModal({ open: false, patient: null });
+              }
+            } catch (err: any) {
+              // error handled by onUpdatePatient
+            } finally {
+              setIsSubmitting(false);
+            }
+          }} 
+          className="space-y-5"
+        >
+          <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
+            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl">
+              {editModal.patient.name.charAt(0)}
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Editing Patient</p>
+              <h4 className="text-lg font-black text-gray-900">{editModal.patient.name}</h4>
+            </div>
+          </div>
+
+          <Input label="Full Patient Name" required value={editData.name} onChange={(e: any) => setEditData({...editData, name: e.target.value})} />
+          <div className="grid grid-cols-2 gap-4">
+             <Input label="Primary Email" type="email" value={editData.email} onChange={(e: any) => setEditData({...editData, email: e.target.value})} />
+             <Input label="Mobile Contact" required value={editData.phone} onChange={(e: any) => setEditData({...editData, phone: e.target.value})} />
+          </div>
+          
+          <div>
+            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Relevant Medical History</label>
+            <textarea className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" rows={4}
+              value={editData.medicalHistory} onChange={e => setEditData({...editData, medicalHistory: e.target.value})} />
+          </div>
+          <button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-all mt-2"
+          >
+            {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
+          </button>
+        </form>
       </Modal>
     )}
   </div>

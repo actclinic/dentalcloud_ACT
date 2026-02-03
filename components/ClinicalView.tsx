@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
@@ -27,6 +27,7 @@ interface ClinicalViewProps {
   onToggleFlatRate: (value: boolean) => void;
   onUndoTreatment?: (record: ClinicalRecord) => void;
   onRedeemPoints?: (points: number, amount: number) => void;
+  onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
   onUpdateAccount?: (patient: Patient, password: string) => void;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
@@ -55,6 +56,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onToggleFlatRate,
   onUndoTreatment,
   onRedeemPoints,
+  onUpdatePatient,
   onUpdateAccount,
   loyaltyEnabled,
   loyaltyRules = [],
@@ -63,7 +65,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const currencySymbol = getCurrencySymbol(currency);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [authModal, setAuthModal] = React.useState(false);
+  const [editModal, setEditModal] = React.useState(false);
+  const [editData, setEditData] = React.useState({ name: '', email: '', phone: '', medicalHistory: '' });
   const [newPassword, setNewPassword] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   // Get redemption rule
   const redeemRule = React.useMemo(() => {
@@ -310,6 +315,23 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                >
                  <ReceiptIcon size={16} /> Generate Receipt
                </button>
+
+               {onUpdatePatient && selectedPatient && (
+                 <button 
+                  className="w-full bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold text-sm mt-2 hover:bg-indigo-100 transition-all flex items-center justify-center gap-2 border border-indigo-100"
+                  onClick={() => {
+                    setEditModal(true);
+                    setEditData({
+                      name: selectedPatient.name,
+                      email: selectedPatient.email || '',
+                      phone: selectedPatient.phone || '',
+                      medicalHistory: selectedPatient.medicalHistory || ''
+                    });
+                  }}
+                 >
+                   <Edit size={16} /> Edit Patient Profile
+                 </button>
+               )}
                
                {onUpdateAccount && selectedPatient && (
                  <button 
@@ -378,6 +400,58 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        </button>
                      </div>
                    </div>
+                 </Modal>
+               )}
+
+               {editModal && selectedPatient && (
+                 <Modal title="Edit Patient Profile" onClose={() => setEditModal(false)}>
+                   <form 
+                     onSubmit={async (e) => {
+                       e.preventDefault();
+                       if (isSubmitting) return;
+                       setIsSubmitting(true);
+                       try {
+                         if (onUpdatePatient) {
+                           await onUpdatePatient(selectedPatient.id, editData);
+                           setEditModal(false);
+                         }
+                       } catch (err: any) {
+                         // error handled by onUpdatePatient
+                       } finally {
+                         setIsSubmitting(false);
+                       }
+                     }} 
+                     className="space-y-5"
+                   >
+                     <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
+                       <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl">
+                         {selectedPatient.name.charAt(0)}
+                       </div>
+                       <div>
+                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Editing Patient</p>
+                         <h4 className="text-lg font-black text-gray-900">{selectedPatient.name}</h4>
+                       </div>
+                     </div>
+
+                     <Input label="Full Patient Name" required value={editData.name} onChange={(e: any) => setEditData({...editData, name: e.target.value})} />
+                     <div className="grid grid-cols-2 gap-4">
+                        <Input label="Primary Email" type="email" value={editData.email} onChange={(e: any) => setEditData({...editData, email: e.target.value})} />
+                        <Input label="Mobile Contact" required value={editData.phone} onChange={(e: any) => setEditData({...editData, phone: e.target.value})} />
+                     </div>
+                     
+                     <div>
+                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Relevant Medical History</label>
+                       <textarea className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" rows={4}
+                         value={editData.medicalHistory} onChange={e => setEditData({...editData, medicalHistory: e.target.value})} />
+                     </div>
+                     <button 
+                       type="submit" 
+                       disabled={isSubmitting}
+                       className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-all mt-2"
+                     >
+                       {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
+                     </button>
+                   </form>
                  </Modal>
                )}
 
