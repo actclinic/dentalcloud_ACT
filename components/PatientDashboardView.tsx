@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff } from 'lucide-react';
+import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
 import { Patient, Appointment, ClinicalRecord, Doctor } from '../types';
 import { Modal, Input } from './Shared';
 import Receipt from './Receipt';
+import PatientMessagingView from './PatientMessagingView';
 
 interface PatientDashboardProps {
   onLogout: () => void;
 }
 
 const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'appointments' | 'records' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'appointments' | 'records' | 'profile' | 'messages'>('home');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [treatmentRecords, setTreatmentRecords] = useState<ClinicalRecord[]>([]);
@@ -560,6 +561,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
           </div>
         )}
 
+        {activeTab === 'messages' && (
+          <div className="px-4">
+            <PatientMessagingView currentUser={patient} />
+          </div>
+        )}
+
         {activeTab === 'profile' && (
           <div className="px-4">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
@@ -666,6 +673,19 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
           >
             <FileText className="w-6 h-6 mb-1" />
             <span className="text-[10px]">Records</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={`flex flex-col items-center py-2 px-2 rounded-xl transition-colors flex-1 max-w-[80px] ${
+              activeTab === 'messages' 
+                ? 'text-indigo-600 bg-indigo-50' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            aria-label="Messages"
+          >
+            <MessageCircle className="w-6 h-6 mb-1" />
+            <span className="text-[10px]">Messages</span>
           </button>
           
           <button

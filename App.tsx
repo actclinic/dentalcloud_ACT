@@ -18,7 +18,8 @@ import {
   Sparkles,
   MapPin,
   Menu,
-  X
+  X,
+  MessageCircle
 } from 'lucide-react';
 
 import { Modal, Input, NavItem } from './components/Shared';
@@ -62,8 +63,10 @@ const UsersView = React.lazy(() => import('./components/UsersView'));
 const InventoryView = React.lazy(() => import('./components/InventoryView'));
 const MedicineSelectionModal = React.lazy(() => import('./components/MedicineSelectionModal'));
 const AIAssistantView = React.lazy(() => import('./components/AIAssistantView'));
+const MessagingView = React.lazy(() => import('./components/MessagingView'));
+const PatientMessagingView = React.lazy(() => import('./components/PatientMessagingView'));
 
-type ViewState = 'dashboard' | 'patients' | 'appointments' | 'doctors' | 'finance' | 'treatments' | 'records' | 'settings' | 'users' | 'inventory' | 'ai-assistant';
+type ViewState = 'dashboard' | 'patients' | 'appointments' | 'doctors' | 'finance' | 'treatments' | 'records' | 'settings' | 'users' | 'inventory' | 'ai-assistant' | 'messaging';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
@@ -970,6 +973,7 @@ const App: React.FC = () => {
              {isAdmin && (
                <NavItem icon={<Package size={18} />} label="Inventory" active={currentView === 'inventory'} onClick={() => { setCurrentView('inventory'); setIsMobileMenuOpen(false); }} />
              )}
+             <NavItem icon={<MessageCircle size={18} />} label="Messaging" active={currentView === 'messaging'} onClick={() => { setCurrentView('messaging'); setIsMobileMenuOpen(false); }} />
              <NavItem icon={<Sparkles size={18} />} label="AI Assistant" active={currentView === 'ai-assistant'} onClick={() => { setCurrentView('ai-assistant'); setIsMobileMenuOpen(false); }} />
           </div>
           
@@ -1084,6 +1088,10 @@ const App: React.FC = () => {
               users={users}
               medicines={medicines}
               expenses={expenses}
+            />}
+            {currentView === 'messaging' && <MessagingView 
+              patients={patients} 
+              users={users} 
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 

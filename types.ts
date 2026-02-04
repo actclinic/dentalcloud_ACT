@@ -183,3 +183,27 @@ export interface Expense {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface Message {
+  id: string;
+  sender_id: string;
+  sender_type: 'patient' | 'admin';
+  recipient_id: string;
+  recipient_type: 'patient' | 'admin';
+  content: string;
+  timestamp: string;
+  read: boolean;
+  conversation_id: string;
+}
+
+export interface Conversation {
+  id: string;
+  patient_id: string;
+  patient_name: string;
+  admin_id: string;
+  admin_name: string;
+  last_message?: string;
+  last_message_time?: string;
+  unread_count: number;
+  created_at: string;
+}

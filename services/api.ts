@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation } from '../types';
 
 // Utility: map DB snake_case fields to app camelCase
 const mapPatient = (row: any): Patient => ({
@@ -1701,6 +1701,223 @@ export const api = {
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
 
       if (txError) throw new Error(txError.message);
+    }
+  },
+  
+  messages: {
+    // Get conversations for a user
+    getConversations: async (userId: string, userType: 'patient' | 'admin'): Promise<Conversation[]> => {
+      // Perform automatic cleanup before fetching conversations
+      await api.messages.performAutomaticCleanup();
+      
+      let query = supabase
+        .from('conversations')
+        .select(`
+          id,
+          patient_id,
+          patients!inner(name),
+          admin_id,
+          users!inner(username),
+          last_message,
+          last_message_time,
+          created_at,
+          messages(count)
+        `)
+        .order('last_message_time', { ascending: false });
+
+      if (userType === 'patient') {
+        query = query.eq('patient_id', userId);
+      } else {
+        query = query.eq('admin_id', userId);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw new Error(error.message);
+      
+      return data.map((conv: any) => ( {
+        id: conv.id,
+        patient_id: conv.patient_id,
+        patient_name: conv.patients?.name || (Array.isArray(conv.patients) ? conv.patients[0]?.name : 'Unknown Patient'),
+        admin_id: conv.admin_id,
+        admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
+        last_message: conv.last_message,
+        last_message_time: conv.last_message_time,
+        unread_count: conv.messages?.[0]?.count || 0,
+        created_at: conv.created_at
+      }));
+    },
+    
+    // Get messages for a conversation
+    getMessages: async (conversationId: string): Promise<Message[]> => {
+      // Perform automatic cleanup before fetching messages
+      await api.messages.performAutomaticCleanup();
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('timestamp', { ascending: true });
+      
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+    
+    // Create new message
+    createMessage: async (message: Omit<Message, 'id' | 'timestamp' | 'read'>): Promise<Message> => {
+      const newMessage = {
+        ...message,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      
+      const { data: messageData, error: messageError } = await supabase
+        .from('messages')
+        .insert(newMessage)
+        .select()
+        .single();
+      
+      if (messageError) throw new Error(messageError.message);
+      
+      // Update conversation last message
+      const { error: convError } = await supabase
+        .from('conversations')
+        .update({
+          last_message: message.content,
+          last_message_time: newMessage.timestamp
+        })
+        .eq('id', message.conversation_id);
+      
+      if (convError) throw new Error(convError.message);
+      
+      return messageData;
+    },
+    
+    // Create new conversation
+    createConversation: async (patientId: string, adminId: string): Promise<Conversation> => {
+      // Perform automatic cleanup before creating new conversation
+      await api.messages.performAutomaticCleanup();
+      
+      const { data: patient } = await supabase
+        .from('patients')
+        .select('name')
+        .eq('id', patientId)
+        .single();
+      
+      const { data: admin } = await supabase
+        .from('users')
+        .select('username')
+        .eq('id', adminId)
+        .single();
+      
+      const { data: conversation, error } = await supabase
+        .from('conversations')
+        .insert({
+          patient_id: patientId,
+          admin_id: adminId,
+          last_message: null,
+          last_message_time: null
+        })
+        .select()
+        .single();
+      
+      if (error) throw new Error(error.message);
+      
+      return {
+        id: conversation.id,
+        patient_id: patientId,
+        patient_name: patient?.name || 'Unknown Patient',
+        admin_id: adminId,
+        admin_name: admin?.username || 'Unknown Admin',
+        last_message: null,
+        last_message_time: null,
+        unread_count: 0,
+        created_at: conversation.created_at
+      };
+    },
+    
+    // Mark messages as read
+    markAsRead: async (conversationId: string, userId: string, userType: 'patient' | 'admin'): Promise<void> => {
+      let updateQuery = supabase
+        .from('messages')
+        .update({ read: true })
+        .eq('conversation_id', conversationId)
+        .eq('read', false);
+      
+      if (userType === 'patient') {
+        updateQuery = updateQuery.eq('recipient_id', userId).eq('recipient_type', 'patient');
+      } else {
+        updateQuery = updateQuery.eq('recipient_id', userId).eq('recipient_type', 'admin');
+      }
+      
+      const { error } = await updateQuery;
+      if (error) throw new Error(error.message);
+    },
+    
+    // Automatic cleanup function - removes messages older than 2 months
+    performAutomaticCleanup: async (): Promise<void> => {
+      try {
+        // Check if cleanup was performed recently (within last 24 hours)
+        const lastCleanup = localStorage.getItem('messaging_last_cleanup');
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        
+        if (lastCleanup && (now - parseInt(lastCleanup)) < oneDay) {
+          return; // Skip cleanup if performed recently
+        }
+        
+        // Delete messages older than 2 months
+        const twoMonthsAgo = new Date();
+        twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+        
+        const { error: messageError } = await supabase
+          .from('messages')
+          .delete()
+          .lt('timestamp', twoMonthsAgo.toISOString());
+        
+        if (messageError) {
+          console.warn('Message cleanup error:', messageError.message);
+          // Continue with conversation cleanup even if message cleanup has issues
+        }
+        
+        // Clean up conversations that have no messages and are older than 2 months
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id, created_at')
+          .lt('created_at', twoMonthsAgo.toISOString());
+        
+        if (conversations && conversations.length > 0) {
+          // Check which conversations have no messages
+          const conversationIds = conversations.map(conv => conv.id);
+          const { data: messages } = await supabase
+            .from('messages')
+            .select('conversation_id')
+            .in('conversation_id', conversationIds);
+          
+          const messageConversationIds = new Set(messages?.map(msg => msg.conversation_id) || []);
+          const emptyConversations = conversations
+            .filter(conv => !messageConversationIds.has(conv.id))
+            .map(conv => conv.id);
+          
+          if (emptyConversations.length > 0) {
+            const { error: convError } = await supabase
+              .from('conversations')
+              .delete()
+              .in('id', emptyConversations);
+            
+            if (convError) {
+              console.warn('Conversation cleanup error:', convError.message);
+            }
+          }
+        }
+        
+        // Update last cleanup timestamp
+        localStorage.setItem('messaging_last_cleanup', now.toString());
+        
+      } catch (error) {
+        console.warn('Automatic cleanup failed:', error);
+        // Don't throw error to prevent blocking normal operations
+      }
     }
   }
 };
