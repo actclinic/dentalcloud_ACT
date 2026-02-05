@@ -31,19 +31,55 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
     }
   }, [messagingEnabled]);
 
+  // Effect to initialize conversations
   useEffect(() => {
     const userId = getUserId();
     if (currentUser && userId && userId !== 'undefined') {
-      fetchConversations();
+      fetchConversations(true); // Show loading on initial load
     } else {
       setLoading(false);
       setError('Invalid user session. Please log in again.');
     }
   }, [currentUser]);
 
+  // Effect for background refresh of conversations
+  useEffect(() => {
+    let refreshInterval: NodeJS.Timeout;
+    
+    if (currentUser && getUserId() && getUserId() !== 'undefined') {
+      refreshInterval = setInterval(async () => {
+        try {
+          const userId = getUserId();
+          if (currentUser && userId && userId !== 'undefined') {
+            const convs = await api.messages.getConversations(userId, 'patient');
+            setConversations(convs);
+            
+            // If we have a selected conversation, refresh it as well
+            if (selectedConversation) {
+              const msgs = await api.messages.getMessages(selectedConversation.id);
+              setMessages(msgs);
+            }
+          }
+        } catch (err: any) {
+          // Only show error if it's a session-related issue
+          if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
+            setError(err.message);
+          }
+          // Otherwise, silently ignore network errors during background refresh
+        }
+      }, 30000); // Refresh every 30 seconds in background
+    }
+    
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [currentUser, selectedConversation?.id]);
+
   useEffect(() => {
     if (selectedConversation) {
-      fetchMessages(selectedConversation.id);
+      fetchMessages(selectedConversation.id, true); // Show loading when switching conversations
       markConversationAsRead(selectedConversation.id);
     }
   }, [selectedConversation]);
@@ -56,9 +92,11 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const fetchConversations = async () => {
+  const fetchConversations = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const userId = getUserId();
       if (currentUser && userId && userId !== 'undefined') {
@@ -73,16 +111,25 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
-  const fetchMessages = async (conversationId: string) => {
+  const fetchMessages = async (conversationId: string, showLoading = false) => {
     try {
+      if (showLoading) {
+        setLoading(true);
+      }
       const msgs = await api.messages.getMessages(conversationId);
       setMessages(msgs);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -92,7 +139,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
       try {
         await api.messages.markAsRead(conversationId, userId, 'patient');
         // Refresh conversations to update unread counts
-        fetchConversations();
+        fetchConversations(false); // Don't show loading during background update
       } catch (err: any) {
         console.error('Failed to mark as read:', err);
       }
@@ -121,8 +168,8 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
 
       await api.messages.createMessage(messageData);
       setNewMessage('');
-      fetchMessages(selectedConversation.id);
-      fetchConversations(); // Refresh to update last message
+      fetchMessages(selectedConversation.id, false); // Don't show loading when updating after send
+      fetchConversations(false); // Refresh to update last message without showing loading
     } catch (err: any) {
       setError(err.message);
     }
@@ -235,9 +282,9 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         </div>
       )}
 
-      <div className="flex h-[calc(100vh-200px)]">
-        {/* Conversations sidebar */}
-        <div className="w-80 border-r border-gray-200 flex flex-col">
+      <div className="flex flex-col h-[calc(100vh-200px)] md:flex-row">
+        {/* Conversations sidebar - hidden by default on mobile, shown when selectedConversation is null */}
+        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} md:block w-full md:w-80 border-r border-gray-200 flex-col h-[calc(100vh-200px)] md:h-auto`}>
           <div className="p-4 border-b border-gray-200 flex justify-between items-center">
             <h3 className="font-medium text-gray-900">Conversations</h3>
             {conversations.length === 0 && (
@@ -270,7 +317,9 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                   className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
                     selectedConversation?.id === conv.id ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : ''
                   }`}
-                  onClick={() => setSelectedConversation(conv)}
+                  onClick={() => {
+                    setSelectedConversation(conv);
+                  }}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
@@ -297,10 +346,19 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         </div>
 
         {/* Messages area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col h-[calc(100vh-200px)] md:h-auto">
           {selectedConversation ? (
             <>
-              <div className="p-4 border-b border-gray-200">
+              {/* Header with back button on mobile */}
+              <div className="p-4 border-b border-gray-200 flex items-center">
+                <button 
+                  onClick={() => setSelectedConversation(null)}
+                  className="md:hidden mr-3 p-1 rounded-full hover:bg-gray-100"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
                 <div className="flex items-center">
                   <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
                     <User className="w-5 h-5 text-indigo-600" />
@@ -322,7 +380,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                       }`}
                     >
                       <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
+                        className={`max-w-[85%] sm:max-w-xs px-4 py-2 rounded-2xl ${
                           message.sender_type === 'patient'
                             ? 'bg-indigo-600 text-white rounded-br-md'
                             : 'bg-gray-100 text-gray-900 rounded-bl-md'
