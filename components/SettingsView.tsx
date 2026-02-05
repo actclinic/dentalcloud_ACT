@@ -17,6 +17,9 @@ interface SettingsViewProps {
   onResetAllLoyaltyPoints?: () => void;
   loyaltyEnabled: boolean;
   onToggleLoyalty: (enabled: boolean) => void;
+  messagingEnabled: boolean;
+  onToggleMessaging: (enabled: boolean) => void;
+  onRemoveAllMessages: () => void;
   isAdmin: boolean;
 }
 
@@ -34,6 +37,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onResetAllLoyaltyPoints,
   loyaltyEnabled,
   onToggleLoyalty,
+  messagingEnabled,
+  onToggleMessaging,
+  onRemoveAllMessages,
   isAdmin 
 }) => {
   const [showLocModal, setShowLocModal] = useState(false);
@@ -305,6 +311,49 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           </>
           )}
+        </div>
+
+        {/* Messaging Settings */}
+        <div className="border border-gray-200 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-800">Messaging System</h3>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                className="sr-only peer" 
+                checked={messagingEnabled}
+                onChange={(e) => onToggleMessaging(e.target.checked)}
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              <span className="ml-3 text-sm font-medium text-gray-700">{messagingEnabled ? 'System Enabled' : 'System Disabled'}</span>
+            </label>
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-4">
+            {messagingEnabled 
+              ? 'Messaging system is currently enabled for patients and administrators.'
+              : 'Messaging system is currently disabled. Patients will not be able to send messages.'}
+          </p>
+          
+          <div className="flex gap-3">
+            <button 
+              onClick={onRemoveAllMessages}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <Trash2 size={16} /> Remove All Messages
+            </button>
+          </div>
+          
+          <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+            <p className="text-xs text-amber-700">
+              <strong>Warning:</strong> Removing all messages will permanently delete all conversations and cannot be undone.
+            </p>
+          </div>
         </div>
 
         {/* System Operations */}

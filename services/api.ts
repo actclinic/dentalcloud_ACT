@@ -1902,6 +1902,53 @@ export const api = {
       if (error) throw new Error(error.message);
     },
     
+    // Remove all messages
+    removeAllMessages: async (): Promise<void> => {
+      try {
+        // Delete all messages
+        const { error: messageError } = await supabase
+          .from('messages')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+        
+        if (messageError) throw new Error(messageError.message);
+        
+        // Also delete all conversations since they won't have any messages left
+        const { error: convError } = await supabase
+          .from('conversations')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+        
+        if (convError) throw new Error(convError.message);
+        
+        console.log('All messages and conversations removed successfully');
+      } catch (error) {
+        console.error('Error removing all messages:', error);
+        throw error;
+      }
+    },
+    
+    // Toggle messaging feature (by storing setting in database or local storage)
+    toggleMessagingFeature: async (enabled: boolean): Promise<void> => {
+      // In a real implementation, this would store the setting in the database
+      // For now, we'll use localStorage as a temporary solution
+      localStorage.setItem('messaging_enabled', enabled.toString());
+    },
+    
+    // Check if messaging feature is enabled
+    isMessagingEnabled: (): boolean => {
+      const storedValue = localStorage.getItem('messaging_enabled');
+      // Default to true if not set
+      return storedValue ? storedValue === 'true' : true;
+    },
+    
+    // Get messaging feature status
+    getMessagingStatus: async (): Promise<boolean> => {
+      // In a real implementation, this would fetch from the database
+      // For now, we'll use localStorage
+      return api.messages.isMessagingEnabled();
+    },
+    
     // Automatic cleanup function - removes messages older than 2 months
     performAutomaticCleanup: async (): Promise<void> => {
       try {

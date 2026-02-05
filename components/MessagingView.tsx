@@ -7,9 +7,10 @@ import { auth } from '../services/auth';
 interface MessagingViewProps {
   patients: any[];
   users: any[];
+  messagingEnabled: boolean;
 }
 
-const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
+const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagingEnabled }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -17,6 +18,13 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check if messaging is enabled
+  useEffect(() => {
+    if (!messagingEnabled) {
+      setError('Messaging system is currently disabled by the administrator. Please contact your system admin to enable it.');
+    }
+  }, [messagingEnabled]);
 
   const [sessionState, setSessionState] = useState(() => {
     const user = auth.getCurrentUser();

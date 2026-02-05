@@ -9,9 +9,10 @@ import PatientMessagingView from './PatientMessagingView';
 
 interface PatientDashboardProps {
   onLogout: () => void;
+  messagingEnabled: boolean;
 }
 
-const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
+const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messagingEnabled }) => {
   const [activeTab, setActiveTab] = useState<'home' | 'appointments' | 'records' | 'profile' | 'messages'>('home');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -563,7 +564,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
 
         {activeTab === 'messages' && (
           <div className="px-4">
-            <PatientMessagingView currentUser={patient} />
+            <PatientMessagingView currentUser={patient} messagingEnabled={messagingEnabled} />
           </div>
         )}
 

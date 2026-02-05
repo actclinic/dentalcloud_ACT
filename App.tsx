@@ -129,6 +129,11 @@ const App: React.FC = () => {
     return saved === null ? true : saved === 'true';
   });
   
+  const [messagingEnabled, setMessagingEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('messaging_enabled');
+    return saved === null ? true : saved === 'true';
+  });
+  
   const handleCurrencyChange = (newCurrency: 'USD' | 'MMK') => {
     setCurrency(newCurrency);
     localStorage.setItem('currency', newCurrency);
@@ -137,6 +142,26 @@ const App: React.FC = () => {
   const handleToggleLoyalty = (enabled: boolean) => {
     setLoyaltyEnabled(enabled);
     localStorage.setItem('loyalty_enabled', String(enabled));
+  };
+  
+  const handleToggleMessaging = (enabled: boolean) => {
+    setMessagingEnabled(enabled);
+    localStorage.setItem('messaging_enabled', String(enabled));
+    api.messages.toggleMessagingFeature(enabled);
+  };
+  
+  const handleRemoveAllMessages = async () => {
+    if (window.confirm('Are you sure you want to remove ALL messages and conversations? This action cannot be undone.')) {
+      try {
+        await api.messages.removeAllMessages();
+        alert('All messages and conversations have been removed successfully.');
+        // Refresh the page or trigger a state update to reflect changes
+        window.location.reload();
+      } catch (error) {
+        console.error('Error removing all messages:', error);
+        alert('Failed to remove all messages. Please try again.');
+      }
+    }
   };
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const [isResizing, setIsResizing] = useState(false);
@@ -892,7 +917,7 @@ const App: React.FC = () => {
           <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
         </div>
       }>
-        <PatientDashboardView onLogout={handleLogout} />
+        <PatientDashboardView onLogout={handleLogout} messagingEnabled={messagingEnabled} />
       </Suspense>
     );
   }
@@ -1079,6 +1104,9 @@ const App: React.FC = () => {
                 onResetAllLoyaltyPoints={handleResetAllLoyaltyPoints}
                 loyaltyEnabled={loyaltyEnabled}
                 onToggleLoyalty={handleToggleLoyalty}
+                messagingEnabled={messagingEnabled}
+                onToggleMessaging={handleToggleMessaging}
+                onRemoveAllMessages={handleRemoveAllMessages}
                 isAdmin={isAdmin} 
             />}
             {currentView === 'ai-assistant' && <AIAssistantView 
@@ -1094,6 +1122,7 @@ const App: React.FC = () => {
             {currentView === 'messaging' && isAdmin && <MessagingView 
               patients={patients} 
               users={users} 
+              messagingEnabled={messagingEnabled}
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 

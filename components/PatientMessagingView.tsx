@@ -7,9 +7,10 @@ import { supabase } from '../services/supabase';
 
 interface PatientMessagingViewProps {
   currentUser: { userId?: string } | { id: string };
+  messagingEnabled: boolean;
 }
 
-const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser }) => {
+const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser, messagingEnabled }) => {
   const getUserId = (): string | undefined => {
     return ('userId' in currentUser) ? currentUser.userId : ('id' in currentUser) ? (currentUser as any).id : undefined;
   };
@@ -21,6 +22,14 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check if messaging is enabled
+  useEffect(() => {
+    if (!messagingEnabled) {
+      setError('Messaging system is currently disabled by the administrator. Please contact your system admin to enable it.');
+      setLoading(false);
+    }
+  }, [messagingEnabled]);
 
   useEffect(() => {
     const userId = getUserId();
