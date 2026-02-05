@@ -1118,6 +1118,7 @@ const App: React.FC = () => {
               users={users}
               medicines={medicines}
               expenses={expenses}
+              currentAdminId={auth.getCurrentUser()?.userId}
             />}
             {currentView === 'messaging' && isAdmin && <MessagingView 
               patients={patients} 

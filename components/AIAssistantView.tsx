@@ -205,6 +205,7 @@ interface AIAssistantViewProps {
   users: UserType[];
   medicines: Medicine[];
   expenses: Expense[];
+  currentAdminId?: string;
 }
 
 const AIAssistantView: React.FC<AIAssistantViewProps> = ({ 
@@ -215,7 +216,8 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   treatmentTypes,
   users,
   medicines,
-  expenses
+  expenses,
+  currentAdminId
 }) => {
   const DAILY_LIMIT = 10;
 
@@ -1106,6 +1108,12 @@ EXPENSE MANAGEMENT:
 - exp_u(id, data): Update expense.
 - exp_d(id): Delete expense.
 
+MESSAGING MANAGEMENT:
+- msg_get_convs(): Get all active conversation threads with patients.
+- msg_get_history(pid): Get message history for a specific patient. pid=patient id (or use "name").
+- msg_reply(pid, text): Send a reply message to a patient. pid=patient id (or use "name"), text=message content.
+  *Note: Always review patient history (pat_hist) and medical notes before drafting clinical replies.*
+
 LOYALTY SYSTEM:
 - loyalty_rules_get(): Get all loyalty rules.
 - loyalty_rule_create(name, event_type, points_per_unit, min_amount): Create loyalty rule.
@@ -1487,6 +1495,18 @@ Example table format:
 - Follow-up in 1 week
 
 🩺 *Always assess patient-specific risk factors before proceeding.*`);
+        } else if (lowerMessage.includes('message') || lowerMessage.includes('reply') || lowerMessage.includes('chat')) {
+          resolve(`💬 **Messaging Support - Action Required**
+
+I can help you reply to patient messages. Based on your request, I will:
+1. Find the patient's active conversation
+2. Review their treatment history and clinical notes
+3. Draft a professional, clinically-accurate response
+
+To proceed, I need to know which patient you'd like to reply to. For example:
+"Reply to John Doe that his root canal follow-up is tomorrow."
+
+{ "action": "msg_get_convs", "params": {} }`);
         } else if (lowerMessage.includes('pain') || lowerMessage.includes('hurt') || lowerMessage.includes('ache')) {
           resolve(`💊 **Dental Pain Management:**
 
@@ -1936,6 +1956,37 @@ I can provide guidance on:
               category: pendingAction.params.c
             });
             break;
+          case 'msg_reply':
+            {
+              let patientId = pendingAction.params.pid;
+              if (!patientId && (pendingAction.params.name || pendingAction.params.n)) {
+                const pName = pendingAction.params.name || pendingAction.params.n;
+                const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                if (found) patientId = found.id;
+              }
+              if (!patientId) throw new Error("Patient ID or Name is required.");
+              
+              const adminId = currentAdminId;
+              if (!adminId) throw new Error("Administrator session not found.");
+              
+              const convs = await api.messages.getConversations(adminId, 'admin');
+              const conv = convs.find(c => c.patient_id === patientId);
+              
+              if (!conv) throw new Error(`No active conversation found for this patient.`);
+
+              const replyText = pendingAction.params.text || pendingAction.params.content || pendingAction.params.message;
+              
+              result = await api.messages.createMessage({
+                conversation_id: conv.id,
+                sender_id: adminId,
+                sender_type: 'admin',
+                recipient_id: patientId,
+                recipient_type: 'patient',
+                content: replyText
+              });
+              result.patient_name = conv.patient_name;
+            }
+            break;
           default:
             throw new Error(`Unknown action: ${pendingAction.action}`);
         }
@@ -1966,6 +2017,9 @@ I can provide guidance on:
             break;
           case 'm_c':
             successMessage = `✅ Medicine ${result.name} added to inventory.`;
+            break;
+          case 'msg_reply':
+            successMessage = `✅ Message sent successfully to ${result.patient_name || 'the patient'}.`;
             break;
         }
 
@@ -2140,7 +2194,7 @@ Thank you for using Loli! 🦷✨`,
           const crudActions = [
             'apt_c', 'apt_u', 'apt_d', 'p_c', 'p_u', 'p_d', 'dr_c', 'dr_u', 'dr_d', 
             'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
-            'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d'
+            'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d', 'msg_reply'
           ];
           
           if (crudActions.includes(action) && mode !== 'agent') {
@@ -2443,6 +2497,75 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 currentActionResult = `✅ Location "${result.name}" created successfully.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to create location: ${err.message}`;
+              }
+              break;
+
+            // Messaging Management Actions
+            case 'msg_get_convs':
+              try {
+                const adminId = currentAdminId;
+                if (!adminId) throw new Error("Administrator session not found.");
+                const convs = await api.messages.getConversations(adminId, 'admin');
+                currentActionResult = convs.length === 0 
+                  ? `💬 No active conversations found.`
+                  : `💬 Active Conversations (${convs.length}):\n\n${convs.map(c => `• ${c.patient_name}: "${c.last_message || 'No messages yet'}"`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get conversations: ${err.message}`;
+              }
+              break;
+            case 'msg_get_history':
+              try {
+                let patientId = params.pid;
+                if (!patientId && (params.name || params.n)) {
+                  const pName = params.name || params.n;
+                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  if (found) patientId = found.id;
+                }
+                if (!patientId) throw new Error("Patient ID or Name is required.");
+                
+                const adminId = currentAdminId;
+                if (!adminId) throw new Error("Administrator session not found.");
+                
+                const convs = await api.messages.getConversations(adminId, 'admin');
+                const conv = convs.find(c => c.patient_id === patientId);
+                
+                if (!conv) {
+                  const pName = patients.find(p => p.id === patientId)?.name || "this patient";
+                  currentActionResult = `💬 No messaging history found for ${pName}.`;
+                } else {
+                  const msgs = await api.messages.getMessages(conv.id);
+                  currentActionResult = `💬 Message History for ${conv.patient_name}:\n\n${msgs.slice(-10).map(m => 
+                    `• [${m.sender_type === 'admin' ? 'Admin' : 'Patient'}] ${m.content}`
+                  ).join('\n')}`;
+                }
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get message history: ${err.message}`;
+              }
+              break;
+            case 'msg_reply':
+              try {
+                let patientId = params.pid;
+                if (!patientId && (params.name || params.n)) {
+                  const pName = params.name || params.n;
+                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  if (found) patientId = found.id;
+                }
+                if (!patientId) throw new Error("Patient ID or Name is required.");
+                
+                const adminId = currentAdminId;
+                if (!adminId) throw new Error("Administrator session not found.");
+                
+                const convs = await api.messages.getConversations(adminId, 'admin');
+                const conv = convs.find(c => c.patient_id === patientId);
+                
+                if (!conv) throw new Error(`No active conversation found for this patient.`);
+
+                const replyText = params.text || params.content || params.message;
+                if (!replyText) throw new Error("Reply content is required.");
+
+                currentActionResult = `💬 I've prepared a reply for ${conv.patient_name}:\n\n"${replyText}"\n\nWould you like me to send this message? Please confirm to proceed.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to prepare reply: ${err.message}`;
               }
               break;
             
