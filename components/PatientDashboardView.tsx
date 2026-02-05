@@ -976,6 +976,32 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 </div>
               </div>
               
+              {/* Debt Information Section */}
+              <div className="grid grid-cols-1 gap-4">
+                <div className={`rounded-xl p-4 ${patient.balance > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                  <h4 className="font-medium text-gray-700 mb-2">Current Debt Status</h4>
+                  <p className={`font-semibold ${patient.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {patient.balance.toLocaleString()} MMK
+                    {patient.balance > 0 ? ' (Outstanding Balance)' : ' (No Outstanding Balance)'}
+                  </p>
+                  {patient.balance > 0 && (
+                    <p className="text-xs text-red-500 mt-2">
+                      This is your current outstanding balance across all treatments.
+                    </p>
+                  )}
+                </div>
+                
+                <div className="rounded-xl p-4 bg-blue-50 border border-blue-200">
+                  <h4 className="font-medium text-gray-700 mb-2">Treatment Cost</h4>
+                  <p className="font-semibold text-blue-600">
+                    {selectedTreatmentDetails.cost.toLocaleString()} MMK
+                  </p>
+                  <p className="text-xs text-blue-500 mt-2">
+                    Cost of this specific treatment: {selectedTreatmentDetails.description}
+                  </p>
+                </div>
+              </div>
+              
               {selectedTreatmentDetails.teeth && selectedTreatmentDetails.teeth.length > 0 && (
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h4 className="font-medium text-gray-700 mb-2">Teeth Treated</h4>
