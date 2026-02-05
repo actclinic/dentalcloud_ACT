@@ -19,15 +19,24 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const currentUser = auth.getCurrentUser();
+  
+  // Store session validation result to prevent unnecessary re-renders
+  const isValidSession = currentUser && 
+    currentUser.userId && 
+    currentUser.userId !== 'admin-default' && 
+    currentUser.userId !== 'undefined' &&
+    currentUser.role === 'admin';
 
   useEffect(() => {
-    if (currentUser && currentUser.userId && currentUser.userId !== 'admin-default' && currentUser.userId !== 'undefined') {
+    if (isValidSession) {
       fetchConversations();
     } else {
       setLoading(false);
-      setError('Invalid user session. Please log in again.');
+      if (currentUser) {
+        setError('Invalid user session. Please log in again.');
+      }
     }
-  }, [currentUser]);
+  }, [isValidSession, currentUser?.userId]);
 
   useEffect(() => {
     if (selectedConversation) {
@@ -48,12 +57,14 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
     try {
       setLoading(true);
       setError(null);
-      if (currentUser) {
+      if (isValidSession && currentUser?.userId) {
         const convs = await api.messages.getConversations(currentUser.userId, 'admin');
         setConversations(convs);
         if (convs.length > 0 && !selectedConversation) {
           setSelectedConversation(convs[0]);
         }
+      } else if (currentUser) {
+        setError('Invalid user session. Please log in again.');
       }
     } catch (err: any) {
       setError(err.message);
@@ -72,11 +83,13 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
   };
 
   const markConversationAsRead = async (conversationId: string) => {
-    if (currentUser) {
+    if (isValidSession && currentUser?.userId) {
       try {
         await api.messages.markAsRead(conversationId, currentUser.userId, 'admin');
-        // Refresh conversations to update unread counts
-        fetchConversations();
+        // Only refresh if we're still on the same conversation
+        if (selectedConversation?.id === conversationId) {
+          fetchConversations();
+        }
       } catch (err: any) {
         console.error('Failed to mark as read:', err);
       }
@@ -84,7 +97,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !currentUser) return;
+    if (!newMessage.trim() || !selectedConversation || !isValidSession || !currentUser?.userId) return;
     
     // Validate current user ID
     if (!currentUser.userId || currentUser.userId === 'admin-default' || currentUser.userId === 'undefined') {
@@ -112,7 +125,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
   };
 
   const handleCreateConversation = async (patientId: string) => {
-    if (!currentUser) return;
+    if (!isValidSession || !currentUser?.userId) return;
     
     // Validate current user ID
     if (!currentUser.userId || currentUser.userId === 'admin-default' || currentUser.userId === 'undefined') {
