@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle } from 'lucide-react';
+import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
 import { Patient, Appointment, ClinicalRecord, Doctor } from '../types';
@@ -43,6 +43,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
     email: '',
     phone: ''
   });
+  
+  // State for treatment details modal
+  const [showTreatmentDetails, setShowTreatmentDetails] = useState(false);
+  const [selectedTreatmentDetails, setSelectedTreatmentDetails] = useState<ClinicalRecord | null>(null);
   
   // State for password change
   const [changingPassword, setChangingPassword] = useState(false);
@@ -223,8 +227,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   };
   
   const handleDownloadReceipt = (treatment: ClinicalRecord) => {
-    setSelectedTreatment(treatment);
-    setShowReceipt(true);
+    setSelectedTreatmentDetails(treatment);
+    setShowTreatmentDetails(true);
   };
   
   const handleDoctorChange = async (doctorId: string) => {
@@ -416,10 +420,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                           </div>
                           <button
                             onClick={() => handleDownloadReceipt(record)}
-                            className="p-2 text-gray-600 hover:text-indigo-600 flex-shrink-0"
-                            title="Download Receipt"
+                            className="p-2 text-indigo-600 hover:text-indigo-800 flex-shrink-0"
+                            title="View Details"
                           >
-                            <Download className="w-5 h-5" />
+                            <span className="text-xs font-medium">Details</span>
                           </button>
                         </div>
                       ))}
@@ -527,10 +531,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                           <h3 className="font-medium text-gray-900 text-sm">{record.description}</h3>
                           <button
                             onClick={() => handleDownloadReceipt(record)}
-                            className="p-2 text-gray-600 hover:text-indigo-600"
-                            title="Download Receipt"
+                            className="p-2 text-indigo-600 hover:text-indigo-800"
+                            title="View Details"
                           >
-                            <Download className="w-4 h-4" />
+                            <span className="text-xs font-medium">Details</span>
                           </button>
                         </div>
                         <p className="text-xs text-gray-600 mb-2">
@@ -933,6 +937,77 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             </div>
           </div>
         </Modal>
+      )}
+      
+      {/* Treatment Details Modal */}
+      {showTreatmentDetails && selectedTreatmentDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-gray-900">Treatment Details</h3>
+                <button 
+                  onClick={() => {
+                    setShowTreatmentDetails(false);
+                    setSelectedTreatmentDetails(null);
+                  }}
+                  className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h4 className="font-medium text-gray-700 mb-2">Treatment Description</h4>
+                <p className="text-gray-900">{selectedTreatmentDetails.description}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Date</h4>
+                  <p className="text-gray-900">{new Date(selectedTreatmentDetails.date).toLocaleDateString()}</p>
+                </div>
+                
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Cost</h4>
+                  <p className="text-gray-900 font-semibold">{selectedTreatmentDetails.cost.toLocaleString()} MMK</p>
+                </div>
+              </div>
+              
+              {selectedTreatmentDetails.teeth && selectedTreatmentDetails.teeth.length > 0 && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h4 className="font-medium text-gray-700 mb-2">Teeth Treated</h4>
+                  <p className="text-gray-900">{selectedTreatmentDetails.teeth.join(', ')}</p>
+                </div>
+              )}
+              
+              <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                <h4 className="font-medium text-indigo-700 mb-2 flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Patient Information
+                </h4>
+                <p className="text-indigo-600 text-sm">
+                  This treatment record is available for your reference. 
+                  Contact the clinic if you have any questions about this procedure.
+                </p>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowTreatmentDetails(false);
+                  setSelectedTreatmentDetails(null);
+                }}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       
       {/* Receipt Modal */}
