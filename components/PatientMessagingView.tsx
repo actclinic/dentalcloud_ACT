@@ -272,8 +272,14 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
+        <div className="p-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 text-sm">Messages</h2>
+          <p className="text-xs text-gray-500 mt-1">Contact clinic staff</p>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        </div>
       </div>
     );
   }
@@ -281,20 +287,26 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
   // Show full-screen message when messaging is disabled
   if (!messagingEnabled) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[500px] bg-gray-50 p-4">
-        <div className="text-center max-w-md mx-auto">
-          <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">Messaging System Disabled</h3>
-          <p className="text-gray-600 mb-4">The messaging feature has been temporarily disabled by the system administrator.</p>
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 text-sm rounded-lg border border-amber-200">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            Contact your clinic administrator for assistance.
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
+        <div className="p-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900 text-sm">Messages</h2>
+          <p className="text-xs text-gray-500 mt-1">Contact clinic staff</p>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="text-center max-w-md mx-auto">
+            <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Messaging System Disabled</h3>
+            <p className="text-sm text-gray-600 mb-3">The messaging feature has been temporarily disabled by the system administrator.</p>
+            <div className="inline-flex items-center gap-2 px-3 py-2 bg-amber-50 text-amber-800 text-xs rounded-lg border border-amber-200">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              Contact your clinic administrator for assistance.
+            </div>
           </div>
         </div>
       </div>
@@ -302,18 +314,18 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-6 border-b border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800">Messages</h2>
-        <p className="text-sm text-gray-500 mt-1">Contact clinic staff</p>
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
+      <div className="p-4 border-b border-gray-100">
+        <h2 className="font-semibold text-gray-900 text-sm">Messages</h2>
+        <p className="text-xs text-gray-500 mt-1">Contact clinic staff</p>
         {showBanner && (
-          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div className="flex items-start">
               <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
               <div>
-                <p className="text-sm font-medium text-yellow-800">Important Notice</p>
+                <p className="text-xs font-medium text-yellow-800">Important Notice</p>
                 <p className="text-xs text-yellow-700 mt-1">Messages older than 2 months are automatically deleted to maintain system performance.</p>
               </div>
             </div>
@@ -322,16 +334,16 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border-b border-red-100">
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className="p-3 bg-red-50 border-b border-red-100">
+          <p className="text-red-600 text-xs">{error}</p>
         </div>
       )}
 
-      <div className="flex flex-col h-[calc(100vh-200px)] md:flex-row">
+      <div className="flex flex-col flex-1 min-h-0">
         {/* Conversations sidebar - hidden by default on mobile, shown when selectedConversation is null */}
-        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} md:block w-full md:w-80 border-r border-gray-200 flex-col h-[calc(100vh-200px)] md:h-auto`}>
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="font-medium text-gray-900">Conversations</h3>
+        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} md:block w-full md:w-80 border-r border-gray-200 flex-col flex-1 min-h-0`}>
+          <div className="p-3 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="font-medium text-gray-900 text-sm">Conversations</h3>
             {conversations.length === 0 && (
               <button
                 onClick={handleCreateConversation}
@@ -344,13 +356,13 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
           
           <div className="flex-1 overflow-y-auto">
             {conversations.length === 0 ? (
-              <div className="p-8 text-center">
-                <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">No conversations yet</p>
-                <p className="text-gray-400 text-xs mt-1">Start a conversation with clinic staff</p>
+              <div className="p-4 text-center">
+                <MessageCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-xs text-gray-500">No conversations yet</p>
+                <p className="text-xs text-gray-400 mt-1">Start a conversation with clinic staff</p>
                 <button
                   onClick={handleCreateConversation}
-                  className="mt-4 bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="mt-3 bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
                 >
                   Start Chat
                 </button>
@@ -359,7 +371,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
               conversations.map((conv) => (
                 <div
                   key={conv.id}
-                  className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
                     selectedConversation?.id === conv.id ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : ''
                   }`}
                   onClick={() => {
@@ -368,8 +380,8 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-gray-900 truncate">Administrator</h4>
-                      <p className="text-sm text-gray-500 truncate mt-1">
+                      <h4 className="font-medium text-gray-900 text-sm truncate">Administrator</h4>
+                      <p className="text-xs text-gray-500 truncate mt-1">
                         {conv.last_message || 'No messages yet'}
                       </p>
                     </div>
@@ -380,7 +392,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                     )}
                   </div>
                   {conv.last_message_time && (
-                    <p className="text-xs text-gray-400 mt-2">
+                    <p className="text-xs text-gray-400 mt-1">
                       {formatDate(conv.last_message_time)} • {formatTime(conv.last_message_time)}
                     </p>
                   )}
@@ -391,11 +403,11 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         </div>
 
         {/* Messages area */}
-        <div className="flex-1 flex flex-col h-[calc(100vh-200px)] md:h-auto">
+        <div className="flex-1 flex flex-col min-h-0">
           {selectedConversation ? (
             <>
               {/* Header with back button on mobile */}
-              <div className="p-4 border-b border-gray-200 flex items-center">
+              <div className="p-3 border-b border-gray-200 flex items-center">
                 <button 
                   onClick={() => setSelectedConversation(null)}
                   className="md:hidden mr-3 p-1 rounded-full hover:bg-gray-100"
@@ -405,18 +417,18 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                   </svg>
                 </button>
                 <div className="flex items-center">
-                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
-                    <User className="w-5 h-5 text-indigo-600" />
+                  <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
+                    <User className="w-4 h-4 text-indigo-600" />
                   </div>
                   <div>
-                    <h3 className="font-medium text-gray-900">Administrator</h3>
-                    <p className="text-sm text-gray-500">Messaging Support</p>
+                    <h3 className="font-medium text-gray-900 text-sm">Administrator</h3>
+                    <p className="text-xs text-gray-500">Messaging Support</p>
                   </div>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="space-y-4">
+              <div className="flex-1 overflow-y-auto p-3">
+                <div className="space-y-3">
                   {messages.map((message) => (
                     <div
                       key={message.id}
@@ -425,13 +437,13 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                       }`}
                     >
                       <div
-                        className={`max-w-[85%] sm:max-w-xs px-4 py-2 rounded-2xl ${
+                        className={`max-w-[85%] px-3 py-2 rounded-xl ${
                           message.sender_type === 'patient'
                             ? 'bg-indigo-600 text-white rounded-br-md'
                             : 'bg-gray-100 text-gray-900 rounded-bl-md'
                         }`}
                       >
-                        <p className="text-sm">{message.content}</p>
+                        <p className="text-xs">{message.content}</p>
                         <div className={`flex items-center mt-1 ${
                           message.sender_type === 'patient' ? 'justify-end' : 'justify-start'
                         }`}>
@@ -453,7 +465,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                 </div>
               </div>
 
-              <div className="p-4 border-t border-gray-200">
+              <div className="p-3 border-t border-gray-200">
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -461,27 +473,27 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Type your message..."
-                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <button
                     onClick={handleSendMessage}
                     disabled={!newMessage.trim()}
-                    className="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <Send className="w-5 h-5" />
+                    <Send className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center p-4">
               <div className="text-center">
-                <MessageCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No conversations</h3>
-                <p className="text-gray-500">Start a conversation to contact clinic staff</p>
+                <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <h3 className="text-sm font-medium text-gray-900 mb-1">No conversations</h3>
+                <p className="text-xs text-gray-500">Start a conversation to contact clinic staff</p>
                 <button
                   onClick={handleCreateConversation}
-                  className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="mt-3 bg-indigo-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
                 >
                   Start Conversation
                 </button>
