@@ -77,7 +77,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
     checkSession();
     
     // Set up interval to check session validity
-    const sessionCheckInterval = setInterval(checkSession, 5000); // Check every 5 seconds
+    const sessionCheckInterval = setInterval(checkSession, 60000); // Check every 60 seconds
     
     return () => {
       clearInterval(sessionCheckInterval);
@@ -227,7 +227,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users }) => {
       await api.messages.createMessage(messageData);
       setNewMessage('');
       fetchMessages(selectedConversation.id);
-      fetchConversations(); // Refresh to update last message
+      // Removed fetchConversations() to prevent input field disruption
     } catch (err: any) {
       // Check if error is related to session
       if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
