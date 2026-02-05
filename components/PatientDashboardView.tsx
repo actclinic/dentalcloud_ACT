@@ -629,7 +629,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
 
         {activeTab === 'messages' && messagingEnabled && (
           <div className="px-4">
-            <PatientMessagingView currentUser={auth.getCurrentUser()} />
+            <PatientMessagingView currentUser={auth.getCurrentUser()} messagingEnabled={messagingEnabled} />
           </div>
         )}
       </div>
