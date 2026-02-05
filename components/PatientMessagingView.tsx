@@ -51,13 +51,44 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         try {
           const userId = getUserId();
           if (currentUser && userId && userId !== 'undefined') {
+            // Fetch conversations in background
             const convs = await api.messages.getConversations(userId, 'patient');
-            setConversations(convs);
+            
+            // Only update conversations if data actually changed
+            setConversations(prevConvs => {
+              // Compare conversation arrays for changes
+              const hasChanges = convs.length !== prevConvs.length || 
+                convs.some((conv, index) => {
+                  const prevConv = prevConvs[index];
+                  return !prevConv || 
+                    conv.id !== prevConv.id || 
+                    conv.last_message !== prevConv.last_message || 
+                    conv.unread_count !== prevConv.unread_count ||
+                    conv.last_message_time !== prevConv.last_message_time;
+                });
+              
+              return hasChanges ? convs : prevConvs;
+            });
             
             // If we have a selected conversation, refresh it as well
             if (selectedConversation) {
               const msgs = await api.messages.getMessages(selectedConversation.id);
-              setMessages(msgs);
+              
+              // Only update messages if data actually changed
+              setMessages(prevMsgs => {
+                // Compare message arrays for changes
+                const hasChanges = msgs.length !== prevMsgs.length || 
+                  msgs.some((msg, index) => {
+                    const prevMsg = prevMsgs[index];
+                    return !prevMsg || 
+                      msg.id !== prevMsg.id || 
+                      msg.content !== prevMsg.content || 
+                      msg.read !== prevMsg.read ||
+                      msg.timestamp !== prevMsg.timestamp;
+                  });
+                
+                return hasChanges ? msgs : prevMsgs;
+              });
             }
           }
         } catch (err: any) {

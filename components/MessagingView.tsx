@@ -92,6 +92,76 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagin
     };
   }, []);
 
+  // Effect for background refresh of conversations and messages
+  useEffect(() => {
+    let refreshInterval: NodeJS.Timeout;
+    
+    const user = auth.getCurrentUser();
+    const valid = user && 
+      user.userId && 
+      user.userId !== 'undefined' &&
+      user.role === 'admin';
+    
+    if (valid && user.userId) {
+      refreshInterval = setInterval(async () => {
+        try {
+          // Fetch conversations in background
+          const convs = await api.messages.getConversations(user.userId, 'admin');
+          
+          // Only update conversations if data actually changed
+          setConversations(prevConvs => {
+            // Compare conversation arrays for changes
+            const hasChanges = convs.length !== prevConvs.length || 
+              convs.some((conv, index) => {
+                const prevConv = prevConvs[index];
+                return !prevConv || 
+                  conv.id !== prevConv.id || 
+                  conv.last_message !== prevConv.last_message || 
+                  conv.unread_count !== prevConv.unread_count ||
+                  conv.last_message_time !== prevConv.last_message_time;
+              });
+            
+            return hasChanges ? convs : prevConvs;
+          });
+          
+          // If we have a selected conversation, refresh it as well
+          if (selectedConversation) {
+            const msgs = await api.messages.getMessages(selectedConversation.id);
+            
+            // Only update messages if data actually changed
+            setMessages(prevMsgs => {
+              // Compare message arrays for changes
+              const hasChanges = msgs.length !== prevMsgs.length || 
+                msgs.some((msg, index) => {
+                  const prevMsg = prevMsgs[index];
+                  return !prevMsg || 
+                    msg.id !== prevMsg.id || 
+                    msg.content !== prevMsg.content || 
+                    msg.read !== prevMsg.read ||
+                    msg.timestamp !== prevMsg.timestamp;
+                });
+              
+              return hasChanges ? msgs : prevMsgs;
+            });
+          }
+        } catch (err: any) {
+          // Only show error if it's a session-related issue
+          if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
+            setError(err.message);
+            setSessionState({ user: null, isValid: false });
+          }
+          // Otherwise, silently ignore network errors during background refresh
+        }
+      }, 30000); // Refresh every 30 seconds in background
+    }
+    
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [selectedConversation?.id]);
+
   useEffect(() => {
     const user = auth.getCurrentUser();
     const valid = user && 
@@ -200,7 +270,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagin
       await api.messages.markAsRead(conversationId, user.userId, 'admin');
       // Only refresh if we're still on the same conversation
       if (selectedConversation?.id === conversationId) {
-        fetchConversations();
+        fetchConversations(); // This will be handled by background refresh comparison
       }
     } catch (err: any) {
       console.error('Failed to mark as read:', err);
@@ -235,7 +305,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagin
       await api.messages.createMessage(messageData);
       setNewMessage('');
       fetchMessages(selectedConversation.id);
-      // Removed fetchConversations() to prevent input field disruption
+      // Background refresh will automatically update conversation list
     } catch (err: any) {
       // Check if error is related to session
       if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
