@@ -1726,8 +1726,7 @@ export const api = {
           users!inner(username),
           last_message,
           last_message_time,
-          created_at,
-          messages(count, recipient_id, recipient_type, read)
+          created_at
         `)
         .order('last_message_time', { ascending: false });
 
@@ -1737,11 +1736,45 @@ export const api = {
         query = query.eq('admin_id', userId);
       }
 
-      const { data, error } = await query;
+      const { data: conversations, error } = await query;
       
       if (error) throw new Error(error.message);
       
-      return data.map((conv: any) => ( {
+      // Get unread message counts for each conversation
+      const conversationIds = conversations.map((conv: any) => conv.id);
+      let unreadQuery = supabase
+        .from('messages')
+        .select('conversation_id, recipient_id, recipient_type, read')
+        .in('conversation_id', conversationIds)
+        .eq('recipient_id', userId)
+        .eq('recipient_type', userType)
+        .eq('read', false);
+
+      const { data: unreadMessages, error: unreadError } = await unreadQuery;
+      
+      if (unreadError) {
+        console.warn('Error fetching unread message counts:', unreadError.message);
+        // Return conversations with 0 unread count if unread query fails
+        return conversations.map((conv: any) => ({
+          id: conv.id,
+          patient_id: conv.patient_id,
+          patient_name: conv.patients?.name || (Array.isArray(conv.patients) ? conv.patients[0]?.name : 'Unknown Patient'),
+          admin_id: conv.admin_id,
+          admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
+          last_message: conv.last_message,
+          last_message_time: conv.last_message_time,
+          unread_count: 0,
+          created_at: conv.created_at
+        }));
+      }
+      
+      // Create a map of conversation_id to unread count
+      const unreadCountMap = unreadMessages.reduce((acc: Record<string, number>, msg: any) => {
+        acc[msg.conversation_id] = (acc[msg.conversation_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      return conversations.map((conv: any) => ({
         id: conv.id,
         patient_id: conv.patient_id,
         patient_name: conv.patients?.name || (Array.isArray(conv.patients) ? conv.patients[0]?.name : 'Unknown Patient'),
@@ -1749,11 +1782,7 @@ export const api = {
         admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
         last_message: conv.last_message,
         last_message_time: conv.last_message_time,
-        unread_count: conv.messages?.filter((msg: any) => 
-          msg.recipient_id === userId && 
-          msg.recipient_type === userType && 
-          !msg.read
-        )?.length || 0,
+        unread_count: unreadCountMap[conv.id] || 0,
         created_at: conv.created_at
       }));
     },
