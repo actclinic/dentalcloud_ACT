@@ -125,7 +125,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
       fetchMessages(selectedConversation.id, true); // Show loading when switching conversations
       markConversationAsRead(selectedConversation.id);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation?.id]);
 
   useEffect(() => {
     scrollToBottom();
@@ -181,8 +181,8 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
     if (currentUser && userId && userId !== 'undefined') {
       try {
         await api.messages.markAsRead(conversationId, userId, 'patient');
-        // Refresh conversations to update unread counts
-        fetchConversations(false); // Don't show loading during background update
+        // Background refresh will automatically update conversation list
+        // No need to manually refresh here
       } catch (err: any) {
         console.error('Failed to mark as read:', err);
       }

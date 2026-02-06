@@ -1727,7 +1727,7 @@ export const api = {
           last_message,
           last_message_time,
           created_at,
-          messages(count)
+          messages(count, recipient_id, recipient_type, read)
         `)
         .order('last_message_time', { ascending: false });
 
@@ -1749,7 +1749,11 @@ export const api = {
         admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
         last_message: conv.last_message,
         last_message_time: conv.last_message_time,
-        unread_count: conv.messages?.[0]?.count || 0,
+        unread_count: conv.messages?.filter((msg: any) => 
+          msg.recipient_id === userId && 
+          msg.recipient_type === userType && 
+          !msg.read
+        )?.length || 0,
         created_at: conv.created_at
       }));
     },

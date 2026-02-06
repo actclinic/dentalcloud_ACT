@@ -179,7 +179,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagin
       fetchMessages(selectedConversation.id);
       markConversationAsRead(selectedConversation.id);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation?.id]);
 
   useEffect(() => {
     scrollToBottom();
@@ -268,10 +268,8 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagin
     
     try {
       await api.messages.markAsRead(conversationId, user.userId, 'admin');
-      // Only refresh if we're still on the same conversation
-      if (selectedConversation?.id === conversationId) {
-        fetchConversations(); // This will be handled by background refresh comparison
-      }
+      // Background refresh will automatically update conversation list
+      // No need to manually refresh here
     } catch (err: any) {
       console.error('Failed to mark as read:', err);
     }
