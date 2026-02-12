@@ -97,6 +97,28 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
   };
 
+  const getToothPosition = (tooth: number) => {
+    // Universal permanent numbering (1-32)
+    if (tooth >= 1 && tooth <= 8) return 'Upper Right';
+    if (tooth >= 9 && tooth <= 16) return 'Upper Left';
+    if (tooth >= 17 && tooth <= 24) return 'Lower Left';
+    if (tooth >= 25 && tooth <= 32) return 'Lower Right';
+
+    // FDI permanent and primary numbering (11-48, 51-85)
+    const quadrant = Math.floor(tooth / 10);
+    if (quadrant === 1 || quadrant === 5) return 'Upper Right';
+    if (quadrant === 2 || quadrant === 6) return 'Upper Left';
+    if (quadrant === 3 || quadrant === 7) return 'Lower Left';
+    if (quadrant === 4 || quadrant === 8) return 'Lower Right';
+
+    return 'Unknown Position';
+  };
+
+  const formatTeethWithPosition = (teeth: number[]) => {
+    if (!teeth || teeth.length === 0) return 'General';
+    return teeth.map((tooth) => `${tooth} (${getToothPosition(tooth)})`).join(', ');
+  };
+
   const allowedFile = (file: File) => file.type.startsWith('image/') || file.type === 'application/pdf';
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -210,7 +232,9 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-500">{rec.date}</td>
                       <td className="px-4 py-3">
-                        <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{rec.teeth.length > 0 ? rec.teeth.join(', ') : 'General'}</span>
+                        <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded leading-relaxed inline-block">
+                          {formatTeethWithPosition(rec.teeth)}
+                        </span>
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-800">{rec.description}</td>
                       <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
