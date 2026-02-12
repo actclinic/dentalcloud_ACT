@@ -104,12 +104,18 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     if (tooth >= 17 && tooth <= 24) return 'Lower Left';
     if (tooth >= 25 && tooth <= 32) return 'Lower Right';
 
-    // FDI permanent and primary numbering (11-48, 51-85)
+    // FDI permanent numbering (11-48)
     const quadrant = Math.floor(tooth / 10);
-    if (quadrant === 1 || quadrant === 5) return 'Upper Right';
-    if (quadrant === 2 || quadrant === 6) return 'Upper Left';
-    if (quadrant === 3 || quadrant === 7) return 'Lower Left';
-    if (quadrant === 4 || quadrant === 8) return 'Lower Right';
+    if (quadrant === 1) return 'Upper Right';
+    if (quadrant === 2) return 'Upper Left';
+    if (quadrant === 3) return 'Lower Left';
+    if (quadrant === 4) return 'Lower Right';
+
+    // FDI primary numbering (51-85) displayed in chart orientation (mirrored left/right)
+    if (quadrant === 5) return 'Upper Left';
+    if (quadrant === 6) return 'Upper Right';
+    if (quadrant === 7) return 'Lower Right';
+    if (quadrant === 8) return 'Lower Left';
 
     return 'Unknown Position';
   };
