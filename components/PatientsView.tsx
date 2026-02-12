@@ -36,6 +36,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [authModal, setAuthModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
   const [editModal, setEditModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
+  const [redeemModal, setRedeemModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
+  const [redeemPointsInput, setRedeemPointsInput] = useState('');
   const [editData, setEditData] = useState({ name: '', email: '', phone: '', medicalHistory: '' });
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,30 +74,24 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const canRedeem = (patient: Patient) => (patient.loyalty_points || 0) > 0;
 
   const handleRedeemClick = (patient: Patient) => {
-    if (!onRedeemPoints) return;
+    setRedeemModal({ open: true, patient });
+    setRedeemPointsInput(Math.min(patient.loyalty_points || 0, 1000).toString());
+  };
 
-    const availablePoints = patient.loyalty_points || 0;
-    if (availablePoints <= 0) {
-      alert('This patient has no points to redeem.');
-      return;
-    }
+  const handleRedeemSubmit = () => {
+    if (!onRedeemPoints || !redeemModal.patient) return;
 
-    const input = prompt(
-      `Enter points to redeem for ${patient.name} (Available: ${availablePoints}):`,
-      Math.min(availablePoints, 1000).toString()
-    );
+    const availablePoints = redeemModal.patient.loyalty_points || 0;
+    const points = parseInt(redeemPointsInput, 10);
 
-    if (input === null) return;
-
-    const points = parseInt(input, 10);
     if (isNaN(points) || points <= 0 || points > availablePoints) {
       alert(`Please enter a valid amount between 1 and ${availablePoints}.`);
       return;
     }
 
-    if (confirm(`Redeem ${points} points?`)) {
-      onRedeemPoints(patient, points, 0);
-    }
+    onRedeemPoints(redeemModal.patient, points, 0);
+    setRedeemModal({ open: false, patient: null });
+    setRedeemPointsInput('');
   };
 
   return (
@@ -455,6 +451,52 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
           </button>
         </form>
+      </Modal>
+    )}
+
+    {redeemModal.open && redeemModal.patient && (
+      <Modal
+        title="Redeem Loyalty Points"
+        onClose={() => {
+          setRedeemModal({ open: false, patient: null });
+          setRedeemPointsInput('');
+        }}
+      >
+        <div className="space-y-5">
+          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Patient</p>
+            <p className="text-lg font-black text-amber-900">{redeemModal.patient.name}</p>
+            <p className="text-sm text-amber-700 mt-1">Available Points: <span className="font-bold">{redeemModal.patient.loyalty_points || 0}</span></p>
+          </div>
+
+          <Input
+            label="Points to Redeem"
+            type="number"
+            min={1}
+            max={redeemModal.patient.loyalty_points || 0}
+            value={redeemPointsInput}
+            onChange={(e: any) => setRedeemPointsInput(e.target.value)}
+            autoFocus
+          />
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setRedeemModal({ open: false, patient: null });
+                setRedeemPointsInput('');
+              }}
+              className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRedeemSubmit}
+              className="flex-1 bg-amber-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-amber-600/20 hover:bg-amber-700 transition-all"
+            >
+              Redeem
+            </button>
+          </div>
+        </div>
       </Modal>
     )}
   </div>

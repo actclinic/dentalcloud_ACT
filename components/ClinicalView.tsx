@@ -66,11 +66,29 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [authModal, setAuthModal] = React.useState(false);
   const [editModal, setEditModal] = React.useState(false);
+  const [redeemModal, setRedeemModal] = React.useState(false);
+  const [redeemPointsInput, setRedeemPointsInput] = React.useState('');
   const [editData, setEditData] = React.useState({ name: '', email: '', phone: '', medicalHistory: '' });
   const [newPassword, setNewPassword] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
+
+  const handleRedeemSubmit = () => {
+    if (!selectedPatient || !onRedeemPoints) return;
+
+    const availablePoints = selectedPatient.loyalty_points || 0;
+    const points = parseInt(redeemPointsInput, 10);
+
+    if (isNaN(points) || points <= 0 || points > availablePoints) {
+      alert(`Please enter a valid amount between 1 and ${availablePoints}.`);
+      return;
+    }
+
+    onRedeemPoints(points, 0);
+    setRedeemModal(false);
+    setRedeemPointsInput('');
+  };
 
   const formatBytes = (bytes: number) => {
     if (!bytes) return '0 B';
@@ -264,17 +282,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                         <button 
                           onClick={() => {
                             const availablePoints = selectedPatient.loyalty_points || 0;
-                            const input = prompt(`Enter points to redeem (Available: ${availablePoints}):`, Math.min(availablePoints, 1000).toString());
-                            if (input) {
-                              const points = parseInt(input, 10);
-                              if (isNaN(points) || points <= 0 || points > availablePoints) {
-                                alert(`Please enter a valid amount between 1 and ${availablePoints}.`);
-                                return;
-                              }
-                              if(confirm(`Redeem ${points} points?`)) {
-                                onRedeemPoints(points, 0);
-                              }
-                            }
+                            setRedeemPointsInput(Math.min(availablePoints, 1000).toString());
+                            setRedeemModal(true);
                           }}
                           className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1"
                         >
@@ -444,6 +453,52 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
                      </button>
                    </form>
+                 </Modal>
+               )}
+
+               {redeemModal && selectedPatient && (
+                 <Modal
+                   title="Redeem Loyalty Points"
+                   onClose={() => {
+                     setRedeemModal(false);
+                     setRedeemPointsInput('');
+                   }}
+                 >
+                   <div className="space-y-5">
+                     <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                       <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Patient</p>
+                       <p className="text-lg font-black text-amber-900">{selectedPatient.name}</p>
+                       <p className="text-sm text-amber-700 mt-1">Available Points: <span className="font-bold">{selectedPatient.loyalty_points || 0}</span></p>
+                     </div>
+
+                     <Input
+                       label="Points to Redeem"
+                       type="number"
+                       min={1}
+                       max={selectedPatient.loyalty_points || 0}
+                       value={redeemPointsInput}
+                       onChange={(e: any) => setRedeemPointsInput(e.target.value)}
+                       autoFocus
+                     />
+
+                     <div className="flex gap-3">
+                       <button
+                         onClick={() => {
+                           setRedeemModal(false);
+                           setRedeemPointsInput('');
+                         }}
+                         className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-all"
+                       >
+                         Cancel
+                       </button>
+                       <button
+                         onClick={handleRedeemSubmit}
+                         className="flex-1 bg-amber-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-amber-600/20 hover:bg-amber-700 transition-all"
+                       >
+                         Redeem
+                       </button>
+                     </div>
+                   </div>
                  </Modal>
                )}
 
