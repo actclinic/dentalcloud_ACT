@@ -7,9 +7,7 @@ interface SelectorProps {
   onDeselectAll: () => void;
 }
 
-// Mapping between Universal (1-32) and ISO (11-48) numbering systems
-// NOTE: The react-teeth-selector library uses Universal numbering (1-32) directly.
-// These conversion functions are kept for compatibility but may not be needed.
+// Mapping between Universal (1-32) and FDI/ISO permanent dentition numbering (11-48)
 const universalToISO = (n: number): number => {
   if (n >= 1 && n <= 8) return 19 - n;
   if (n >= 9 && n <= 16) return n + 12;
@@ -27,9 +25,9 @@ const isoToUniversal = (n: number): number => {
 };
 
 export const ToothSelector: React.FC<SelectorProps> = ({ selectedTeeth, onToggleTooth, onDeselectAll }) => {
-  // IMPORTANT: Check if the library uses Universal (1-32) or ISO/FDI (11-48) numbering
-  // Set this to false if the library uses Universal numbering directly
-  const USE_ISO_CONVERSION = false; // Changed to false to test if library uses Universal directly
+  // react-teeth-selector emits FDI-style IDs from the SVG (11-48 permanent, 51-85 primary)
+  // Our app stores Universal numbering (1-32), so convert between systems.
+  const USE_ISO_CONVERSION = true;
   
   // Convert array of universal tooth numbers to ISO object map format (if needed)
   const selectedTeethMap = useMemo(() => {
@@ -42,24 +40,31 @@ export const ToothSelector: React.FC<SelectorProps> = ({ selectedTeeth, onToggle
     return map;
   }, [selectedTeeth]);
 
+  const isPermanentFDI = (n: number): boolean => {
+    return (n >= 11 && n <= 18) || (n >= 21 && n <= 28) || (n >= 31 && n <= 38) || (n >= 41 && n <= 48);
+  };
+
   // Handle tooth click/toggle from react-teeth-selector
   const handleTeethChange = (newMap: any, info: any) => {
-    // The library passes the tooth information in the second argument
-    const rawId = info?.id || info?.number || info;
+    // Prefer the raw numeric FDI tooth number from the library callback.
+    // `id` may be like "tooth-65" (primary tooth), which breaks backend validation (1-32).
+    const rawId = info?.number ?? info?.id ?? info;
     
     if (rawId != null) {
-      // Parse the ID to a number
+      // Parse the ID to a number (supports both "65" and "tooth-65")
       const cleanId = rawId.toString().replace(/\D/g, '');
       const toothId = parseInt(cleanId, 10);
       
       if (!isNaN(toothId)) {
-        // DEBUG: Log tooth selection for troubleshooting
-        console.log('[ToothSelector] Library returned ID:', toothId);
-        
-        // Convert to Universal if library uses ISO, otherwise use directly
+        // Reject primary/baby teeth (51-85). Clinical treatment flow expects permanent teeth only (1-32).
+        if (USE_ISO_CONVERSION && !isPermanentFDI(toothId)) {
+          console.warn('[ToothSelector] Ignoring non-permanent tooth selection:', toothId);
+          return;
+        }
+
+        // Convert FDI -> Universal for app state and API payloads.
         const universalId = USE_ISO_CONVERSION ? isoToUniversal(toothId) : toothId;
-        console.log('[ToothSelector] Final Universal ID:', universalId);
-        
+
         onToggleTooth(universalId);
       }
     }
@@ -103,8 +108,6 @@ export const ToothSelector: React.FC<SelectorProps> = ({ selectedTeeth, onToggle
             onChange={handleTeethChange}
             width="100%"
             height="auto"
-            selectedColor="#3B82F6"
-            hoverColor="#93C5FD"
           />
         </div>
       </div>
