@@ -740,7 +740,11 @@ const App: React.FC = () => {
       if (selectedPatient && targetPatient.id === selectedPatient.id) {
         setSelectedPatient({ ...selectedPatient, balance: res.new_balance, loyalty_points: res.new_points });
       }
-      alert(`Redeemed ${points} points for ${amount} MMK discount!`);
+      if (amount > 0) {
+        alert(`Redeemed ${points} points for ${amount} MMK discount!`);
+      } else {
+        alert(`Redeemed ${points} points successfully.`);
+      }
     } catch (err: any) {
       alert(err.message);
     }

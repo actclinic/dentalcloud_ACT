@@ -1715,12 +1715,16 @@ export const api = {
 
       if (updateError) throw new Error(updateError.message);
 
+      const redeemDescription = amount > 0
+        ? `Redeemed ${points} points for discount of ${amount}`
+        : `Redeemed ${points} points`;
+
       await api.loyalty.addTransaction({
         patient_id: patientId,
         location_id: locationId,
         points: -points,
         type: 'REDEEMED',
-        description: `Redeemed ${points} points for discount of ${amount}`
+        description: redeemDescription
       });
 
       return { status: 'success', new_points: newPoints, new_balance: newBalance };

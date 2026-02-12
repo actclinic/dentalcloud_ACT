@@ -69,13 +69,34 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     exportPatientsToPDF(patients, currency);
   };
 
-  // Get redemption rule
-  const redeemRule = useMemo(() => {
-    return loyaltyRules.find(r => r.event_type === 'REDEEM' && r.active);
-  }, [loyaltyRules]);
+  const canRedeem = (patient: Patient) => (patient.loyalty_points || 0) > 0;
 
-  const redemptionRate = redeemRule ? redeemRule.points_per_unit : 1; // Default 1 MMK per point
-  const minRedeemPoints = redeemRule ? (redeemRule.min_amount || 0) : 500;
+  const handleRedeemClick = (patient: Patient) => {
+    if (!onRedeemPoints) return;
+
+    const availablePoints = patient.loyalty_points || 0;
+    if (availablePoints <= 0) {
+      alert('This patient has no points to redeem.');
+      return;
+    }
+
+    const input = prompt(
+      `Enter points to redeem for ${patient.name} (Available: ${availablePoints}):`,
+      Math.min(availablePoints, 1000).toString()
+    );
+
+    if (input === null) return;
+
+    const points = parseInt(input, 10);
+    if (isNaN(points) || points <= 0 || points > availablePoints) {
+      alert(`Please enter a valid amount between 1 and ${availablePoints}.`);
+      return;
+    }
+
+    if (confirm(`Redeem ${points} points?`)) {
+      onRedeemPoints(patient, points, 0);
+    }
+  };
 
   return (
   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
@@ -183,40 +204,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
-                      {loyaltyEnabled && onRedeemPoints && (patient.loyalty_points >= minRedeemPoints) && (
-                        <button 
+                      {loyaltyEnabled && onRedeemPoints && canRedeem(patient) && (
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const input = prompt(`Redeem points for ${patient.name} (Available: ${patient.loyalty_points}, Min: ${minRedeemPoints}):`, Math.min(patient.loyalty_points, 1000).toString());
-                            if (input) {
-                              const points = parseInt(input);
-                              if (isNaN(points) || points < minRedeemPoints || points > patient.loyalty_points) {
-                                alert(`Please enter a valid amount between ${minRedeemPoints} and ${patient.loyalty_points}.`);
-                                return;
-                              }
-                              const amount = points * redemptionRate;
-                              if(confirm(`Redeem ${points} points for ${formatCurrency(amount, currency)} discount?`)) {
-                                onRedeemPoints(patient, points, amount);
-                              }
-                            }
+                            handleRedeemClick(patient);
                           }}
                           className="text-amber-600 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
                         >
                           <Award size={14} /> Redeem
                         </button>
                       )}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAuthModal({ open: true, patient });
-                          setNewPassword('');
-                        }}
-                        className="text-amber-600 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                        title={patient.has_account ? "Change password" : "Create portal account"}
-                      >
-                        <User size={14} /> {patient.has_account ? 'Update Auth' : 'Setup Auth'}
-                      </button>
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditModal({ open: true, patient });
@@ -321,6 +320,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               >
                 <User size={14} /> {patient.has_account ? 'Update Portal Account' : 'Setup Portal Account'}
               </button>
+
+              {loyaltyEnabled && onRedeemPoints && canRedeem(patient) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRedeemClick(patient);
+                  }}
+                  className="w-full mt-2 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-100 flex items-center justify-center gap-2"
+                >
+                  <Award size={14} /> Redeem
+                </button>
+              )}
             </div>
           ))}
         </div>

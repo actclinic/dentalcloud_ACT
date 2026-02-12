@@ -70,15 +70,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [newPassword, setNewPassword] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  // Get redemption rule
-  const redeemRule = React.useMemo(() => {
-    return loyaltyRules.find(r => r.event_type === 'REDEEM' && r.active);
-  }, [loyaltyRules]);
-
-  const redemptionRate = redeemRule ? redeemRule.points_per_unit : 1; // Default 1 MMK per point
-  const minRedeemPoints = redeemRule ? (redeemRule.min_amount || 0) : 500;
-  
-  const canRedeem = (selectedPatient?.loyalty_points || 0) >= minRedeemPoints;
+  const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
 
   const formatBytes = (bytes: number) => {
     if (!bytes) return '0 B';
@@ -271,22 +263,22 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                       {onRedeemPoints && canRedeem && (
                         <button 
                           onClick={() => {
-                            const input = prompt(`Enter points to redeem (Available: ${selectedPatient.loyalty_points}, Min: ${minRedeemPoints}):`, Math.min(selectedPatient.loyalty_points, 1000).toString());
+                            const availablePoints = selectedPatient.loyalty_points || 0;
+                            const input = prompt(`Enter points to redeem (Available: ${availablePoints}):`, Math.min(availablePoints, 1000).toString());
                             if (input) {
-                              const points = parseInt(input);
-                              if (isNaN(points) || points < minRedeemPoints || points > selectedPatient.loyalty_points) {
-                                alert(`Please enter a valid amount between ${minRedeemPoints} and ${selectedPatient.loyalty_points}.`);
+                              const points = parseInt(input, 10);
+                              if (isNaN(points) || points <= 0 || points > availablePoints) {
+                                alert(`Please enter a valid amount between 1 and ${availablePoints}.`);
                                 return;
                               }
-                              const amount = points * redemptionRate;
-                              if(confirm(`Redeem ${points} points for ${formatCurrency(amount, currency)} discount?`)) {
-                                onRedeemPoints(points, amount);
+                              if(confirm(`Redeem ${points} points?`)) {
+                                onRedeemPoints(points, 0);
                               }
                             }
                           }}
                           className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1"
                         >
-                          <Zap size={12} /> Redeem Points
+                          <Zap size={12} /> Redeem
                         </button>
                       )}
                    </div>
