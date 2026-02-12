@@ -577,10 +577,24 @@ export const api = {
       if (!data.location_id) throw new Error('location_id is required');
       
       // 1. Validate Tooth Numbers
+      // Supports:
+      // - Universal permanent teeth: 1-32
+      // - FDI primary teeth: 51-85 (used by react-teeth-selector for baby teeth)
+      const isValidToothNumber = (t: number) => {
+        const isUniversalPermanent = t >= 1 && t <= 32;
+        const isFDIPrimary =
+          (t >= 51 && t <= 55) ||
+          (t >= 61 && t <= 65) ||
+          (t >= 71 && t <= 75) ||
+          (t >= 81 && t <= 85);
+
+        return isUniversalPermanent || isFDIPrimary;
+      };
+
       if (data.teeth && data.teeth.length > 0) {
-        const invalidTeeth = data.teeth.filter(t => t < 1 || t > 32);
+        const invalidTeeth = data.teeth.filter(t => !isValidToothNumber(t));
         if (invalidTeeth.length > 0) {
-          throw new Error(`Invalid tooth numbers: ${invalidTeeth.join(', ')}. Must be between 1 and 32.`);
+          throw new Error(`Invalid tooth numbers: ${invalidTeeth.join(', ')}. Must be Universal 1-32 or primary 51-85.`);
         }
       }
 

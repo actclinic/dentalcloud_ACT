@@ -40,10 +40,6 @@ export const ToothSelector: React.FC<SelectorProps> = ({ selectedTeeth, onToggle
     return map;
   }, [selectedTeeth]);
 
-  const isPermanentFDI = (n: number): boolean => {
-    return (n >= 11 && n <= 18) || (n >= 21 && n <= 28) || (n >= 31 && n <= 38) || (n >= 41 && n <= 48);
-  };
-
   // Handle tooth click/toggle from react-teeth-selector
   const handleTeethChange = (newMap: any, info: any) => {
     // Prefer the raw numeric FDI tooth number from the library callback.
@@ -56,13 +52,8 @@ export const ToothSelector: React.FC<SelectorProps> = ({ selectedTeeth, onToggle
       const toothId = parseInt(cleanId, 10);
       
       if (!isNaN(toothId)) {
-        // Reject primary/baby teeth (51-85). Clinical treatment flow expects permanent teeth only (1-32).
-        if (USE_ISO_CONVERSION && !isPermanentFDI(toothId)) {
-          console.warn('[ToothSelector] Ignoring non-permanent tooth selection:', toothId);
-          return;
-        }
-
-        // Convert FDI -> Universal for app state and API payloads.
+        // Convert FDI -> Universal for permanent teeth.
+        // For primary teeth (51-85), conversion returns the same value.
         const universalId = USE_ISO_CONVERSION ? isoToUniversal(toothId) : toothId;
 
         onToggleTooth(universalId);
