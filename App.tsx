@@ -311,7 +311,7 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = async (overrideLocationId?: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -326,7 +326,7 @@ const App: React.FC = () => {
       setLocations(locData);
       
       // If no location selected but locations exist, select first one
-      let locId = currentLocationId;
+      let locId = overrideLocationId || currentLocationId;
       if (!locId && locData.length > 0) {
         locId = locData[0].id;
         setCurrentLocationId(locId);
@@ -382,7 +382,7 @@ const App: React.FC = () => {
   const handleLocationChange = (locId: string) => {
     setCurrentLocationId(locId);
     localStorage.setItem('currentLocationId', locId);
-    fetchInitialData();
+    fetchInitialData(locId);
   };
 
   useEffect(() => {
