@@ -185,8 +185,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         <h2 className="text-xl font-bold text-gray-800">Appointment Schedule</h2>
         <p className="text-sm text-gray-500">Manage patient appointments and scheduling</p>
       </div>
-      <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-        <div className="relative flex-1 sm:flex-initial">
+      <div className="flex flex-col gap-3 w-full md:w-auto md:items-end">
+        <div className="relative w-full md:w-80">
           <input
             type="text"
             placeholder="Search appointments..."
@@ -196,28 +196,28 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
               setUpcomingPage(1); // Reset to first page when searching
               setPastPage(1);
             }}
-            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"
+            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
           />
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <button
             onClick={handleDownloadPDF}
             disabled={appointments.length === 0}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FileDown className="w-4 h-4" /> <span className="hidden sm:inline">Export PDF</span>
           </button>
           <button
             onClick={onAddAppointment}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+            className="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Appointment</span>
           </button>
         </div>
-        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 w-full md:w-auto">
           <button
             onClick={() => setViewMode('current')}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
@@ -579,5 +579,6 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 };
 
 export default AppointmentsView;
+
 
 
