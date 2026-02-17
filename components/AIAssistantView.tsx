@@ -351,6 +351,8 @@ How can I assist you today?
       return 'Appointment scheduling discussion';
     } else if (lowerUser.includes('financial') || lowerUser.includes('report')) {
       return 'Financial analysis discussion';
+    } else if (lowerUser.includes('doctor') && (lowerUser.includes('famous') || lowerUser.includes('popular') || lowerUser.includes('treatment'))) {
+      return 'Doctor popularity reporting discussion';
     } else if (lowerUser.includes('patient') && (lowerUser.includes('find') || lowerUser.includes('search'))) {
       return 'Patient lookup discussion';
     }
@@ -606,6 +608,11 @@ Inventory Management:
 1. "Show me low stock items"
 2. "Restock Amoxicillin by 30 units"
 3. "Verify updated inventory"
+
+Reporting Workflow:
+1. "Show me doctor popularity for last 30 days"
+2. "Which doctor is most famous by treatment count?"
+3. "Give me top 5 doctors by treatments"
 
 MODE EXPLANATIONS
 =================
@@ -946,6 +953,23 @@ Need more detailed help?
              recordDate.getFullYear() === currentDate.getFullYear();
     }).reduce((sum, tr) => sum + (tr.cost || 0), 0);
 
+    const doctorPopularity30dMap = new Map<string, number>();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    treatmentRecords
+      .filter(tr => tr.date >= thirtyDaysAgoStr)
+      .forEach(tr => {
+        const doctorName = tr.doctor_name?.trim() || 'Unassigned Doctor';
+        doctorPopularity30dMap.set(doctorName, (doctorPopularity30dMap.get(doctorName) || 0) + 1);
+      });
+
+    const doctorPopularity30d = Array.from(doctorPopularity30dMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, treatments]) => ({ name, treatments }));
+
     const monthlyExpenses = expenses.filter(exp => {
       const expDate = new Date(exp.date);
       const currentDate = new Date();
@@ -1024,6 +1048,10 @@ Need more detailed help?
         weekly_expenses: expenses.filter(exp => exp.date >= sevenDaysAgoStr).reduce((sum, exp) => sum + (exp.amount || 0), 0),
         monthly_expenses: monthlyExpenses,
         monthly_profit: monthlyRevenue - monthlyExpenses
+      },
+      reporting_insights: {
+        doctor_popularity_30d: doctorPopularity30d,
+        top_doctor_30d: doctorPopularity30d[0] || null
       },
       inventory_insights: {
         low_stock_items: medicines.filter(m => m.stock <= (m.min_stock || 0)).length,
@@ -1274,6 +1302,7 @@ When users ask complex questions, think through this framework:
 - Prevention strategies
 - Follow-up recommendations
 - Alternative treatment options
+- Doctor popularity insights (identify most famous doctor by treatment volume in the last 30 days when asked)
 
 Today: ${contextData.td}
 Current Mode: ${isAgentMode ? 'AGENT (Full CRUD access)' : 'ASK (Read-only analysis)'}
@@ -1809,6 +1838,37 @@ ${tableContent}
 4. Monitor low-volume treatments for discontinuation
 
 📈 *Treatment data reflects recent practice activity. Would you like geographic or temporal breakdowns?*`);
+        } else if (lowerMessage.includes('doctor') && (lowerMessage.includes('famous') || lowerMessage.includes('popular') || lowerMessage.includes('popularity'))) {
+          const contextData: any = getContextualData();
+          const doctorPopularity = contextData.reporting_insights?.doctor_popularity_30d || [];
+
+          if (doctorPopularity.length === 0) {
+            resolve(`👨‍⚕️ **Doctor Popularity Report (Last 30 Days)**
+
+No treatment data is available in the last 30 days, so I cannot rank doctor popularity yet.
+
+💡 Once treatments are recorded with doctor names, I can show the top-performing doctors automatically.`);
+          } else {
+            const topDoctor = doctorPopularity[0];
+            const totalTreatments = doctorPopularity.reduce((sum: number, d: any) => sum + (d.treatments || 0), 0);
+
+            const rows = doctorPopularity.slice(0, 5)
+              .map((d: any, index: number) => {
+                const share = totalTreatments ? Math.round((d.treatments / totalTreatments) * 100) : 0;
+                return `| #${index + 1} | ${d.name} | ${d.treatments} | ${share}% |`;
+              })
+              .join('\n');
+
+            resolve(`👨‍⚕️ **Doctor Popularity Report (Last 30 Days)**
+
+**Most famous doctor by treatment volume:** **${topDoctor.name}** (${topDoctor.treatments} treatments)
+
+| Rank | Doctor | Treatments | Share |
+|------|--------|------------|-------|
+${rows}
+
+💡 This matches the new dashboard graph: **Doctor Popularity (Last 30 Days)**.`);
+          }
         } else {
           resolve(`🤖 **I'm here to help with clinical dental assistance!**
 
@@ -3533,6 +3593,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 };
 
 export default AIAssistantView;
+
 
 
 
