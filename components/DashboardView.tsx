@@ -183,6 +183,31 @@ const DashboardView: React.FC<DashboardViewProps> = ({ patients, appointments, t
       }));
   }, [treatmentRecords]);
 
+  // Doctor Popularity (most treatments handled, last 30 days)
+  const doctorPopularityData = useMemo(() => {
+    const today = new Date();
+    const cutoff = new Date();
+    cutoff.setDate(today.getDate() - 29);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+
+    const map = new Map<string, number>();
+
+    treatmentRecords
+      .filter(rec => rec.date >= cutoffStr)
+      .forEach(rec => {
+        const doctorName = rec.doctor_name?.trim() || 'Unassigned Doctor';
+        map.set(doctorName, (map.get(doctorName) || 0) + 1);
+      });
+
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, count]) => ({
+        name: name.length > 18 ? `${name.substring(0, 18)}...` : name,
+        count
+      }));
+  }, [treatmentRecords]);
+
   // New Patients by Month (last 6 months)
   const newPatientsMonthlyData = useMemo(() => {
     const now = new Date();
@@ -390,6 +415,34 @@ const DashboardView: React.FC<DashboardViewProps> = ({ patients, appointments, t
               />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">Doctor Popularity (Last 30 Days)</h3>
+        <p className="text-xs text-gray-500 mb-4">Most famous doctors by number of treatments completed</p>
+        <div className="h-[300px] w-full min-h-[300px]">
+          {doctorPopularityData.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No treatment records available in the last 30 days.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={doctorPopularityData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#6B7280', fontSize: 11 }}
+                  angle={-20}
+                  textAnchor="end"
+                  height={70}
+                />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
+                <Tooltip formatter={(value: number) => [`${value} treatments`, 'Treatments']} />
+                <Bar dataKey="count" fill="#F59E0B" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
     </div>
