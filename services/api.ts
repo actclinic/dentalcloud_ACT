@@ -621,18 +621,21 @@ export const api = {
     getHistory: async (patientId: string): Promise<ClinicalRecord[]> => {
       const { data, error } = await supabase
         .from('treatments')
-        .select('*')
+        .select('*, doctors(name)')
         .eq('patient_id', patientId)
         .order('date', { ascending: false });
 
       if (error) throw new Error(error.message);
-      return data || [];
+      return (data || []).map((rec: any) => ({
+        ...rec,
+        doctor_name: rec.doctors?.name || undefined
+      }));
     },
     getAllRecords: async (locationId?: string): Promise<ClinicalRecord[]> => {
       try {
         let query = supabase
           .from('treatments')
-          .select('*, patients(name)')
+          .select('*, patients(name), doctors(name)')
           .order('date', { ascending: false })
           .limit(50);
 
@@ -646,7 +649,8 @@ export const api = {
 
         return (data || []).map((rec: any) => ({
           ...rec,
-          patient_name: rec.patients?.name || 'Unknown'
+          patient_name: rec.patients?.name || 'Unknown',
+          doctor_name: rec.doctors?.name || undefined
         }));
       } catch (err) {
         console.warn("Error fetching records:", err);
@@ -664,6 +668,7 @@ export const api = {
     record: async (data: { 
       location_id: string; 
       patient_id: string; 
+      doctor_id?: string;
       teeth: number[]; 
       description: string; 
       cost: number;
@@ -726,6 +731,7 @@ export const api = {
       const treatmentData = {
         location_id: data.location_id,
         patient_id: data.patient_id,
+        doctor_id: data.doctor_id || null,
         teeth: data.teeth,
         description: data.description,
         cost: data.cost,
@@ -785,8 +791,25 @@ export const api = {
       
       // Fetch final state for return
       const { data: finalPatient } = await supabase.from('patients').select('balance').eq('id', data.patient_id).single();
+
+      let doctorName: string | undefined;
+      if (result?.doctor_id) {
+        const { data: doctorRow } = await supabase
+          .from('doctors')
+          .select('name')
+          .eq('id', result.doctor_id)
+          .maybeSingle();
+        doctorName = doctorRow?.name || undefined;
+      }
       
-      return { status: "success", new_balance: finalPatient?.balance, record: result };
+      return {
+        status: "success",
+        new_balance: finalPatient?.balance,
+        record: {
+          ...result,
+          doctor_name: doctorName
+        }
+      };
     },
     undoRecord: async (recordId: string, patientId: string, cost: number) => {
       // 1. Delete the record

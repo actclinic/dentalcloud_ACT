@@ -25,6 +25,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
     const term = searchTerm.toLowerCase();
     return records.filter(record => 
       (record.patient_name || '').toLowerCase().includes(term) ||
+      (record.doctor_name || '').toLowerCase().includes(term) ||
       record.description.toLowerCase().includes(term) ||
       record.date.toLowerCase().includes(term) ||
       record.teeth.some(tooth => tooth.toString().includes(term))
@@ -117,6 +118,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
           <tr>
             <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Date</th>
             <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Patient File</th>
+            <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor</th>
             <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Clinical Event</th>
             <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Anatomy</th>
             <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Billed Amt</th>
@@ -125,7 +127,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
         <tbody className="divide-y divide-gray-100">
           {records.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-6 py-8 text-center text-gray-400 italic">
+              <td colSpan={6} className="px-6 py-8 text-center text-gray-400 italic">
                 No audit records found.
               </td>
             </tr>
@@ -134,6 +136,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
               <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 text-sm text-gray-500">{rec.date}</td>
                 <td className="px-6 py-4 font-bold text-gray-900">{rec.patient_name || "Unknown"}</td>
+                <td className="px-6 py-4 text-sm text-gray-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '—'}</td>
                 <td className="px-6 py-4 text-sm text-gray-700">{rec.description}</td>
                 <td className="px-6 py-4 text-xs font-mono text-gray-500">
                   {rec.teeth && rec.teeth.length > 0 ? (

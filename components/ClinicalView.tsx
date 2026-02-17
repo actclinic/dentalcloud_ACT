@@ -1,12 +1,14 @@
 import React from 'react';
 import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
-import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule } from '../types';
+import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
 import { Modal, Input } from './Shared';
 
 interface ClinicalViewProps {
   selectedPatient: Patient | null;
+  doctors: Doctor[];
+  selectedDoctorId: string;
   selectedTeeth: number[];
   treatmentTypes: TreatmentType[];
   treatmentHistory: ClinicalRecord[];
@@ -15,6 +17,7 @@ interface ClinicalViewProps {
   useFlatRate: boolean;
   currency: Currency;
   onToggleTooth: (id: number) => void;
+  onDoctorChange: (doctorId: string) => void;
   onDeselectAll: () => void;
   onTreatmentSubmit: (t: TreatmentType) => void;
   onPaymentRequest: (amount: number) => void;
@@ -36,6 +39,8 @@ interface ClinicalViewProps {
 
 const ClinicalView: React.FC<ClinicalViewProps> = ({
   selectedPatient,
+  doctors,
+  selectedDoctorId,
   selectedTeeth,
   treatmentTypes,
   treatmentHistory,
@@ -44,6 +49,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   useFlatRate,
   currency,
   onToggleTooth,
+  onDoctorChange,
   onDeselectAll,
   onTreatmentSubmit,
   onPaymentRequest,
@@ -181,6 +187,21 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 </span>
               </label>
             </div>
+            <div className="mb-4">
+              <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Treating Doctor</label>
+              <select
+                value={selectedDoctorId}
+                onChange={(e) => onDoctorChange(e.target.value)}
+                className="w-full border border-indigo-200 bg-white rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Select doctor (optional)</option>
+                {doctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    Dr. {doctor.name}{doctor.specialization ? ` - ${doctor.specialization}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                {treatmentTypes.map(t => {
                  const displayCost = useFlatRate 
@@ -224,6 +245,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
               <thead className="bg-gray-50 text-gray-500 sticky top-0 border-b border-gray-100">
                 <tr>
                   <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Doctor</th>
                   <th className="px-4 py-3">Anatomy (Teeth)</th>
                   <th className="px-4 py-3">Service Provided</th>
                   <th className="px-4 py-3 text-right">Fee</th>
@@ -232,11 +254,12 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {treatmentHistory.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
                 ) : (
                   treatmentHistory.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-500">{rec.date}</td>
+                      <td className="px-4 py-3 text-gray-700 font-medium">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '—'}</td>
                       <td className="px-4 py-3">
                         <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded leading-relaxed inline-block">
                           {formatTeethWithPosition(rec.teeth)}

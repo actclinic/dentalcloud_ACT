@@ -116,6 +116,7 @@ const App: React.FC = () => {
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
   const [selectedTeeth, setSelectedTeeth] = useState<number[]>([]);
   const [useFlatRate, setUseFlatRate] = useState(false);
   const [editingTreatmentType, setEditingTreatmentType] = useState<TreatmentType | null>(null);
@@ -409,6 +410,7 @@ const App: React.FC = () => {
 
   const handlePatientSelect = async (patient: Patient) => {
     setSelectedPatient(patient);
+    setSelectedDoctorId('');
     setSelectedTeeth([]); 
     try {
       const history = await api.treatments.getHistory(patient.id);
@@ -797,6 +799,7 @@ const App: React.FC = () => {
       const res = await api.treatments.record({
         location_id: currentLocationId,
         patient_id: selectedPatient.id,
+        doctor_id: selectedDoctorId || undefined,
         teeth: selectedTeeth,
         description: treatment.name,
         cost: totalCost
@@ -929,6 +932,7 @@ const App: React.FC = () => {
 
   const handleClosePatient = () => {
     setSelectedPatient(null);
+    setSelectedDoctorId('');
     setSelectedTeeth([]);
     setTreatmentHistory([]);
     setPatientFiles([]);
@@ -1175,6 +1179,8 @@ const App: React.FC = () => {
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 
+                doctors={doctors}
+                selectedDoctorId={selectedDoctorId}
                 selectedTeeth={selectedTeeth} 
                 treatmentTypes={treatmentTypes} 
                 treatmentHistory={treatmentHistory}
@@ -1185,6 +1191,7 @@ const App: React.FC = () => {
                 onUploadFiles={handleUploadFiles}
                 onDeleteFile={handleDeleteFile}
                 onToggleTooth={(id) => setSelectedTeeth(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])}
+                onDoctorChange={setSelectedDoctorId}
                 onDeselectAll={() => setSelectedTeeth([])}
                 onTreatmentSubmit={handleTreatmentSubmit}
                 onPaymentRequest={(amount) => { setPaymentAmount(amount); setShowPaymentModal(true); }}

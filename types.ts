@@ -43,6 +43,8 @@ export interface ClinicalRecord {
   location_id: string;
   patient_id: string;
   patient_name?: string; // Joined field for global view
+  doctor_id?: string;
+  doctor_name?: string; // Joined field for clinical ownership
   teeth: number[];
   description: string;
   cost: number;

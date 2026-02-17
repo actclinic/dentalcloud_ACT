@@ -115,6 +115,7 @@ CREATE TABLE treatments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   location_id UUID REFERENCES locations(id),
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+  doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL,
   teeth INTEGER[],
   description TEXT,
   cost DECIMAL(12,2),
@@ -212,6 +213,7 @@ CREATE INDEX idx_doctors_location ON doctors(location_id);
 CREATE INDEX idx_treatment_types_location ON treatment_types(location_id);
 CREATE INDEX idx_treatments_patient ON treatments(patient_id);
 CREATE INDEX idx_treatments_location ON treatments(location_id);
+CREATE INDEX idx_treatments_doctor ON treatments(doctor_id);
 CREATE INDEX idx_appointments_patient ON appointments(patient_id);
 CREATE INDEX idx_appointments_doctor ON appointments(doctor_id);
 CREATE INDEX idx_appointments_date ON appointments(date);
