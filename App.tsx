@@ -37,6 +37,7 @@ import {
   DoctorScheduleInput,
   User, 
   Medicine, 
+  MedicineSale,
   Location,
   LoyaltyRule, 
   LoyaltyTransaction,
@@ -106,6 +107,7 @@ const App: React.FC = () => {
   const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [topSellingMedicines, setTopSellingMedicines] = useState<{ medicine_id: string; medicine_name: string; total_quantity: number; total_revenue: number }[]>([]);
   const [loyaltyRules, setLoyaltyRules] = useState<LoyaltyRule[]>([]);
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -399,10 +401,14 @@ const App: React.FC = () => {
     try {
       if (!currentLocationId) {
         setMedicines([]);
+        setTopSellingMedicines([]);
         return;
       }
       const medData = await api.medicines.getAll(currentLocationId);
       setMedicines(medData);
+      // Fetch top selling medicines for reporting
+      const topSellingData = await api.medicines.getTopSelling(currentLocationId, 10);
+      setTopSellingMedicines(topSellingData);
     } catch (err: any) {
       console.warn('Error fetching medicines:', err);
     }
@@ -1140,7 +1146,7 @@ const App: React.FC = () => {
             {currentView === 'doctors' && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && isAdmin && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={handleDeleteTreatmentType} />}
             {currentView === 'records' && isAdmin && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
-            {currentView === 'inventory' && isAdmin && <InventoryView medicines={medicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'inventory' && isAdmin && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'users' && isAdmin && <UsersView users={users} loading={loading} isAdmin={isAdmin} onAdd={() => {setEditingUser(null); setNewUserData({ username: '', password: '', role: 'normal' }); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setNewUserData({ username: user.username, password: '', role: user.role }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
             {currentView === 'settings' && isAdmin && <SettingsView 
                 currency={currency} 

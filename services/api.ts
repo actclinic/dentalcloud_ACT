@@ -1666,6 +1666,50 @@ export const api = {
         console.warn("Error fetching medicine sales:", err);
         return [];
       }
+    },
+    getTopSelling: async (locationId?: string, limit: number = 10): Promise<{ medicine_id: string; medicine_name: string; total_quantity: number; total_revenue: number }[]> => {
+      try {
+        let query = supabase
+          .from('medicine_sales')
+          .select('medicine_id, medicines(name), quantity, total_price');
+
+        if (locationId) {
+          query = query.eq('location_id', locationId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        // Aggregate sales by medicine
+        const salesMap = new Map<string, { medicine_id: string; medicine_name: string; total_quantity: number; total_revenue: number }>();
+
+        (data || []).forEach((sale: any) => {
+          const medId = sale.medicine_id;
+          const medName = sale.medicines?.name || 'Unknown';
+          
+          if (!salesMap.has(medId)) {
+            salesMap.set(medId, {
+              medicine_id: medId,
+              medicine_name: medName,
+              total_quantity: 0,
+              total_revenue: 0
+            });
+          }
+          
+          const entry = salesMap.get(medId)!;
+          entry.total_quantity += sale.quantity || 0;
+          entry.total_revenue += sale.total_price || 0;
+        });
+
+        // Convert to array, sort by quantity sold, and limit
+        return Array.from(salesMap.values())
+          .sort((a, b) => b.total_quantity - a.total_quantity)
+          .slice(0, limit);
+      } catch (err) {
+        console.warn("Error fetching top selling medicines:", err);
+        return [];
+      }
     }
   },
 

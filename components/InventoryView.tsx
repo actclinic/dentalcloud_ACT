@@ -1,12 +1,21 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Package, AlertTriangle, Loader2, FileDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Package, AlertTriangle, Loader2, FileDown, TrendingUp, BarChart3 } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import { Medicine } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportInventoryToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
 
+interface TopSellingItem {
+  medicine_id: string;
+  medicine_name: string;
+  total_quantity: number;
+  total_revenue: number;
+}
+
 interface InventoryViewProps {
   medicines: Medicine[];
+  topSelling: TopSellingItem[];
   loading: boolean;
   currency: Currency;
   onAdd: () => void;
@@ -16,6 +25,7 @@ interface InventoryViewProps {
 
 const InventoryView: React.FC<InventoryViewProps> = ({
   medicines,
+  topSelling,
   loading,
   currency,
   onAdd,
@@ -68,6 +78,31 @@ const InventoryView: React.FC<InventoryViewProps> = ({
     return { color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', icon: null };
   };
 
+  // Get low stock items for the chart
+  const lowStockItems = useMemo(() => {
+    return medicines
+      .filter(m => m.min_stock !== undefined && m.stock <= m.min_stock * 1.5)
+      .sort((a, b) => {
+        const aRatio = a.min_stock ? a.stock / a.min_stock : 1;
+        const bRatio = b.min_stock ? b.stock / b.min_stock : 1;
+        return aRatio - bRatio;
+      })
+      .slice(0, 8)
+      .map(m => ({
+        name: m.name.length > 15 ? m.name.substring(0, 15) + '...' : m.name,
+        stock: m.stock,
+        minStock: m.min_stock || 0,
+        percentage: m.min_stock ? Math.round((m.stock / m.min_stock) * 100) : 100
+      }));
+  }, [medicines]);
+
+  // Colors for low stock chart
+  const getLowStockColor = (percentage: number) => {
+    if (percentage <= 50) return '#DC2626'; // Red for critical
+    if (percentage <= 100) return '#F59E0B'; // Yellow for warning
+    return '#10B981'; // Green for above min
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
     <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white sticky top-0 z-10">
@@ -108,6 +143,114 @@ const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
       </div>
     </div>
+
+      {/* Reporting Charts Section */}
+      {!loading && medicines.length > 0 && (
+        <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Most Selling Items Chart */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <TrendingUp className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">Most Selling Items</h3>
+                    <p className="text-xs text-gray-500">Top medicines by sales quantity</p>
+                  </div>
+                </div>
+              </div>
+              <div className="h-[200px] w-full">
+                {topSelling.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                    No sales data available
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={topSelling.slice(0, 5)} layout="vertical" margin={{ left: 80, right: 20, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#E5E7EB" />
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        type="category" 
+                        dataKey="medicine_name" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#6B7280', fontSize: 11 }} 
+                        width={75}
+                        tickFormatter={(value) => value.length > 12 ? value.substring(0, 12) + '...' : value}
+                      />
+                      <Tooltip 
+                        formatter={(value: number, name: string, props: any) => [
+                          `${value} units sold`,
+                          props.payload.medicine_name
+                        ]}
+                        labelFormatter={() => ''}
+                      />
+                      <Bar dataKey="total_quantity" fill="#6366F1" radius={[0, 4, 4, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Low Stock Items Chart */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <BarChart3 className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">Low Stock Alert</h3>
+                    <p className="text-xs text-gray-500">Items at or below minimum stock level</p>
+                  </div>
+                </div>
+                {lowStockItems.length > 0 && (
+                  <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+                    {lowStockItems.filter(i => i.percentage <= 100).length} Critical
+                  </span>
+                )}
+              </div>
+              <div className="h-[200px] w-full">
+                {lowStockItems.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                    <Package className="w-8 h-8 mb-2 text-green-400" />
+                    <p className="text-sm">All items well stocked</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={lowStockItems} layout="vertical" margin={{ left: 80, right: 40, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#E5E7EB" />
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        type="category" 
+                        dataKey="name" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#6B7280', fontSize: 11 }} 
+                        width={75}
+                      />
+                      <Tooltip 
+                        formatter={(value: number, name: string, props: any) => {
+                          const item = props.payload;
+                          return [`${item.stock} / ${item.minStock} units (${item.percentage}%)`, 'Stock Level'];
+                        }}
+                        labelFormatter={(label) => label}
+                      />
+                      <Bar dataKey="percentage" radius={[0, 4, 4, 0]} barSize={20}>
+                        {lowStockItems.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={getLowStockColor(entry.percentage)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="p-12 flex justify-center">
