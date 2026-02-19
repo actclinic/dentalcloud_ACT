@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BellRing, Plus, CheckCircle2, Send } from 'lucide-react';
+import { BellRing, Plus } from 'lucide-react';
 import { Recall, Patient } from '../types';
 import { Modal, Input } from './Shared';
 
@@ -9,7 +9,8 @@ interface RecallsViewProps {
   loading: boolean;
   onCreateRecall: (data: Partial<Recall>) => Promise<void>;
   onUpdateStatus: (id: string, status: Recall['status']) => Promise<void>;
-  onMarkReminded: (id: string) => Promise<void>;
+  onDeleteRecall: (id: string) => Promise<void>;
+  onDeleteAllRecalls: () => Promise<void>;
 }
 
 const RecallsView: React.FC<RecallsViewProps> = ({
@@ -18,7 +19,8 @@ const RecallsView: React.FC<RecallsViewProps> = ({
   loading,
   onCreateRecall,
   onUpdateStatus,
-  onMarkReminded
+  onDeleteRecall,
+  onDeleteAllRecalls
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -87,12 +89,24 @@ const RecallsView: React.FC<RecallsViewProps> = ({
           <h2 className="text-2xl font-black text-gray-900">Recall & Reminder Center</h2>
           <p className="text-sm text-gray-500">Automate patient follow-ups and track due care</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700"
-        >
-          <Plus size={16} /> New Recall
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              if (window.confirm('Delete entire recall history for this location? This cannot be undone.')) {
+                await onDeleteAllRecalls();
+              }
+            }}
+            className="px-4 py-2 rounded-xl font-bold text-sm bg-red-50 text-red-700 hover:bg-red-100"
+          >
+            Delete Entire History
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700"
+          >
+            <Plus size={16} /> New Recall
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -140,37 +154,20 @@ const RecallsView: React.FC<RecallsViewProps> = ({
                   <p className="text-xs text-gray-400 mt-1">Reminder lead time: {r.reminder_days_before} day(s)</p>
                 </div>
 
-                <div className="flex gap-2 flex-wrap">
-                  {(r.status === 'PENDING' || r.status === 'SCHEDULED' || r.status === 'OVERDUE') && (
-                    <button
-                      onClick={() => onMarkReminded(r.id)}
-                      className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 flex items-center gap-1"
-                    >
-                      <Send size={12} /> Mark Reminded
-                    </button>
-                  )}
-                  {(r.status === 'PENDING' || r.status === 'OVERDUE') && (
-                    <button
-                      onClick={() => onUpdateStatus(r.id, 'SCHEDULED')}
-                      className="px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100"
-                    >
-                      Mark Scheduled
-                    </button>
-                  )}
-                  {(r.status === 'PENDING' || r.status === 'SCHEDULED' || r.status === 'OVERDUE') && (
-                    <button
-                      onClick={() => onUpdateStatus(r.id, 'COMPLETED')}
-                      className="px-3 py-2 rounded-lg bg-green-50 text-green-700 text-xs font-bold hover:bg-green-100 flex items-center gap-1"
-                    >
-                      <CheckCircle2 size={12} /> Complete
-                    </button>
-                  )}
+                <div className="flex gap-2 flex-wrap items-center">
+                  <span className="text-[11px] text-gray-500 font-medium">
+                    Status auto-updates from appointments
+                  </span>
                   {(r.status === 'PENDING' || r.status === 'SCHEDULED') && (
                     <button
-                      onClick={() => onUpdateStatus(r.id, 'CANCELLED')}
+                      onClick={async () => {
+                        if (window.confirm('Cancel and delete this recall?')) {
+                          await onDeleteRecall(r.id);
+                        }
+                      }}
                       className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
                     >
-                      Cancel
+                      Cancel & Delete
                     </button>
                   )}
                 </div>

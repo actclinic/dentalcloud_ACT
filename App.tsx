@@ -727,12 +727,23 @@ const App: React.FC = () => {
     }
   };
 
-  const handleMarkRecallReminded = async (id: string) => {
+  const handleDeleteRecall = async (id: string) => {
     try {
-      await api.recalls.markReminded(id);
+      await api.recalls.delete(id);
       const updated = await api.recalls.getAll(currentLocationId);
       setRecalls(updated);
-      setToast({ message: 'Reminder marked successfully.', type: 'success', show: true });
+      setToast({ message: 'Recall deleted successfully.', type: 'success', show: true });
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteAllRecalls = async () => {
+    try {
+      await api.recalls.deleteAll(currentLocationId);
+      const updated = await api.recalls.getAll(currentLocationId);
+      setRecalls(updated);
+      setToast({ message: 'Entire recall history deleted.', type: 'success', show: true });
     } catch (err: any) {
       alert(err.message);
     }
@@ -1249,7 +1260,8 @@ const App: React.FC = () => {
               loading={loading}
               onCreateRecall={handleCreateRecall}
               onUpdateStatus={handleUpdateRecallStatus}
-              onMarkReminded={handleMarkRecallReminded}
+              onDeleteRecall={handleDeleteRecall}
+              onDeleteAllRecalls={handleDeleteAllRecalls}
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 
