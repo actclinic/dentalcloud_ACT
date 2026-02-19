@@ -21,7 +21,8 @@ import {
   X,
   MessageCircle,
   Monitor,
-  AlertTriangle
+  AlertTriangle,
+  BellRing
 } from 'lucide-react';
 
 import { Modal, Input, NavItem, Toast } from './components/Shared';
@@ -41,7 +42,8 @@ import {
   Location,
   LoyaltyRule, 
   LoyaltyTransaction,
-  Expense
+  Expense,
+  Recall
 } from './types';
 import { TREATMENT_CATEGORIES } from './constants';
 import { api } from './services/api';
@@ -68,8 +70,9 @@ const MedicineSelectionModal = React.lazy(() => import('./components/MedicineSel
 const AIAssistantView = React.lazy(() => import('./components/AIAssistantView'));
 const MessagingView = React.lazy(() => import('./components/MessagingView'));
 const PatientMessagingView = React.lazy(() => import('./components/PatientMessagingView'));
+const RecallsView = React.lazy(() => import('./components/RecallsView'));
 
-type ViewState = 'dashboard' | 'patients' | 'appointments' | 'doctors' | 'finance' | 'treatments' | 'records' | 'settings' | 'users' | 'inventory' | 'ai-assistant' | 'messaging';
+type ViewState = 'dashboard' | 'patients' | 'appointments' | 'doctors' | 'finance' | 'treatments' | 'records' | 'settings' | 'users' | 'inventory' | 'ai-assistant' | 'messaging' | 'recalls';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
@@ -111,6 +114,7 @@ const App: React.FC = () => {
   const [loyaltyRules, setLoyaltyRules] = useState<LoyaltyRule[]>([]);
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [recalls, setRecalls] = useState<Recall[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +279,7 @@ const App: React.FC = () => {
     setLoyaltyRules([]);
     setLoyaltyTransactions([]);
     setExpenses([]);
+    setRecalls([]);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -325,6 +330,10 @@ const App: React.FC = () => {
         console.warn('Failed to cleanup old appointments:', err);
         // Don't show error to user, just log it
       });
+
+      api.recalls.updateOverdueStatus(overrideLocationId || currentLocationId || undefined).catch(err => {
+        console.warn('Failed to update overdue recalls:', err);
+      });
       
       const locData = await api.locations.getAll();
       setLocations(locData);
@@ -356,7 +365,7 @@ const App: React.FC = () => {
       
       // Only fetch data if we have a valid location
       if (locId) {
-        const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData] = await Promise.all([
+        const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData, recallData] = await Promise.all([
           api.patients.getAll(locId),
           api.appointments.getAll(locId),
           api.doctors.getAll(locId),
@@ -364,7 +373,8 @@ const App: React.FC = () => {
           api.treatments.getAllRecords(locId),
           api.medicines.getAll(locId),
           api.loyalty.getRules(locId),
-          api.expenses.getAll(locId)
+          api.expenses.getAll(locId),
+          api.recalls.getAll(locId)
         ]);
         setPatients(patData);
         setAppointments(aptData);
@@ -374,6 +384,7 @@ const App: React.FC = () => {
         setMedicines(medData);
         setLoyaltyRules(loyaltyData);
         setExpenses(expenseData);
+        setRecalls(recallData);
       }
     } catch (err: any) {
       console.error('Error fetching initial data:', err);
@@ -690,6 +701,38 @@ const App: React.FC = () => {
     try {
       await api.locations.create(locData);
       fetchInitialData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleCreateRecall = async (data: Partial<Recall>) => {
+    try {
+      await api.recalls.create({ ...data, location_id: currentLocationId });
+      const updated = await api.recalls.getAll(currentLocationId);
+      setRecalls(updated);
+    } catch (err: any) {
+      alert(err.message);
+      throw err;
+    }
+  };
+
+  const handleUpdateRecallStatus = async (id: string, status: Recall['status']) => {
+    try {
+      await api.recalls.updateStatus(id, status);
+      const updated = await api.recalls.getAll(currentLocationId);
+      setRecalls(updated);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleMarkRecallReminded = async (id: string) => {
+    try {
+      await api.recalls.markReminded(id);
+      const updated = await api.recalls.getAll(currentLocationId);
+      setRecalls(updated);
+      setToast({ message: 'Reminder marked successfully.', type: 'success', show: true });
     } catch (err: any) {
       alert(err.message);
     }
@@ -1073,6 +1116,9 @@ const App: React.FC = () => {
              {isAdmin && (
                <NavItem icon={<MessageCircle size={18} />} label="Messaging" active={currentView === 'messaging'} onClick={() => { setCurrentView('messaging'); setIsMobileMenuOpen(false); }} />
              )}
+             {isAdmin && (
+               <NavItem icon={<BellRing size={18} />} label="Recalls" active={currentView === 'recalls'} onClick={() => { setCurrentView('recalls'); setIsMobileMenuOpen(false); }} />
+             )}
              <NavItem icon={<Sparkles size={18} />} label="AI Assistant" active={currentView === 'ai-assistant'} onClick={() => { setCurrentView('ai-assistant'); setIsMobileMenuOpen(false); }} />
           </div>
           
@@ -1196,6 +1242,14 @@ const App: React.FC = () => {
               patients={patients} 
               users={users} 
               messagingEnabled={messagingEnabled}
+            />}
+            {currentView === 'recalls' && isAdmin && <RecallsView
+              recalls={recalls}
+              patients={patients}
+              loading={loading}
+              onCreateRecall={handleCreateRecall}
+              onUpdateStatus={handleUpdateRecallStatus}
+              onMarkReminded={handleMarkRecallReminded}
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 

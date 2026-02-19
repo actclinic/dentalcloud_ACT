@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall } from '../types';
 
 // Utility: map DB snake_case fields to app camelCase
 const mapPatient = (row: any): Patient => ({
@@ -2007,6 +2007,88 @@ export const api = {
       if (aError) throw new Error(`Planning error: ${aError.message}`);
       
       return { schedules, appointments };
+    }
+  },
+
+  recalls: {
+    getAll: async (locationId?: string, patientId?: string): Promise<Recall[]> => {
+      try {
+        let query = supabase
+          .from('recalls')
+          .select('*, patients(name)')
+          .order('due_date', { ascending: true });
+
+        if (locationId) query = query.eq('location_id', locationId);
+        if (patientId) query = query.eq('patient_id', patientId);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        return (data || []).map((r: any) => ({
+          ...r,
+          patient_name: r.patients?.name || 'Unknown'
+        }));
+      } catch (err) {
+        console.warn('Error fetching recalls:', err);
+        return [];
+      }
+    },
+
+    create: async (data: Partial<Recall>): Promise<Recall> => {
+      const payload = {
+        location_id: data.location_id,
+        patient_id: data.patient_id,
+        appointment_id: data.appointment_id || null,
+        title: data.title,
+        due_date: data.due_date,
+        reminder_days_before: data.reminder_days_before ?? 7,
+        status: data.status || 'PENDING',
+        notes: data.notes || null
+      };
+
+      const { data: result, error } = await supabase
+        .from('recalls')
+        .insert(payload)
+        .select('*, patients(name)')
+        .single();
+
+      if (error) throw new Error(error.message);
+      return {
+        ...result,
+        patient_name: result.patients?.name || 'Unknown'
+      };
+    },
+
+    updateStatus: async (id: string, status: Recall['status']): Promise<void> => {
+      const { error } = await supabase
+        .from('recalls')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
+    },
+
+    markReminded: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('recalls')
+        .update({ last_reminded_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
+    },
+
+    updateOverdueStatus: async (locationId?: string): Promise<void> => {
+      const today = new Date().toISOString().split('T')[0];
+      let query = supabase
+        .from('recalls')
+        .update({ status: 'OVERDUE', updated_at: new Date().toISOString() })
+        .lt('due_date', today)
+        .in('status', ['PENDING', 'SCHEDULED']);
+
+      if (locationId) query = query.eq('location_id', locationId);
+
+      const { error } = await query;
+      if (error) throw new Error(error.message);
     }
   },
 

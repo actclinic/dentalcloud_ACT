@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
-import { Patient, Appointment, ClinicalRecord, Doctor } from '../types';
+import { Patient, Appointment, ClinicalRecord, Doctor, Recall } from '../types';
 import { Modal, Input } from './Shared';
 import Receipt from './Receipt';
 import PatientMessagingView from './PatientMessagingView';
@@ -16,6 +16,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   const [activeTab, setActiveTab] = useState<'home' | 'appointments' | 'records' | 'profile' | 'messages'>('home');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [recalls, setRecalls] = useState<Recall[]>([]);
   const [treatmentRecords, setTreatmentRecords] = useState<ClinicalRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +110,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       // Fetch treatment records
       const records = await api.treatments.getHistory(patientId);
       setTreatmentRecords(records);
+
+      // Fetch recalls for this patient
+      const patientRecalls = await api.recalls.getAll(patientData.location_id, patientId);
+      setRecalls(patientRecalls);
       
       // Fetch doctors
       const allDoctors = await api.doctors.getAll(patientData.location_id);
@@ -310,6 +315,34 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
     );
   }
 
+  const today = new Date();
+  const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const nextPendingRecall = recalls
+    .filter((r) => r.status === 'PENDING' || r.status === 'SCHEDULED' || r.status === 'OVERDUE')
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+
+  const nextScheduledAppointment = appointments
+    .filter((apt) => apt.status === 'Scheduled')
+    .filter((apt) => {
+      const aptDate = new Date(`${apt.date}T00:00:00`);
+      return aptDate >= todayDateOnly;
+    })
+    .sort((a, b) => {
+      const aDate = new Date(`${a.date}T${a.time || '00:00'}:00`).getTime();
+      const bDate = new Date(`${b.date}T${b.time || '00:00'}:00`).getTime();
+      return aDate - bDate;
+    })[0];
+
+  const countdownTargetDate = nextPendingRecall?.due_date || nextScheduledAppointment?.date;
+
+  const daysLeft = countdownTargetDate
+    ? Math.ceil(
+        (new Date(`${countdownTargetDate}T00:00:00`).getTime() - todayDateOnly.getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
+    : null;
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* Header */}
@@ -342,6 +375,47 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       <div className="flex-1 overflow-y-auto pb-24 pt-4">
         {activeTab === 'home' && (
           <div className="px-4 space-y-6">
+            {/* Recall / Countdown Card */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-5 shadow-lg shadow-indigo-300/40">
+              <div className="absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/10" />
+              <div className="absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-white/10" />
+
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold tracking-wider uppercase text-indigo-100">Countdown</p>
+                  <Calendar className="w-5 h-5 text-indigo-100" />
+                </div>
+
+                {(nextPendingRecall || nextScheduledAppointment) && daysLeft !== null ? (
+                  <>
+                    <p className="text-white/90 text-sm">{nextPendingRecall ? 'Next recall in' : 'Next appointment in'}</p>
+                    <div className="flex items-end gap-2 mt-1">
+                      <span className="text-4xl font-black text-white leading-none">{daysLeft}</span>
+                      <span className="text-lg font-bold text-indigo-100 pb-1">
+                        {daysLeft < 0 ? `${Math.abs(daysLeft)} day(s) overdue` : daysLeft === 1 ? 'day left' : 'days left'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-indigo-100 mt-3">
+                      {nextPendingRecall
+                        ? `${nextPendingRecall.due_date} • ${nextPendingRecall.title}`
+                        : `${nextScheduledAppointment?.date} at ${nextScheduledAppointment?.time} • ${nextScheduledAppointment?.type}`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-white/90 text-sm">No upcoming appointment</p>
+                    <p className="text-xl font-bold text-white mt-1">Book your next check-up</p>
+                    <button
+                      onClick={() => setShowCreateAppointment(true)}
+                      className="mt-4 px-4 py-2 rounded-xl bg-white text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors"
+                    >
+                      Schedule now
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Quick Stats - Mobile optimized */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
