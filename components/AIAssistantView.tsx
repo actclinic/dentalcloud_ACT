@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense } from '../types';
+import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall } from '../types';
 import { api } from '../services/api';
 
 // Custom CSS for animations
@@ -205,6 +205,7 @@ interface AIAssistantViewProps {
   users: UserType[];
   medicines: Medicine[];
   expenses: Expense[];
+  recalls?: Recall[];
   currentAdminId?: string;
 }
 
@@ -217,6 +218,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   users,
   medicines,
   expenses,
+  recalls = [],
   currentAdminId
 }) => {
   const DAILY_LIMIT = 10;
@@ -854,7 +856,8 @@ Need more detailed help?
         a: appointments.length,
         d: doctors.length,
         t: treatmentTypes.length,
-        m: medicines.length
+        m: medicines.length,
+        r: recalls.length
       }
     };
 
@@ -873,6 +876,11 @@ Need more detailed help?
         inv: {
           total: medicines.length,
           low: medicines.filter(m => m.stock <= (m.min_stock || 0)).length
+        },
+        rec: {
+          total: recalls.length,
+          overdue: recalls.filter(r => r.status === 'OVERDUE').length,
+          due_today: recalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
         }
       };
     }
@@ -903,6 +911,7 @@ Need more detailed help?
         d: doctors.length,
         t: treatmentTypes.length,
         m: medicines.length,
+        r: recalls.length,
         u: users.length,
         l: 1 // locations count
       }
@@ -921,6 +930,11 @@ Need more detailed help?
           total_items: medicines.length,
           total_stock: medicines.reduce((sum, med) => sum + (med.stock || 0), 0),
           low_stock_count: medicines.filter(m => m.stock <= (m.min_stock || 0)).length
+        },
+        rec: {
+          total: recalls.length,
+          overdue: recalls.filter(r => r.status === 'OVERDUE').length,
+          due_today: recalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
         }
       };
     }
@@ -976,6 +990,27 @@ Need more detailed help?
       return expDate.getMonth() === currentDate.getMonth() && 
              expDate.getFullYear() === currentDate.getFullYear();
     }).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+    const recallSummary = {
+      total: recalls.length,
+      pending: recalls.filter(r => r.status === 'PENDING').length,
+      scheduled: recalls.filter(r => r.status === 'SCHEDULED').length,
+      overdue: recalls.filter(r => r.status === 'OVERDUE').length,
+      completed: recalls.filter(r => r.status === 'COMPLETED').length,
+      due_today: recalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
+    };
+
+    const upcomingRecalls = recalls
+      .filter(r => (r.status === 'PENDING' || r.status === 'SCHEDULED') && r.due_date >= today)
+      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+      .slice(0, 10)
+      .map(r => ({
+        i: r.id,
+        p: r.patient_name || 'Unknown',
+        t: r.title,
+        dd: r.due_date,
+        s: r.status
+      }));
 
     return {
       ...baseData,
@@ -1052,6 +1087,10 @@ Need more detailed help?
       reporting_insights: {
         doctor_popularity_30d: doctorPopularity30d,
         top_doctor_30d: doctorPopularity30d[0] || null
+      },
+      recall_insights: {
+        summary: recallSummary,
+        upcoming: upcomingRecalls
       },
       inventory_insights: {
         low_stock_items: medicines.filter(m => m.stock <= (m.min_stock || 0)).length,
@@ -3593,6 +3632,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 };
 
 export default AIAssistantView;
+
+
 
 
 
