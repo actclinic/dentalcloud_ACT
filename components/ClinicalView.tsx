@@ -147,7 +147,19 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
   };
 
-  const allowedFile = (file: File) => file.type.startsWith('image/') || file.type === 'application/pdf';
+  const allowedFile = (file: File) => {
+    const allowedTypes = [
+      'image/',
+      'application/pdf',
+      'video/',
+      'application/zip',
+      'application/x-zip-compressed',
+      'multipart/x-zip'
+    ];
+    return allowedTypes.some(type => 
+      type.endsWith('/') ? file.type.startsWith(type) : file.type === type
+    );
+  };
 
   const handleUpload = async (files: File[]) => {
     const filtered = files.filter(allowedFile);
@@ -653,8 +665,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             }`}
           >
             <Upload className="w-8 h-8 text-indigo-500 mx-auto mb-2" />
-            <p className="text-sm font-medium text-gray-800">Drag & drop X-rays, PDFs, or documents</p>
-            <p className="text-xs text-gray-500 mb-3">Accepted: images, PDF. Max 10 files at once.</p>
+            <p className="text-sm font-medium text-gray-800">Drag & drop X-rays, documents, videos, or ZIP files</p>
+            <p className="text-xs text-gray-500 mb-3">Accepted: images, PDF, videos, ZIP. Max 10 files at once.</p>
             
             {/* Upload Progress Bar */}
             {isUploadingWithProgress && uploadProgress && (
@@ -694,7 +706,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             <input
               type="file"
               multiple
-              accept="image/*,application/pdf"
+              accept="image/*,application/pdf,video/*,.zip,application/zip,application/x-zip-compressed"
               ref={fileInputRef}
               onChange={handleBrowse}
               disabled={isUploadingWithProgress}
