@@ -1,4 +1,4 @@
-import { supabase, supabaseUrl } from './supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
 import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall } from '../types';
 
@@ -1295,6 +1295,7 @@ export const api = {
     /**
      * Upload a file using TUS resumable upload protocol with chunking support.
      * This is ideal for large files and unreliable network connections.
+     * Works with both authenticated and public (anon key) uploads based on storage policies.
      * 
      * @param patientId - The patient ID to associate the file with
      * @param file - The file to upload
@@ -1309,18 +1310,20 @@ export const api = {
       onChunkComplete?: (chunkSize: number, bytesAccepted: number, bytesTotal: number) => void
     ): Promise<PatientFile> => {
       const path = `${patientId}/${Date.now()}-${file.name}`;
+      
+      // Get session if available, but don't require it for public uploads
       const { data: { session } } = await supabase.auth.getSession();
       
-      if (!session?.access_token) {
-        throw new Error('Authentication required for file upload');
-      }
+      // Use session token if available, otherwise use anon key for public uploads
+      // The anon key is used when storage policies allow public access
+      const authToken = session?.access_token || supabaseAnonKey;
 
       return new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
           endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
           retryDelays: [0, 3000, 5000, 10000, 20000],
           headers: {
-            authorization: `Bearer ${session.access_token}`,
+            authorization: `Bearer ${authToken}`,
             'x-upsert': 'false',
           },
           uploadDataDuringCreation: true,
