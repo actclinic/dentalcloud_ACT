@@ -112,7 +112,12 @@ To deploy this application using Docker:
 
 3.  **Run the container:**
     ```bash
-    docker run -d -p 3000:3000 --name dentalcloud dentalcloud-pro
+    docker run -d \
+    -p 3000:3000 \
+    --name dentalcloud \
+    --restart unless-stopped \
+    -v dental_data:/app/data \
+    dentalcloud-pro
     ```
 
 4.  **Access the application:**
