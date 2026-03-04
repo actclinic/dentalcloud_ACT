@@ -18,10 +18,10 @@
 
 ## 🛠 Tech Stack
 
-* **Frontend:** React.js (State management, Hooks, Responsive UI)
+* **Frontend:** React 19 + TypeScript 5.8 + Vite 6 (Modern build tooling, State management, Hooks, Responsive UI)
 * **Backend & Auth:** Supabase (Backend-as-a-Service)
 * **Database:** PostgreSQL (Relational data modeling & specialized indexing)
-* **Hosting:** Netlify (Continuous Deployment)
+* **Hosting:** Netlify (Continuous Deployment) / Docker (Containerized Deployment)
 
 ---
 
@@ -74,7 +74,7 @@ To run this project locally, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/MinThutaSawNaing/DentalCloud-by-Thuta.git](https://github.com/MinThutaSawNaing/DentalCloud-by-Thuta.git)
+    git clone https://github.com/MinThutaSawNaing/DentalCloud-by-Thuta.git
     cd DentalCloud-by-Thuta
     ```
 
@@ -84,16 +84,39 @@ To run this project locally, follow these steps:
     ```
 
 3.  **Environment Setup:**
-    Create a `.env` file in the root directory and add your Supabase credentials:
+    Create a `.env` file in the root directory and add your AI API key:
     ```env
-    REACT_APP_SUPABASE_URL=your_supabase_url
-    REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key
+    AI_API_KEY=your_ai_api_key_here
     ```
 
 4.  **Launch:**
     ```bash
-    npm start
+    npm run dev
     ```
+
+---
+
+## 🐳 Docker Deployment
+
+To deploy this application using Docker:
+
+1.  **Build the Docker image:**
+    ```bash
+    docker build -t dentalcloud-pro .
+    ```
+
+2.  **Build with environment variables:**
+    ```bash
+    docker build --build-arg AI_API_KEY=your_api_key_here -t dentalcloud-pro .
+    ```
+
+3.  **Run the container:**
+    ```bash
+    docker run -d -p 3000:3000 --name dentalcloud dentalcloud-pro
+    ```
+
+4.  **Access the application:**
+    Open your browser and navigate to `http://localhost:3000`
 
 ---
 
