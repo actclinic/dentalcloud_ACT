@@ -808,9 +808,9 @@ const App: React.FC = () => {
         setSelectedPatient({ ...selectedPatient, balance: res.new_balance, loyalty_points: res.new_points });
       }
       if (amount > 0) {
-        alert(`Redeemed ${points} points for ${amount} MMK discount!`);
+        setToast({ message: `Redeemed ${points} points for ${amount} MMK discount!`, type: 'success', show: true });
       } else {
-        alert(`Redeemed ${points} points successfully.`);
+        setToast({ message: `Redeemed ${points} points successfully.`, type: 'success', show: true });
       }
     } catch (err: any) {
       alert(err.message);
