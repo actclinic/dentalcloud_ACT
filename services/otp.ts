@@ -336,6 +336,32 @@ export const otpService = {
   },
 
   /**
+   * Check if username is already registered in patient_auth table
+   */
+  async isUsernameRegistered(username: string): Promise<boolean> {
+    try {
+      const normalized = username.trim().toLowerCase();
+      if (!normalized) return false;
+
+      const { data, error } = await supabase
+        .from('patient_auth')
+        .select('id')
+        .eq('username', normalized)
+        .limit(1);
+      
+      if (error) {
+        console.error('Username check error:', error);
+        return false;
+      }
+      
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Username registration check failed:', error);
+      return false;
+    }
+  },
+
+  /**
    * Resend OTP verification email
    */
   async resendOTP(email: string): Promise<{ success: boolean; message: string }> {

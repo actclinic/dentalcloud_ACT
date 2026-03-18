@@ -146,7 +146,7 @@ export const api = {
         return []; // Return empty array instead of crashing
       }
     },
-    create: async (data: Partial<Patient> & { password?: string }): Promise<Patient> => {
+    create: async (data: Partial<Patient> & { password?: string; username?: string }): Promise<Patient> => {
       // First, check if the patients table exists
       try {
         const { error: tableError } = await supabase
@@ -224,11 +224,13 @@ export const api = {
         }
       }
       
+      const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
+      const normalizedPhone = data.phone ? data.phone.trim() : data.phone;
       const payload = {
         location_id: finalLocationId,
         name: data.name,
-        email: data.email,
-        phone: data.phone,
+        email: normalizedEmail,
+        phone: normalizedPhone,
         balance: data.balance ?? 0,
         loyalty_points: 0,
         medical_history: data.medicalHistory || null
@@ -248,8 +250,9 @@ export const api = {
           .from('patient_auth')
           .insert({
             patient_id: result.id,
-            email: data.email || null,
-            phone: data.phone || null,
+            username: data.username ? data.username.trim().toLowerCase() : null,
+            email: normalizedEmail || null,
+            phone: normalizedPhone || null,
             password: data.password,
             is_verified: true
           });
@@ -262,10 +265,12 @@ export const api = {
       return mapPatient(result);
     },
     update: async (id: string, data: Partial<Patient>): Promise<Patient> => {
+      const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
+      const normalizedPhone = data.phone ? data.phone.trim() : data.phone;
       const payload = {
         name: data.name,
-        email: data.email,
-        phone: data.phone,
+        email: normalizedEmail,
+        phone: normalizedPhone,
         balance: data.balance,
         medical_history: data.medicalHistory
       };
@@ -282,8 +287,8 @@ export const api = {
       // If phone number or email was updated, also update it in patient_auth table
       if (data.phone !== undefined || data.email !== undefined) {
         const authUpdateData: any = {};
-        if (data.phone !== undefined) authUpdateData.phone = data.phone;
-        if (data.email !== undefined) authUpdateData.email = data.email;
+        if (data.phone !== undefined) authUpdateData.phone = normalizedPhone;
+        if (data.email !== undefined) authUpdateData.email = normalizedEmail;
         
         const { error: authError } = await supabase
           .from('patient_auth')
@@ -307,7 +312,16 @@ export const api = {
     },
 
     // Update or create patient auth record
-    updateAccount: async (patientId: string, email: string | null, password: string, phone?: string | null): Promise<void> => {
+    updateAccount: async (
+      patientId: string, 
+      email: string | null, 
+      password: string, 
+      phone?: string | null,
+      username?: string | null
+    ): Promise<void> => {
+      const normalizedEmail = email ? email.toLowerCase().trim() : email;
+      const normalizedPhone = phone ? phone.trim() : phone;
+      const normalizedUsername = username ? username.trim().toLowerCase() : username;
       // Check if auth record exists
       const { data: existing } = await supabase
         .from('patient_auth')
@@ -317,8 +331,9 @@ export const api = {
 
       if (existing) {
         // Update
-        const updateData: any = { password, email };
-        if (phone !== undefined) updateData.phone = phone;
+        const updateData: any = { password, email: normalizedEmail };
+        if (phone !== undefined) updateData.phone = normalizedPhone;
+        if (username !== undefined) updateData.username = normalizedUsername ?? null;
         
         const { error } = await supabase
           .from('patient_auth')
@@ -331,8 +346,9 @@ export const api = {
           .from('patient_auth')
           .insert({
             patient_id: patientId,
-            email: email,
-            phone: phone || null,
+            username: normalizedUsername ?? null,
+            email: normalizedEmail,
+            phone: normalizedPhone || null,
             password: password,
             is_verified: true
           });
@@ -340,16 +356,51 @@ export const api = {
       }
     },
     
-    // Authenticate patient with email, phone or name + password
+    // Authenticate patient with email, phone, username, or name + password
     authenticate: async (identifier: string, password: string): Promise<Patient | null> => {
       try {
         const trimmedIdentifier = identifier.trim();
+        const normalizedIdentifier = trimmedIdentifier.toLowerCase();
+        const safeIdentifier = trimmedIdentifier.replace(/"/g, '');
+        const safeNormalized = normalizedIdentifier.replace(/"/g, '');
         
-        // 1. Find the patient first by email, phone or name
-        let { data: patientData, error: pError } = await supabase
+        // 1. Try to find patient_auth by email, phone, or username
+        const { data: authMatch, error: authMatchError } = await supabase
+          .from('patient_auth')
+          .select('patient_id, password')
+          .or(`email.eq."${safeNormalized}",phone.eq."${safeIdentifier}",username.eq."${safeNormalized}"`)
+          .maybeSingle();
+
+        if (authMatchError) {
+          console.warn('Patient auth lookup error:', authMatchError.message);
+        }
+
+        if (authMatch?.patient_id) {
+          if (authMatch.password !== password) {
+            console.log('Password mismatch for patient_auth record.');
+            return null;
+          }
+
+          const { data: patientData, error: pError } = await supabase
+            .from('patients')
+            .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
+            .eq('id', authMatch.patient_id)
+            .maybeSingle();
+
+          if (pError || !patientData) {
+            console.log('No patient found for auth record:', authMatch.patient_id);
+            return null;
+          }
+
+          console.log('Patient authentication successful for:', patientData.name);
+          return mapPatient(patientData);
+        }
+
+        // 2. Fallback: allow legacy login by patient name
+        const { data: patientData, error: pError } = await supabase
           .from('patients')
           .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
-          .or(`email.eq."${trimmedIdentifier}",phone.eq."${trimmedIdentifier}",name.eq."${trimmedIdentifier}"`)
+          .eq('name', trimmedIdentifier)
           .maybeSingle();
 
         if (pError || !patientData) {
@@ -357,7 +408,6 @@ export const api = {
           return null;
         }
 
-        // 2. Check the patient_auth table for the password
         const { data: authData, error: aError } = await supabase
           .from('patient_auth')
           .select('password')
@@ -368,12 +418,12 @@ export const api = {
           console.log('No auth record found for patient:', patientData.name);
           return null;
         }
-        
+
         if (password === authData.password) {
           console.log('Patient authentication successful for:', patientData.name);
           return mapPatient(patientData);
         }
-        
+
         console.log('Password mismatch for patient:', patientData.name);
         return null;
       } catch (err) {
@@ -383,18 +433,20 @@ export const api = {
     },
 
     // Register patient with password
-    register: async (email: string, password: string): Promise<Patient> => {
+    register: async (email: string, password: string, username?: string): Promise<Patient> => {
       // 1. Get first location as default
       const { data: locations } = await supabase.from('locations').select('id').limit(1);
       const defaultLocationId = locations && locations.length > 0 ? locations[0].id : null;
 
       if (!defaultLocationId) throw new Error('No clinic location found. Please contact admin.');
+      const normalizedEmail = email.toLowerCase().trim();
+      const normalizedUsername = username?.trim() ? username.trim().toLowerCase() : null;
 
       // 2. Check if patient already exists
       let { data: existingPatient, error: fetchError } = await supabase
         .from('patients')
         .select('id, name, email, phone')
-        .eq('email', email)
+        .eq('email', normalizedEmail)
         .single();
 
       let patient;
@@ -403,8 +455,8 @@ export const api = {
         const { data: newPatient, error: pError } = await supabase
           .from('patients')
           .insert({ 
-            name: email.split('@')[0], 
-            email: email,
+            name: normalizedUsername || normalizedEmail.split('@')[0], 
+            email: normalizedEmail,
             location_id: defaultLocationId
           })
           .select()
@@ -422,7 +474,8 @@ export const api = {
         .from('patient_auth')
         .upsert({
           patient_id: patient.id,
-          email: email,
+          username: normalizedUsername,
+          email: normalizedEmail,
           phone: patient.phone || null,
           password: password,
           is_verified: true
@@ -434,7 +487,13 @@ export const api = {
     },
 
     // Register patient with Supabase Auth integration
-    registerWithSupabase: async (email: string, password: string, supabaseUserId?: string): Promise<Patient> => {
+    registerWithSupabase: async (
+      email: string, 
+      password: string, 
+      supabaseUserId?: string,
+      username?: string,
+      phone?: string
+    ): Promise<Patient> => {
       // 1. Get first location as default
       const { data: locations } = await supabase.from('locations').select('id').limit(1);
       const defaultLocationId = locations && locations.length > 0 ? locations[0].id : null;
@@ -442,6 +501,8 @@ export const api = {
       if (!defaultLocationId) throw new Error('No clinic location found. Please contact admin.');
 
       const normalizedEmail = email.toLowerCase().trim();
+      const normalizedUsername = username?.trim() ? username.trim().toLowerCase() : null;
+      const normalizedPhone = phone?.trim() ? phone.trim() : null;
 
       // 2. Check if patient already exists by email
       let { data: existingPatient, error: fetchError } = await supabase
@@ -456,8 +517,9 @@ export const api = {
         const { data: newPatient, error: pError } = await supabase
           .from('patients')
           .insert({ 
-            name: normalizedEmail.split('@')[0], 
+            name: normalizedUsername || normalizedEmail.split('@')[0], 
             email: normalizedEmail,
+            phone: normalizedPhone,
             location_id: defaultLocationId
           })
           .select()
@@ -489,6 +551,12 @@ export const api = {
         if (supabaseUserId) {
           updateData.supabase_user_id = supabaseUserId;
         }
+        if (normalizedUsername) {
+          updateData.username = normalizedUsername;
+        }
+        if (normalizedPhone) {
+          updateData.phone = normalizedPhone;
+        }
 
         const { error: updateError } = await supabase
           .from('patient_auth')
@@ -503,8 +571,9 @@ export const api = {
         // Create new auth record
         const authData: any = {
           patient_id: patient.id,
+          username: normalizedUsername,
           email: normalizedEmail,
-          phone: patient.phone || null,
+          phone: normalizedPhone || patient.phone || null,
           is_verified: true,
           password: password || null // May be empty for Supabase Auth users
         };

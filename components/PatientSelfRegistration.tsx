@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Lock, CheckCircle, XCircle, ArrowLeft, RefreshCw, Inbox } from 'lucide-react';
+import { User, Mail, Lock, CheckCircle, XCircle, ArrowLeft, RefreshCw, Inbox, Phone } from 'lucide-react';
 import { otpService } from '../services/otp';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
@@ -21,13 +21,45 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
 }) => {
   // Flow: signup → waiting (check email) → complete
   const [step, setStep] = useState<'signup' | 'waiting' | 'complete'>('signup');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  const pendingKeyFor = (value: string) => `pending_patient_signup_${value.toLowerCase().trim()}`;
+
+  const savePendingSignup = (value: string, data: { username?: string; phone?: string }) => {
+    try {
+      localStorage.setItem(pendingKeyFor(value), JSON.stringify(data));
+    } catch (err) {
+      console.warn('Failed to store pending signup info:', err);
+    }
+  };
+
+  const loadPendingSignup = (value: string): { username?: string; phone?: string } | null => {
+    try {
+      const raw = localStorage.getItem(pendingKeyFor(value));
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      console.warn('Failed to read pending signup info:', err);
+      return null;
+    }
+  };
+
+  const clearPendingSignup = (value: string) => {
+    try {
+      localStorage.removeItem(pendingKeyFor(value));
+    } catch (err) {
+      console.warn('Failed to clear pending signup info:', err);
+    }
+  };
+
+  const isValidUsername = (value: string) => /^[a-zA-Z0-9._-]{3,30}$/.test(value);
 
   // Handle email confirmation redirect
   useEffect(() => {
@@ -81,8 +113,23 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
         console.warn('No Supabase session found, creating patient without Supabase link');
       }
 
+      const pending = loadPendingSignup(confirmedEmail);
+      const pendingUsername = pending?.username || username;
+      const pendingPhone = pending?.phone || phone;
+
+      if (pendingUsername && !username) setUsername(pendingUsername);
+      if (pendingPhone && !phone) setPhone(pendingPhone);
+
       // Create patient record (with or without Supabase user ID)
-      await (api.patients as any).registerWithSupabase(confirmedEmail, '', userId);
+      await (api.patients as any).registerWithSupabase(
+        confirmedEmail, 
+        '', 
+        userId, 
+        pendingUsername, 
+        pendingPhone
+      );
+      
+      clearPendingSignup(confirmedEmail);
       
       setSuccess('Email verified and account created successfully!');
       
@@ -103,6 +150,24 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    const normalizedUsername = username.trim();
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedPhone = phone.trim();
+
+    if (!normalizedUsername) {
+      setError('Username is required');
+      return;
+    }
+    
+    if (!isValidUsername(normalizedUsername)) {
+      setError('Username must be 3-30 characters and use letters, numbers, dot, underscore, or hyphen.');
+      return;
+    }
+
+    if (email !== normalizedEmail) {
+      setEmail(normalizedEmail);
+    }
     
     if (password !== confirmPassword) {
       setError('Passwords do not match');
@@ -118,15 +183,24 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
     
     try {
       // Check if email is already registered in patient_auth
-      const isRegistered = await otpService.isEmailRegistered(email);
+      const isRegistered = await otpService.isEmailRegistered(normalizedEmail);
       if (isRegistered) {
         setError('This email is already registered. Please use a different email or login instead.');
         setLoading(false);
         return;
       }
       
+      const usernameRegistered = await otpService.isUsernameRegistered(normalizedUsername);
+      if (usernameRegistered) {
+        setError('This username is already taken. Please choose a different one.');
+        setLoading(false);
+        return;
+      }
+
+      savePendingSignup(normalizedEmail, { username: normalizedUsername, phone: normalizedPhone });
+      
       // Sign up with Supabase Auth (sends confirmation email automatically)
-      const result = await otpService.signUpWithEmailConfirmation(email, password);
+      const result = await otpService.signUpWithEmailConfirmation(normalizedEmail, password);
       
       if (result.success) {
         setSuccess('Please check your email and click the confirmation link to verify your account.');
@@ -205,6 +279,22 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
             <form onSubmit={handleSignupSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Username
+                </label>
+                <Input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Choose a username"
+                  required
+                  className="w-full"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">3-30 characters. Letters, numbers, dot, underscore, or hyphen.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
                   <Mail className="w-4 h-4" />
                   Email Address
                 </label>
@@ -214,6 +304,20 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your.email@example.com"
                   required
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                  <Phone className="w-4 h-4" />
+                  Phone Number (optional)
+                </label>
+                <Input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g., 09-123456789"
                   className="w-full"
                 />
               </div>
@@ -404,6 +508,8 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
                     <p className="font-medium mb-1">Your Login Credentials:</p>
                     <p><span className="font-medium">Email:</span> {email || confirmedEmail}</p>
+                    {username && <p><span className="font-medium">Username:</span> {username}</p>}
+                    {phone && <p><span className="font-medium">Phone:</span> {phone}</p>}
                     <p><span className="font-medium">Password:</span> (The password you set)</p>
                   </div>
                   

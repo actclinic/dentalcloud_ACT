@@ -136,7 +136,7 @@ export const auth = {
     return this.getSession();
   },
 
-  // Patient login with phone or name + password
+  // Patient login with email, phone, username, or name + password
   async patientLogin(identifier: string, password: string): Promise<AuthSession> {
     try {
       // First, try to login with Supabase Auth if it looks like an email
@@ -204,11 +204,11 @@ export const auth = {
         }
       }
 
-      // Fallback to legacy authentication (phone/name + password against patient_auth table)
+      // Fallback to legacy authentication (email/phone/username/name + password against patient_auth table)
       console.log('Falling back to legacy authentication for:', identifier);
       const patient = await api.patients.authenticate(identifier, password);
       if (!patient) {
-        throw new Error('Invalid credentials. Please check your email/phone and password.');
+        throw new Error('Invalid credentials. Please check your email, phone, or username and password.');
       }
 
       const session: AuthSession = {

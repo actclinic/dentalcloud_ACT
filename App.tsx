@@ -485,6 +485,20 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeletePatient = async (id: string) => {
+    try {
+      await api.patients.delete(id);
+      if (selectedPatient?.id === id) {
+        handleClosePatient();
+      }
+      fetchInitialData();
+      alert('Patient deleted successfully.');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete patient.');
+      throw err;
+    }
+  };
+
   const handleCreateAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -1239,6 +1253,7 @@ const App: React.FC = () => {
                     throw err;
                   }
                 }}
+                onDeletePatient={handleDeletePatient}
                 onRedeemPoints={(patient, points, amount) => handleRedeemPoints(points, amount, patient)}
                 onUpdatePatientAuth={async (patient, password) => {
                   try {

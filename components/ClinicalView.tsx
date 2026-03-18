@@ -469,8 +469,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                      <div className="space-y-4">
                        <p className="text-sm text-gray-500 leading-relaxed">
                          {selectedPatient.has_account 
-                           ? "Update the password for this patient's portal access. They will use their name/phone to login."
-                           : "Create a portal account for this patient. Setting a password will allow them to login and view their history."}
+                           ? "Update the password for this patient's portal access. They will use their email, phone, or username to login."
+                           : "Create a portal account for this patient. Setting a password will allow them to login and view their history using email, phone, or username."}
                        </p>
                        
                        <Input 

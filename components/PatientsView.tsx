@@ -13,6 +13,7 @@ interface PatientsViewProps {
   onSelectPatient: (patient: Patient) => void;
   onAddPatient: () => void;
   onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
+  onDeletePatient?: (id: string) => Promise<void>;
   onRedeemPoints?: (patient: Patient, points: number, amount: number) => void;
   onUpdatePatientAuth?: (patient: Patient, password: string) => void;
   loyaltyEnabled: boolean;
@@ -26,6 +27,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   onSelectPatient, 
   onAddPatient, 
   onUpdatePatient,
+  onDeletePatient,
   onRedeemPoints, 
   onUpdatePatientAuth,
   loyaltyEnabled, 
@@ -41,6 +43,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [editData, setEditData] = useState({ name: '', email: '', phone: '', medicalHistory: '' });
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const itemsPerPage = 10;
 
   // Filtered data based on search term
@@ -363,8 +366,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           <div className="space-y-4">
             <p className="text-sm text-gray-500 leading-relaxed">
               {authModal.patient.has_account 
-                ? "Update the password for this patient's portal access. They will use their name/phone to login."
-                : "Create a portal account for this patient. Setting a password will allow them to login and view their history."}
+                ? "Update the password for this patient's portal access. They will use their email, phone, or username to login."
+                : "Create a portal account for this patient. Setting a password will allow them to login and view their history using email, phone, or username."}
             </p>
             
             <Input 
@@ -450,6 +453,32 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           >
             {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
           </button>
+
+          {onDeletePatient && (
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={async () => {
+                if (!editModal.patient || !onDeletePatient) return;
+                const confirmed = window.confirm(
+                  `Delete ${editModal.patient.name}? This will permanently remove the patient and all related records.`
+                );
+                if (!confirmed) return;
+                setIsDeleting(true);
+                try {
+                  await onDeletePatient(editModal.patient.id);
+                  setEditModal({ open: false, patient: null });
+                } catch (err: any) {
+                  alert(err?.message || 'Failed to delete patient');
+                } finally {
+                  setIsDeleting(false);
+                }
+              }}
+              className="w-full bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700 transition-all mt-2"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Patient'}
+            </button>
+          )}
         </form>
       </Modal>
     )}
