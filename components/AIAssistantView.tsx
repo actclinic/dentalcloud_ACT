@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall } from '../types';
 import { api } from '../services/api';
+import { Currency } from '../utils/currency';
+import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, AIReportPayload } from '../utils/aiReport';
 
 // Custom CSS for animations
 const customStyles = `
@@ -207,6 +209,7 @@ interface AIAssistantViewProps {
   expenses: Expense[];
   recalls?: Recall[];
   currentAdminId?: string;
+  currency: Currency;
 }
 
 const AIAssistantView: React.FC<AIAssistantViewProps> = ({ 
@@ -219,7 +222,8 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   medicines,
   expenses,
   recalls = [],
-  currentAdminId
+  currentAdminId,
+  currency
 }) => {
   const DAILY_LIMIT = 10;
 
@@ -1112,6 +1116,49 @@ Need more detailed help?
     }
   };
 
+  const isReportingQuery = (message: string): boolean => {
+    const lower = message.toLowerCase();
+    return [
+      'report',
+      'analysis',
+      'financial',
+      'revenue',
+      'expense',
+      'profit',
+      'inventory',
+      'audit'
+    ].some(term => lower.includes(term));
+  };
+
+  const buildInsightsMarkdown = (insights: string[]): string => {
+    if (!insights.length) {
+      return '- No additional insights available.';
+    }
+    return insights.map(item => `- ${item}`).join('\n');
+  };
+
+  const extractJsonBlock = (text: string): string | null => {
+    if (!text) return null;
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced && fenced[1]) {
+      return fenced[1].trim();
+    }
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first !== -1 && last !== -1 && last > first) {
+      return text.slice(first, last + 1).trim();
+    }
+    return null;
+  };
+
+  const parseJsonSafe = (text: string): unknown | null => {
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      return null;
+    }
+  };
+
   const API_DOCS = `
 ACTIONS (Available in all modes - Full Database Access):
 
@@ -1284,6 +1331,90 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
 *I'm here to support your dental practice with AI-powered assistance!* 🦷✨`;
     }
     
+    const isReportQuery = isReportingQuery(userMessage);
+    if (isReportQuery) {
+      const report = buildFinancialReport(treatmentRecords, expenses, medicines, currency);
+      const reportMarkdown = renderFinancialReportMarkdown(report, currency);
+      const insights = buildInsightsNoNumbers(report);
+      const insightsMarkdown = buildInsightsMarkdown(insights);
+      const upgradeCheck = runReportUpgradeCheck(report);
+
+      if (!upgradeCheck.ok) {
+        const issueLines = upgradeCheck.issues.map(issue => `- ${issue}`).join('\n');
+        return `${reportMarkdown}\n\n**Upgrade Check**\n${issueLines}`;
+      }
+
+      const warnings = upgradeCheck.warnings.length
+        ? `\n\n**Upgrade Check**\n${upgradeCheck.warnings.map(w => `- ${w}`).join('\n')}`
+        : '';
+
+      const renderPayloadReport = (payload: AIReportPayload): string => {
+        const reportFromPayload = payloadToReport(payload);
+        const tables = renderFinancialReportMarkdown(reportFromPayload, currency);
+        const payloadInsights = buildInsightsMarkdown(payload.insights);
+        return `${tables}\n\n**Insights**\n${payloadInsights}${warnings}`;
+      };
+
+      if (apiKey === MOCK_API_KEY || apiKey === 'REPLACE_WITH_YOUR_AI_API_KEY') {
+        const mockPayload = { ...buildAIReportPayload(report), insights };
+        return renderPayloadReport(mockPayload);
+      }
+
+      try {
+        const schemaTemplate = buildAIReportPayload(report);
+        const schemaPrompt = `Return JSON only. Do not include markdown fences or extra text.\n\nSchema:\n{\n  \"period\": { \"today\": string, \"weekStart\": string, \"monthLabel\": string },\n  \"revenue\": { \"daily\": number, \"weekly\": number, \"monthly\": number },\n  \"expenses\": { \"daily\": number, \"weekly\": number, \"monthly\": number },\n  \"profit\": { \"monthly\": number },\n  \"inventory\": { \"totalValue\": number, \"lowStockCount\": number, \"outOfStockCount\": number },\n  \"doctors\": [ { \"name\": string, \"treatments\": number } ],\n  \"insights\": [ string ]\n}\n\nRules:\n- Use ONLY the values provided below.\n- Do not invent new numbers.\n- Provide 3 to 6 insights.\n- Insights may include numbers, but only the allowed values below.\n\nAllowed Values (copy exactly):\n${JSON.stringify(schemaTemplate, null, 2)}\n`;
+
+        const structuredResponse = await fetch(
+          `https://api.apifree.ai/v1/chat/completions`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are an expert clinical reporting assistant. Respond with strict JSON only.'
+                },
+                {
+                  role: 'user',
+                  content: schemaPrompt
+                }
+              ],
+              temperature: 0.1,
+              max_tokens: 700,
+              top_p: 0.9,
+              stream: false
+            })
+          }
+        );
+
+        if (!structuredResponse.ok) {
+          return `${reportMarkdown}\n\n**Insights**\n${insightsMarkdown}${warnings}`;
+        }
+
+        const structuredData = await structuredResponse.json();
+        const rawContent = structuredData.choices?.[0]?.message?.content || '';
+        const jsonBlock = extractJsonBlock(rawContent) || rawContent.trim();
+        const parsed = parseJsonSafe(jsonBlock);
+        const validation = validateAIReportPayload(parsed, report, currency);
+
+        if (!validation.ok) {
+          const validationNotes = validation.issues.length
+            ? `\n\n**Upgrade Check**\n${validation.issues.map(issue => `- ${issue}`).join('\n')}`
+            : '';
+          return `${reportMarkdown}\n\n**Insights**\n${insightsMarkdown}${warnings}${validationNotes}`;
+        }
+
+        return renderPayloadReport(parsed as AIReportPayload);
+      } catch (error: any) {
+        return `${reportMarkdown}\n\n**Insights**\n${insightsMarkdown}${warnings}`;
+      }
+    }
+
     // If using mock API key, return simulated response
     if (apiKey === MOCK_API_KEY || apiKey === 'REPLACE_WITH_YOUR_AI_API_KEY') {
       return simulateMockResponse(userMessage);
@@ -3632,9 +3763,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 };
 
 export default AIAssistantView;
-
-
-
 
 
 

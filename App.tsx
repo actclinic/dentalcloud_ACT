@@ -1291,17 +1291,18 @@ const App: React.FC = () => {
                 isAdmin={isAdmin} 
             />}
             {currentView === 'ai-assistant' && <AIAssistantView 
-              patients={patients} 
-              treatmentRecords={globalRecords} 
-              appointments={appointments}
-              doctors={doctors}
-              treatmentTypes={treatmentTypes}
-              users={users}
-              medicines={medicines}
-              expenses={expenses}
-              recalls={recalls}
-              currentAdminId={auth.getCurrentUser()?.userId}
-            />}
+                patients={patients} 
+                treatmentRecords={globalRecords} 
+                appointments={appointments}
+                doctors={doctors}
+                treatmentTypes={treatmentTypes}
+                users={users}
+                medicines={medicines}
+                expenses={expenses}
+                recalls={recalls}
+                currentAdminId={auth.getCurrentUser()?.userId}
+                currency={currency}
+              />}
             {currentView === 'messaging' && isAdmin && <MessagingView 
               patients={patients} 
               users={users} 
