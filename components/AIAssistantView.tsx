@@ -1443,6 +1443,9 @@ Need more detailed help?
     }
   };
 
+  const isMockKey = (apiKey: string) =>
+    apiKey === MOCK_API_KEY || apiKey === 'REPLACE_WITH_YOUR_AI_API_KEY';
+
   const isReportingQuery = (message: string): boolean => {
     const lower = message.toLowerCase();
     return [
@@ -1484,6 +1487,67 @@ Need more detailed help?
     } catch (error) {
       return null;
     }
+  };
+
+  const classifyMemoryCommandLLM = async (message: string): Promise<MemoryCommand> => {
+    const apiKey = process.env.AI_API_KEY || MOCK_API_KEY;
+    if (isMockKey(apiKey)) {
+      throw new Error('AI API key not configured for memory routing.');
+    }
+
+    const systemPrompt = `You are a classifier. Decide if the user is giving a memory instruction.
+Return JSON only with this schema:
+{"type":"remember|prefer|forget|clear|none","content":string}
+Rules:
+- Use "remember" for facts to store (content is the fact).
+- Use "prefer" for preferences (content is the preference).
+- Use "forget" to remove memory (content is what to forget).
+- Use "clear" to erase all memory (content can be empty string).
+- Use "none" when the user is not giving a memory instruction.`;
+
+    const userPrompt = `Message: """${message}"""`;
+
+    const response = await fetch(`https://api.apifree.ai/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0,
+        max_tokens: 200,
+        top_p: 0.9,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `Memory routing failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const raw = data?.choices?.[0]?.message?.content || '';
+    const jsonBlock = extractJsonBlock(raw) || raw.trim();
+    const parsed = parseJsonSafe(jsonBlock) as any;
+    if (!parsed || typeof parsed.type !== 'string') {
+      throw new Error('Invalid memory routing response.');
+    }
+
+    const type = parsed.type.toLowerCase();
+    if (!['remember', 'prefer', 'forget', 'clear', 'none'].includes(type)) {
+      throw new Error('Invalid memory routing type.');
+    }
+
+    return {
+      type,
+      content: typeof parsed.content === 'string' ? parsed.content.trim() : ''
+    } as MemoryCommand;
   };
 
   const API_DOCS = `
@@ -2730,8 +2794,14 @@ Thank you for using Loli! 🦷✨`,
     setIsLoading(true);
 
     try {
-      // Update memory from this user message
-      const memoryCommand = parseMemoryCommand(userMessage.content);
+      // Update memory from this user message (LLM-assisted routing)
+      let memoryCommand: MemoryCommand = { type: 'none' };
+      try {
+        memoryCommand = await classifyMemoryCommandLLM(userMessage.content);
+      } catch (error) {
+        console.error('Memory routing failed, using fallback parser:', error);
+        memoryCommand = parseMemoryCommand(userMessage.content);
+      }
       const updatedProfile = updateMemoryFromUserMessage(assistantMemory, userMessage.content);
       const memoryResult = applyMemoryCommand(updatedProfile, memoryCommand);
       memoryDirtyRef.current = true;

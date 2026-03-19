@@ -322,6 +322,7 @@ The AI assistant uses a token-optimized context building strategy:
 ### Assistant Memory (Supabase)
 - Memory is stored in the `assistant_memory` table (per admin)
 - Profiles are synced from the client and saved on each update
+- Memory commands are routed with LLM-assisted classification, with a local fallback if the AI service is unavailable
 
 ### Response Processing
 - Markdown-enhanced responses using ReactMarkdown and remark-gfm
