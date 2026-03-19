@@ -2687,5 +2687,23 @@ export const api = {
         // Don't throw error to prevent blocking normal operations
       }
     }
+  },
+
+  email: {
+    sendManagerEmail: async (payload: { 
+      to: string; 
+      subject?: string; 
+      body?: string; 
+      fromName?: string; 
+      fromEmail?: string;
+      replyTo?: string;
+    }): Promise<{ id?: string; messageId?: string }> => {
+      const { data, error } = await supabase.functions.invoke('send-manager-email', {
+        body: payload
+      });
+      if (error) throw new Error(error.message || 'Failed to send email');
+      if (data?.error) throw new Error(data.error);
+      return data || {};
+    }
   }
 };

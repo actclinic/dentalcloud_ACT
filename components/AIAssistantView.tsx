@@ -211,6 +211,23 @@ interface ChatSession {
   updatedAt: Date;
 }
 
+interface ManagerContact {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  isPrimary?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface EmailSettings {
+  enabled: boolean;
+  senderName?: string;
+  senderEmail?: string;
+  updatedAt: string;
+}
+
 interface AIAssistantViewProps {
   patients: Patient[];
   treatmentRecords: ClinicalRecord[];
@@ -239,6 +256,165 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   currency
 }) => {
   const DAILY_LIMIT = 10;
+  const MANAGER_EMAILS_KEY = 'loli_manager_emails';
+  const EMAIL_SETTINGS_KEY = 'dc_email_settings';
+
+  const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const loadEmailSettings = (): EmailSettings => {
+    const fallback: EmailSettings = {
+      enabled: false,
+      senderName: 'DentalCloud',
+      senderEmail: '',
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      const stored = localStorage.getItem(EMAIL_SETTINGS_KEY);
+      if (!stored) return fallback;
+      const parsed = JSON.parse(stored);
+      return {
+        enabled: parsed?.enabled ?? fallback.enabled,
+        senderName: parsed?.senderName ?? fallback.senderName,
+        senderEmail: parsed?.senderEmail ?? fallback.senderEmail,
+        updatedAt: parsed?.updatedAt || fallback.updatedAt
+      };
+    } catch (error) {
+      return fallback;
+    }
+  };
+
+  const loadManagerContacts = (): ManagerContact[] => {
+    try {
+      const stored = localStorage.getItem(MANAGER_EMAILS_KEY);
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const saveManagerContacts = (contacts: ManagerContact[]) => {
+    localStorage.setItem(MANAGER_EMAILS_KEY, JSON.stringify(contacts));
+  };
+
+  const toBoolean = (value: any): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      return ['true', '1', 'yes', 'y', 'primary'].includes(normalized);
+    }
+    return false;
+  };
+
+  const upsertManagerContact = (input: {
+    email: string;
+    name?: string;
+    role?: string;
+    primary?: boolean;
+  }): ManagerContact => {
+    const normalizedEmail = normalizeEmail(input.email);
+    const now = new Date().toISOString();
+    let contacts = loadManagerContacts();
+    const existingIndex = contacts.findIndex(c => c.email === normalizedEmail);
+    const existing = existingIndex >= 0 ? contacts[existingIndex] : null;
+    const cleanedName = input.name?.trim();
+    const cleanedRole = input.role?.trim();
+    const primaryFlag = input.primary !== undefined
+      ? input.primary
+      : (existing?.isPrimary ?? (contacts.length === 0));
+
+    const updatedContact: ManagerContact = {
+      id: existing?.id || `mgr_${Date.now()}`,
+      email: normalizedEmail,
+      name: cleanedName || existing?.name,
+      role: cleanedRole || existing?.role,
+      isPrimary: primaryFlag,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now
+    };
+
+    if (existingIndex >= 0) {
+      contacts[existingIndex] = updatedContact;
+    } else {
+      contacts.push(updatedContact);
+    }
+
+    if (updatedContact.isPrimary) {
+      contacts = contacts.map(c =>
+        c.email === updatedContact.email ? updatedContact : { ...c, isPrimary: false }
+      );
+    } else {
+      contacts = contacts.map(c => (c.email === updatedContact.email ? updatedContact : c));
+    }
+
+    saveManagerContacts(contacts);
+    return updatedContact;
+  };
+
+  const resolveManagerRecipient = (params: any): { email: string; label: string } => {
+    const contacts = loadManagerContacts();
+    const rawEmail = params?.to || params?.email || params?.e;
+    if (rawEmail) {
+      const normalizedEmail = normalizeEmail(String(rawEmail));
+      if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Invalid email address.');
+      }
+      const existing = contacts.find(c => c.email === normalizedEmail);
+      const label = existing?.name
+        ? `${existing.name} <${existing.email}>`
+        : normalizedEmail;
+      return { email: normalizedEmail, label };
+    }
+
+    const nameQuery = (params?.name || params?.n || '').toString().trim().toLowerCase();
+    const roleQuery = (params?.role || params?.r || '').toString().trim().toLowerCase();
+
+    let matches = contacts;
+    if (nameQuery) {
+      matches = matches.filter(c =>
+        (c.name || '').toLowerCase().includes(nameQuery) ||
+        c.email.toLowerCase().includes(nameQuery)
+      );
+    }
+    if (roleQuery) {
+      matches = matches.filter(c => (c.role || '').toLowerCase().includes(roleQuery));
+    }
+
+    if (matches.length === 1) {
+      const match = matches[0];
+      const label = match.name ? `${match.name} <${match.email}>` : match.email;
+      return { email: match.email, label };
+    }
+
+    if (matches.length > 1) {
+      throw new Error('Multiple manager emails match. Please specify the email or set a primary manager.');
+    }
+
+    const primary = contacts.find(c => c.isPrimary);
+    if (primary) {
+      const label = primary.name ? `${primary.name} <${primary.email}>` : primary.email;
+      return { email: primary.email, label };
+    }
+
+    if (contacts.length === 1) {
+      const only = contacts[0];
+      const label = only.name ? `${only.name} <${only.email}>` : only.email;
+      return { email: only.email, label };
+    }
+
+    if (contacts.length === 0) {
+      throw new Error('No manager email saved yet. Please provide the manager or boss email first.');
+    }
+
+    throw new Error('Multiple manager emails are saved. Please specify the email, name, or role.');
+  };
 
   const getDefaultMessages = (): Message[] => [{
     id: '1',
@@ -315,6 +491,11 @@ How can I assist you today?
   useEffect(() => {
     localStorage.setItem('loli_mode', mode);
   }, [mode]);
+
+  useEffect(() => {
+    // Clean up legacy mock email outbox data
+    localStorage.removeItem('dc_email_outbox');
+  }, []);
 
   const [apiStatus, setApiStatus] = useState<'ready' | 'mock' | 'error'>('mock');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1249,6 +1430,12 @@ MESSAGING MANAGEMENT:
 - msg_reply(pid, text): Send a reply message to a patient. pid=patient id (or use "name"), text=message content.
   *Note: Always review patient history (pat_hist) and medical notes before drafting clinical replies.*
 
+MANAGER EMAIL:
+- mgr_email_add(email, name, role, primary): Save manager/boss email. primary=true sets default recipient.
+- mgr_email_list(): List saved manager emails.
+- mgr_email_remove(query): Remove by email, name, or role.
+- mgr_email_send(to, subject, body): Email the manager. "to" can be email, name, or role; if omitted, uses primary or only saved manager.
+
 LOYALTY SYSTEM:
 - loyalty_rules_get(): Get all loyalty rules.
 - loyalty_rule_create(name, event_type, points_per_unit, min_amount): Create loyalty rule.
@@ -1325,7 +1512,10 @@ Examples:
     const memorySummary = buildMemoryPromptSummary(assistantMemory);
     
     // Check if message implies an action
-    const actionKeywords = ['create', 'book', 'schedule', 'add', 'delete', 'remove', 'update', 'modify', 'change', 'edit', 'new', 'make'];
+    const actionKeywords = [
+      'create', 'book', 'schedule', 'add', 'delete', 'remove', 'update', 'modify',
+      'change', 'edit', 'new', 'make', 'email', 'send', 'notify', 'message'
+    ];
     const isActionIntent = actionKeywords.some(kw => userMessage.toLowerCase().includes(kw));
     const isAgentMode = mode === 'agent';
     
@@ -2249,6 +2439,36 @@ I can provide guidance on:
               result.patient_name = conv.patient_name;
             }
             break;
+          case 'mgr_email_send':
+            {
+              const recipient = resolveManagerRecipient(pendingAction.params);
+              const subject = (pendingAction.params?.subject || pendingAction.params?.sub || pendingAction.params?.title || '').toString();
+              const body = (pendingAction.params?.body || pendingAction.params?.message || pendingAction.params?.text || '').toString();
+              if (!subject && !body) throw new Error("Email subject or body is required.");
+
+              const emailSettings = loadEmailSettings();
+              if (!emailSettings.enabled) {
+                throw new Error("Email delivery is disabled. Enable it in Settings first.");
+              }
+              if (!emailSettings.senderEmail) {
+                throw new Error("Sender email is required. Please set it in Settings first.");
+              }
+
+              result = await api.email.sendManagerEmail({
+                to: recipient.email,
+                subject,
+                body,
+                fromName: emailSettings.senderName || undefined,
+                fromEmail: emailSettings.senderEmail
+              });
+
+              result = {
+                recipientLabel: recipient.label,
+                recipientEmail: recipient.email,
+                messageId: result?.id || result?.messageId
+              };
+            }
+            break;
           default:
             throw new Error(`Unknown action: ${pendingAction.action}`);
         }
@@ -2282,6 +2502,9 @@ I can provide guidance on:
             break;
           case 'msg_reply':
             successMessage = `✅ Message sent successfully to ${result.patient_name || 'the patient'}.`;
+            break;
+          case 'mgr_email_send':
+            successMessage = `✅ Email sent to ${result.recipientLabel || result.recipientEmail}.${result.messageId ? ` Message ID: ${result.messageId}.` : ''}`;
             break;
         }
 
@@ -2456,7 +2679,8 @@ Thank you for using Loli! 🦷✨`,
           const crudActions = [
             'apt_c', 'apt_u', 'apt_d', 'p_c', 'p_u', 'p_d', 'dr_c', 'dr_u', 'dr_d', 
             'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
-            'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d', 'msg_reply'
+            'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d', 'msg_reply',
+            'mgr_email_add', 'mgr_email_list', 'mgr_email_remove', 'mgr_email_send'
           ];
           
           if (crudActions.includes(action) && mode !== 'agent') {
@@ -2766,6 +2990,107 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 currentActionResult = `✅ Location "${result.name}" created successfully.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to create location: ${err.message}`;
+              }
+              break;
+
+            // Manager Email Actions
+            case 'mgr_email_add':
+              try {
+                const email = params?.email || params?.e;
+                if (!email) throw new Error("Manager email is required.");
+                const normalizedEmail = normalizeEmail(String(email));
+                if (!isValidEmail(normalizedEmail)) throw new Error("Invalid email address.");
+                
+                const saved = upsertManagerContact({
+                  email: normalizedEmail,
+                  name: params?.name || params?.n,
+                  role: params?.role || params?.r,
+                  primary: toBoolean(params?.primary ?? params?.is_primary)
+                });
+                
+                const label = saved.name ? `${saved.name} <${saved.email}>` : saved.email;
+                currentActionResult = `✅ Saved manager email: ${label}${saved.role ? ` (${saved.role})` : ''}.${saved.isPrimary ? ' Set as primary recipient.' : ''}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to save manager email: ${err.message}`;
+              }
+              break;
+            case 'mgr_email_list':
+              try {
+                const contacts = loadManagerContacts();
+                if (contacts.length === 0) {
+                  currentActionResult = `📧 No manager emails saved yet.`;
+                } else {
+                  currentActionResult = `📧 Manager Emails:\n\n${contacts.map(c => {
+                    const label = c.name ? `${c.name} <${c.email}>` : c.email;
+                    const roleLabel = c.role ? ` (${c.role})` : '';
+                    const primaryLabel = c.isPrimary ? ' [primary]' : '';
+                    return `• ${label}${roleLabel}${primaryLabel}`;
+                  }).join('\n')}`;
+                }
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to load manager emails: ${err.message}`;
+              }
+              break;
+            case 'mgr_email_remove':
+              try {
+                const query = (params?.email || params?.e || params?.name || params?.n || params?.role || params?.r || params?.id || '').toString().trim().toLowerCase();
+                if (!query) throw new Error("Email, name, or role is required.");
+                
+                let contacts = loadManagerContacts();
+                const matchedIndex = contacts.findIndex(c =>
+                  c.email.toLowerCase() === query ||
+                  (c.name || '').toLowerCase().includes(query) ||
+                  (c.role || '').toLowerCase().includes(query) ||
+                  c.id === query
+                );
+                
+                if (matchedIndex === -1) {
+                  currentActionResult = `⚠️ No matching manager email found.`;
+                  break;
+                }
+                
+                const removed = contacts[matchedIndex];
+                contacts.splice(matchedIndex, 1);
+                
+                if (removed.isPrimary && contacts.length > 0) {
+                  contacts[0] = { ...contacts[0], isPrimary: true, updatedAt: new Date().toISOString() };
+                }
+                
+                saveManagerContacts(contacts);
+                const label = removed.name ? `${removed.name} <${removed.email}>` : removed.email;
+                currentActionResult = `✅ Removed manager email: ${label}.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to remove manager email: ${err.message}`;
+              }
+              break;
+            case 'mgr_email_send':
+              try {
+                const recipient = resolveManagerRecipient(params);
+                const emailSettings = loadEmailSettings();
+                if (!emailSettings.enabled) {
+                  throw new Error("Email delivery is disabled. Enable it in Settings first.");
+                }
+                if (!emailSettings.senderEmail) {
+                  throw new Error("Sender email is required. Please set it in Settings first.");
+                }
+                const subject = (params?.subject || params?.sub || params?.title || '').toString();
+                const body = (params?.body || params?.message || params?.text || '').toString();
+                if (!subject && !body) throw new Error("Email subject or body is required.");
+
+                const fromLabel = emailSettings.senderName || emailSettings.senderEmail
+                  ? `${emailSettings.senderName || ''}${emailSettings.senderEmail ? ` <${emailSettings.senderEmail}>` : ''}`.trim()
+                  : 'Default Sender';
+
+                const preview = [
+                  `From: ${fromLabel}`,
+                  `Delivery: Resend (server-side)`,
+                  subject ? `Subject: ${subject}` : null,
+                  body ? `Message:\n${body}` : null
+                ].filter(Boolean).join('\n\n');
+                
+                currentActionResult = `📧 I can email ${recipient.label}.\n\n${preview}\n\nWould you like me to send this email now? Please confirm to proceed.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to prepare manager email: ${err.message}`;
               }
               break;
 
@@ -3786,7 +4111,3 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 };
 
 export default AIAssistantView;
-
-
-
-

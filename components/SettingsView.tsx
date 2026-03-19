@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw } from 'lucide-react';
 import { Location, LoyaltyRule } from '../types';
 import { Modal, Input } from './Shared';
+import { api } from '../services/api';
 
 interface SettingsViewProps {
   currency: 'USD' | 'MMK';
@@ -23,6 +24,23 @@ interface SettingsViewProps {
   isAdmin: boolean;
 }
 
+interface EmailSettings {
+  enabled: boolean;
+  senderName?: string;
+  senderEmail?: string;
+  updatedAt: string;
+}
+
+interface ManagerContact {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  isPrimary?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const SettingsView: React.FC<SettingsViewProps> = ({ 
   currency, 
   onCurrencyChange, 
@@ -42,6 +60,49 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onRemoveAllMessages,
   isAdmin 
 }) => {
+  const EMAIL_SETTINGS_KEY = 'dc_email_settings';
+  const MANAGER_EMAILS_KEY = 'loli_manager_emails';
+
+  const normalizeEmail = (email: string) => email.trim().toLowerCase();
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const loadEmailSettings = (): EmailSettings => {
+    const fallback: EmailSettings = {
+      enabled: false,
+      senderName: 'DentalCloud',
+      senderEmail: '',
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      const stored = localStorage.getItem(EMAIL_SETTINGS_KEY);
+      if (!stored) return fallback;
+      const parsed = JSON.parse(stored);
+      return {
+        enabled: parsed?.enabled ?? fallback.enabled,
+        senderName: parsed?.senderName ?? fallback.senderName,
+        senderEmail: parsed?.senderEmail ?? fallback.senderEmail,
+        updatedAt: parsed?.updatedAt || fallback.updatedAt
+      };
+    } catch (error) {
+      return fallback;
+    }
+  };
+
+  const saveEmailSettings = (settings: EmailSettings) => {
+    localStorage.setItem(EMAIL_SETTINGS_KEY, JSON.stringify(settings));
+  };
+
+  const loadManagerContacts = (): ManagerContact[] => {
+    try {
+      const stored = localStorage.getItem(MANAGER_EMAILS_KEY);
+      if (!stored) return [];
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  };
+
   const [showLocModal, setShowLocModal] = useState(false);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [newLoc, setNewLoc] = useState<Partial<Location>>({ name: '', address: '', phone: '' });
@@ -52,6 +113,156 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     active: true 
   });
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [emailSettings, setEmailSettings] = useState<EmailSettings>(() => loadEmailSettings());
+  const [managerContacts, setManagerContacts] = useState<ManagerContact[]>(() => loadManagerContacts());
+  const [managerForm, setManagerForm] = useState<{ email: string; name: string; role: string; primary: boolean }>({
+    email: '',
+    name: '',
+    role: '',
+    primary: false
+  });
+  const [managerError, setManagerError] = useState<string>('');
+  const [testEmail, setTestEmail] = useState<string>('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState<string>('');
+
+  const updateEmailSettings = (updates: Partial<EmailSettings>) => {
+    setEmailSettings(prev => {
+      const next: EmailSettings = {
+        ...prev,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      saveEmailSettings(next);
+      return next;
+    });
+  };
+
+  const saveManagerContacts = (contacts: ManagerContact[]) => {
+    localStorage.setItem(MANAGER_EMAILS_KEY, JSON.stringify(contacts));
+  };
+
+  const handleAddManager = (e: React.FormEvent) => {
+    e.preventDefault();
+    setManagerError('');
+    const email = normalizeEmail(managerForm.email);
+    if (!email || !isValidEmail(email)) {
+      setManagerError('Please enter a valid email address.');
+      return;
+    }
+    const now = new Date().toISOString();
+    const existingIndex = managerContacts.findIndex(c => c.email === email);
+    let next = [...managerContacts];
+    const updatedContact: ManagerContact = {
+      id: existingIndex >= 0 ? next[existingIndex].id : `mgr_${Date.now()}`,
+      email,
+      name: managerForm.name.trim() || undefined,
+      role: managerForm.role.trim() || undefined,
+      isPrimary: managerForm.primary || next.length === 0,
+      createdAt: existingIndex >= 0 ? next[existingIndex].createdAt : now,
+      updatedAt: now
+    };
+
+    if (existingIndex >= 0) {
+      next[existingIndex] = updatedContact;
+    } else {
+      next.push(updatedContact);
+    }
+
+    if (updatedContact.isPrimary) {
+      next = next.map(c => c.email === updatedContact.email ? updatedContact : { ...c, isPrimary: false });
+    }
+
+    saveManagerContacts(next);
+    setManagerContacts(next);
+    setManagerForm({ email: '', name: '', role: '', primary: false });
+  };
+
+  const handleRemoveManager = (email: string) => {
+    let next = managerContacts.filter(c => c.email !== email);
+    if (next.length > 0 && !next.some(c => c.isPrimary)) {
+      next[0] = { ...next[0], isPrimary: true, updatedAt: new Date().toISOString() };
+    }
+    saveManagerContacts(next);
+    setManagerContacts(next);
+  };
+
+  const handleSetPrimaryManager = (email: string) => {
+    const next = managerContacts.map(c => ({
+      ...c,
+      isPrimary: c.email === email
+    }));
+    saveManagerContacts(next);
+    setManagerContacts(next);
+  };
+
+  useEffect(() => {
+    // Clean up legacy mock outbox data
+    localStorage.removeItem('dc_email_outbox');
+
+    // Migrate legacy settings shape if present
+    const stored = localStorage.getItem(EMAIL_SETTINGS_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed?.mode !== undefined) {
+          const migrated: EmailSettings = {
+            enabled: parsed.mode === 'provider',
+            senderName: parsed.senderName || 'DentalCloud',
+            senderEmail: parsed.senderEmail || '',
+            updatedAt: new Date().toISOString()
+          };
+          saveEmailSettings(migrated);
+          setEmailSettings(migrated);
+        }
+      } catch (error) {
+        // Ignore malformed legacy settings
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!testEmail && managerContacts.length > 0) {
+      const primary = managerContacts.find(c => c.isPrimary);
+      setTestEmail(primary?.email || managerContacts[0]?.email || '');
+    }
+  }, [managerContacts, testEmail]);
+
+  const handleSendTestEmail = async () => {
+    setTestMessage('');
+    if (!emailSettings.enabled) {
+      setTestStatus('error');
+      setTestMessage('Email delivery is disabled. Enable it first.');
+      return;
+    }
+    if (!emailSettings.senderEmail || !isValidEmail(emailSettings.senderEmail)) {
+      setTestStatus('error');
+      setTestMessage('Please set a valid sender email in Settings.');
+      return;
+    }
+    const recipient = normalizeEmail(testEmail);
+    if (!recipient || !isValidEmail(recipient)) {
+      setTestStatus('error');
+      setTestMessage('Please enter a valid recipient email.');
+      return;
+    }
+
+    try {
+      setTestStatus('sending');
+      await api.email.sendManagerEmail({
+        to: recipient,
+        subject: 'DentalCloud Test Email',
+        body: 'This is a test email from DentalCloud. Your Resend + Supabase Edge setup is working.',
+        fromName: emailSettings.senderName || undefined,
+        fromEmail: emailSettings.senderEmail
+      });
+      setTestStatus('sent');
+      setTestMessage('Test email sent successfully.');
+    } catch (error: any) {
+      setTestStatus('error');
+      setTestMessage(error?.message || 'Failed to send test email.');
+    }
+  };
 
   const handleAddLoc = (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,6 +566,171 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Email Delivery Settings */}
+        {isAdmin && (
+          <div className="border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-800">Email Delivery</h3>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Email delivery uses Supabase Edge Functions with Resend. Configure the sender and enable delivery here.
+            </p>
+
+            <div className="flex items-center justify-between mb-4">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={emailSettings.enabled}
+                  onChange={(e) => updateEmailSettings({ enabled: e.target.checked })}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                <span className="ml-3 text-sm font-medium text-gray-700">{emailSettings.enabled ? 'Delivery Enabled' : 'Delivery Disabled'}</span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Sender Name"
+                value={emailSettings.senderName || ''}
+                onChange={(e: any) => updateEmailSettings({ senderName: e.target.value })}
+                placeholder="DentalCloud"
+              />
+              <Input
+                label="Sender Email"
+                type="email"
+                value={emailSettings.senderEmail || ''}
+                onChange={(e: any) => updateEmailSettings({ senderEmail: e.target.value })}
+                placeholder="no-reply@yourdomain.com"
+              />
+            </div>
+
+            <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <p className="text-xs text-amber-700">
+                <strong>Resend note:</strong> The sender email must be from a verified domain in Resend. If you don’t have a domain yet, use a verified sender provided by Resend (for example, `onboarding@resend.dev` for testing).
+              </p>
+            </div>
+
+            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-800 mb-3">Send Test Email</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div className="md:col-span-2">
+                  <Input
+                    label="Recipient Email"
+                    type="email"
+                    value={testEmail}
+                    onChange={(e: any) => setTestEmail(e.target.value)}
+                    placeholder="manager@example.com"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSendTestEmail}
+                  disabled={testStatus === 'sending'}
+                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-60"
+                >
+                  {testStatus === 'sending' ? 'Sending...' : 'Send Test'}
+                </button>
+              </div>
+              {testMessage && (
+                <p className={`text-xs mt-2 ${testStatus === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+                  {testMessage}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-800">Manager Emails</h4>
+                <button
+                  type="button"
+                  onClick={() => setManagerForm(prev => ({ ...prev, primary: !prev.primary }))}
+                  className={`text-[10px] uppercase font-bold px-2 py-1 rounded-full border ${managerForm.primary ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
+                >
+                  {managerForm.primary ? 'Primary' : 'Set Primary'}
+                </button>
+              </div>
+
+              <form onSubmit={handleAddManager} className="space-y-3">
+                <Input
+                  label="Email"
+                  type="email"
+                  value={managerForm.email}
+                  onChange={(e: any) => setManagerForm(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="boss@example.com"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input
+                    label="Name (Optional)"
+                    value={managerForm.name}
+                    onChange={(e: any) => setManagerForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Dr. Boss"
+                  />
+                  <Input
+                    label="Role (Optional)"
+                    value={managerForm.role}
+                    onChange={(e: any) => setManagerForm(prev => ({ ...prev, role: e.target.value }))}
+                    placeholder="manager"
+                  />
+                </div>
+                {managerError && (
+                  <p className="text-xs text-red-600">{managerError}</p>
+                )}
+                <button
+                  type="submit"
+                  className="w-full bg-indigo-600 text-white py-2 rounded-xl font-bold shadow-lg shadow-indigo-600/20"
+                >
+                  Save Manager Email
+                </button>
+              </form>
+
+              <div className="mt-4 space-y-2">
+                {managerContacts.length === 0 ? (
+                  <p className="text-xs text-gray-500">No manager emails saved yet.</p>
+                ) : (
+                  managerContacts.map(contact => (
+                    <div key={contact.id} className="flex items-start justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {contact.name ? `${contact.name} <${contact.email}>` : contact.email}
+                        </p>
+                        {contact.role && (
+                          <p className="text-xs text-gray-500">{contact.role}</p>
+                        )}
+                        {contact.isPrimary && (
+                          <span className="text-[10px] uppercase font-bold text-indigo-600">Primary</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {!contact.isPrimary && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetPrimaryManager(contact.email)}
+                            className="text-xs text-indigo-600 font-bold"
+                          >
+                            Set Primary
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveManager(contact.email)}
+                          className="text-xs text-red-600 font-bold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* System Operations */}
         {isAdmin && onResetAllLoyaltyPoints && (

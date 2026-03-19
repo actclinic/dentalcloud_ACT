@@ -272,6 +272,12 @@ AI commands follow this JSON format:
 - `m_sell(pid, mid, qty, tid)`: Sell medicine
 - `inv_low()`: Get low stock report
 
+#### Manager Email (Resend Delivery)
+- `mgr_email_add(email, name, role, primary)`: Save manager/boss email and optionally mark as primary
+- `mgr_email_list()`: List saved manager emails
+- `mgr_email_remove(query)`: Remove by email, name, or role
+- `mgr_email_send(to, subject, body)`: Send an email to the manager (uses sender settings in the Settings tab)
+
 ## API Actions & Endpoints
 
 The system uses a service-oriented architecture with API endpoints managed through the `api` service object:
@@ -306,6 +312,12 @@ The AI assistant uses a token-optimized context building strategy:
 - Automatic cleanup of sessions older than 3 days
 - Conversation continuity tracking
 - Multi-turn conversation awareness
+
+### Email Delivery (Resend + Supabase Edge)
+- Settings tab stores sender name/email and delivery enabled flag
+- Emails are delivered by a Supabase Edge Function that calls Resend
+- Resend API key is stored as a Supabase secret (never in the frontend)
+- Edge Function name: `send-manager-email` (set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_FROM_NAME` secrets)
 
 ### Response Processing
 - Markdown-enhanced responses using ReactMarkdown and remark-gfm

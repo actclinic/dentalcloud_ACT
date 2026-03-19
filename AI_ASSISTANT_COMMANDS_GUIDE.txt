@@ -321,6 +321,27 @@ Step 4 - Verify update:
 
 ---
 
+MANAGER EMAIL COMMUNICATION
+===========================
+
+SAVE MANAGER EMAIL:
+{ "action": "mgr_email_add", "params": { "email": "boss@example.com", "name": "Dr. Boss", "role": "boss", "primary": true } }
+
+LIST MANAGER EMAILS:
+{ "action": "mgr_email_list", "params": {} }
+
+REMOVE MANAGER EMAIL:
+{ "action": "mgr_email_remove", "params": { "email": "boss@example.com" } }
+
+SEND EMAIL TO MANAGER:
+{ "action": "mgr_email_send", "params": { "to": "boss@example.com", "subject": "Daily Summary", "body": "Today we completed 12 treatments and collected 1,200,000 MMK." } }
+
+NOTES:
+- If "to" is omitted, the primary (or only) saved manager email is used.
+- Sending requires Agent Mode, confirmation, and Email Delivery enabled in Settings.
+
+---
+
 10. CONFIRMATION AND ERROR HANDLING
 ===================================
 
