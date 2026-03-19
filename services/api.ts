@@ -2701,8 +2701,14 @@ export const api = {
       const { data, error } = await supabase.functions.invoke('send-manager-email', {
         body: payload
       });
-      if (error) throw new Error(error.message || 'Failed to send email');
-      if (data?.error) throw new Error(data.error);
+      if (error) {
+        console.error('Supabase email function error:', error);
+        throw new Error(error.message || 'Failed to send email');
+      }
+      if (data?.error) {
+        console.error('Supabase email function response error:', data.error);
+        throw new Error(data.error);
+      }
       return data || {};
     }
   }

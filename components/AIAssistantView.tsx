@@ -3090,6 +3090,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 
                 currentActionResult = `📧 I can email ${recipient.label}.\n\n${preview}\n\nWould you like me to send this email now? Please confirm to proceed.`;
               } catch (err: any) {
+                console.error('Manager email prepare error:', err);
                 currentActionResult = `❌ Failed to prepare manager email: ${err.message}`;
               }
               break;

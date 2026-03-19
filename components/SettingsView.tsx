@@ -259,6 +259,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setTestStatus('sent');
       setTestMessage('Test email sent successfully.');
     } catch (error: any) {
+      console.error('Test email failed:', error);
       setTestStatus('error');
       setTestMessage(error?.message || 'Failed to send test email.');
     }
