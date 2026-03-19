@@ -2711,5 +2711,33 @@ export const api = {
       }
       return data || {};
     }
+  },
+  assistantMemory: {
+    get: async (adminId: string, locationId?: string) => {
+      if (!adminId) throw new Error('Admin ID is required.');
+      const query = supabase
+        .from('assistant_memory')
+        .select('profile')
+        .eq('admin_id', adminId)
+        .limit(1)
+        .maybeSingle();
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data?.profile || null;
+    },
+    upsert: async (adminId: string, locationId: string, profile: any) => {
+      if (!adminId) throw new Error('Admin ID is required.');
+      const payload = {
+        admin_id: adminId,
+        location_id: locationId,
+        profile,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase
+        .from('assistant_memory')
+        .upsert(payload, { onConflict: 'admin_id' });
+      if (error) throw new Error(error.message);
+    }
   }
 };

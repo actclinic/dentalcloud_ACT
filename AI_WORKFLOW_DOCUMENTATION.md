@@ -319,6 +319,10 @@ The AI assistant uses a token-optimized context building strategy:
 - Resend API key is stored as a Supabase secret (never in the frontend)
 - Edge Function name: `send-manager-email` (set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_FROM_NAME` secrets)
 
+### Assistant Memory (Supabase)
+- Memory is stored in the `assistant_memory` table (per admin)
+- Profiles are synced from the client and saved on each update
+
 ### Response Processing
 - Markdown-enhanced responses using ReactMarkdown and remark-gfm
 - Internal processing artifact removal

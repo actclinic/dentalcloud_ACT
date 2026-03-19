@@ -20,7 +20,7 @@ const MEMORY_KEY = 'loli_memory_profile_v1';
 
 const nowIso = () => new Date().toISOString();
 
-const defaultProfile = (): AssistantMemoryProfile => ({
+export const createEmptyMemoryProfile = (): AssistantMemoryProfile => ({
   updatedAt: nowIso(),
   preferences: [],
   frequentRequests: [],
@@ -28,44 +28,16 @@ const defaultProfile = (): AssistantMemoryProfile => ({
 });
 
 export const loadAssistantMemory = (): AssistantMemoryProfile => {
-  if (typeof window === 'undefined') return defaultProfile();
-
-  try {
-    const raw = localStorage.getItem(MEMORY_KEY);
-    if (!raw) return defaultProfile();
-    const parsed = JSON.parse(raw);
-
-    return {
-      updatedAt: typeof parsed?.updatedAt === 'string' ? parsed.updatedAt : nowIso(),
-      preferences: Array.isArray(parsed?.preferences)
-        ? parsed.preferences.filter((p: unknown) => typeof p === 'string')
-        : [],
-      frequentRequests: Array.isArray(parsed?.frequentRequests)
-        ? parsed.frequentRequests
-            .filter((r: any) => typeof r?.text === 'string')
-            .map((r: any) => ({
-              text: String(r.text),
-              count: Number(r.count || 0),
-              lastAsked: typeof r.lastAsked === 'string' ? r.lastAsked : nowIso()
-            }))
-        : [],
-      savedFacts: Array.isArray(parsed?.savedFacts)
-        ? parsed.savedFacts
-            .filter((f: any) => typeof f?.fact === 'string')
-            .map((f: any) => ({
-              fact: String(f.fact),
-              addedAt: typeof f.addedAt === 'string' ? f.addedAt : nowIso()
-            }))
-        : []
-    };
-  } catch {
-    return defaultProfile();
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(MEMORY_KEY);
   }
+  return createEmptyMemoryProfile();
 };
 
 export const saveAssistantMemory = (profile: AssistantMemoryProfile): void => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(MEMORY_KEY, JSON.stringify(profile));
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(MEMORY_KEY);
+  }
 };
 
 export const buildMemoryMarkdown = (profile: AssistantMemoryProfile): string => {
@@ -245,4 +217,4 @@ export const forgetMemoryItem = (
   };
 };
 
-export const clearAssistantMemory = (): AssistantMemoryProfile => defaultProfile();
+export const clearAssistantMemory = (): AssistantMemoryProfile => createEmptyMemoryProfile();

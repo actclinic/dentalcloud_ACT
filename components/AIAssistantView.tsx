@@ -11,12 +11,11 @@ import {
   buildMemoryMarkdown,
   buildMemoryPromptSummary,
   clearAssistantMemory,
+  createEmptyMemoryProfile,
   forgetMemoryItem,
-  loadAssistantMemory,
   parseMemoryCommand,
   rememberFact,
   rememberPreference,
-  saveAssistantMemory,
   updateMemoryFromUserMessage
 } from '../utils/assistantMemory';
 
@@ -536,14 +535,69 @@ How can I assist you today?
   // Help modal state
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [helpContent, setHelpContent] = useState<string>('');
-  const [assistantMemory, setAssistantMemory] = useState<AssistantMemoryProfile>(() => loadAssistantMemory());
+  const [assistantMemory, setAssistantMemory] = useState<AssistantMemoryProfile>(() => createEmptyMemoryProfile());
   const [showMemoryPanel, setShowMemoryPanel] = useState<boolean>(false);
-  const [memoryMarkdown, setMemoryMarkdown] = useState<string>(() => buildMemoryMarkdown(loadAssistantMemory()));
+  const [memoryMarkdown, setMemoryMarkdown] = useState<string>(() => buildMemoryMarkdown(createEmptyMemoryProfile()));
+  const [memoryLoaded, setMemoryLoaded] = useState<boolean>(false);
 
   useEffect(() => {
-    saveAssistantMemory(assistantMemory);
     setMemoryMarkdown(buildMemoryMarkdown(assistantMemory));
   }, [assistantMemory]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('loli_memory_profile_v1');
+    }
+
+    const adminId = currentAdminId;
+    if (!adminId) {
+      setMemoryLoaded(true);
+      return;
+    }
+
+    let isActive = true;
+    const locationId = users[0]?.location_id || 'main';
+
+    const loadMemory = async () => {
+      try {
+        const profile = await api.assistantMemory.get(adminId, locationId);
+        if (isActive && profile) {
+          if (memoryDirtyRef.current) {
+            setAssistantMemory(prev => mergeMemoryProfiles(prev, profile));
+          } else {
+            setAssistantMemory(profile);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load assistant memory:', error);
+      } finally {
+        if (isActive) {
+          setMemoryLoaded(true);
+        }
+      }
+    };
+
+    loadMemory();
+    return () => {
+      isActive = false;
+    };
+  }, [currentAdminId, users]);
+
+  useEffect(() => {
+    if (!memoryLoaded) return;
+    if (!currentAdminId) return;
+
+    const locationId = users[0]?.location_id || 'main';
+    const timeout = setTimeout(async () => {
+      try {
+        await api.assistantMemory.upsert(currentAdminId, locationId, assistantMemory);
+      } catch (error) {
+        console.error('Failed to save assistant memory:', error);
+      }
+    }, 600);
+
+    return () => clearTimeout(timeout);
+  }, [assistantMemory, memoryLoaded, currentAdminId, users]);
 
   const applyMemoryCommand = (
     profile: AssistantMemoryProfile,
@@ -571,6 +625,50 @@ How can I assist you today?
     }
   };
 
+  const normalizeMemoryText = (text: string) =>
+    text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const mergeMemoryProfiles = (
+    base: AssistantMemoryProfile,
+    incoming: AssistantMemoryProfile
+  ): AssistantMemoryProfile => {
+    const mergedPreferences = new Map<string, string>();
+    base.preferences.forEach(pref => mergedPreferences.set(normalizeMemoryText(pref), pref));
+    incoming.preferences.forEach(pref => mergedPreferences.set(normalizeMemoryText(pref), pref));
+
+    const mergedFacts = new Map<string, { fact: string; addedAt: string }>();
+    base.savedFacts.forEach(f => mergedFacts.set(normalizeMemoryText(f.fact), f));
+    incoming.savedFacts.forEach(f => mergedFacts.set(normalizeMemoryText(f.fact), f));
+
+    const mergedRequests = new Map<string, { text: string; count: number; lastAsked: string }>();
+    const addRequest = (req: { text: string; count: number; lastAsked: string }) => {
+      const key = normalizeMemoryText(req.text);
+      const existing = mergedRequests.get(key);
+      if (!existing) {
+        mergedRequests.set(key, { ...req });
+        return;
+      }
+      const lastAsked =
+        new Date(existing.lastAsked).getTime() >= new Date(req.lastAsked).getTime()
+          ? existing.lastAsked
+          : req.lastAsked;
+      mergedRequests.set(key, {
+        text: existing.text,
+        count: existing.count + req.count,
+        lastAsked
+      });
+    };
+    base.frequentRequests.forEach(addRequest);
+    incoming.frequentRequests.forEach(addRequest);
+
+    return {
+      updatedAt: new Date().toISOString(),
+      preferences: Array.from(mergedPreferences.values()),
+      savedFacts: Array.from(mergedFacts.values()),
+      frequentRequests: Array.from(mergedRequests.values())
+    };
+  };
+
   // Enhanced context summary generator for better continuity
   const generateContextSummary = (userMessage: string, assistantResponse: string): string => {
     const lowerUser = userMessage.toLowerCase();
@@ -595,6 +693,7 @@ How can I assist you today?
   };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const memoryDirtyRef = useRef<boolean>(false);
   
   // Enhanced speech recognition with SpeechGrammarList for better accuracy
   const recognition = useRef<any>(null);
@@ -2635,6 +2734,7 @@ Thank you for using Loli! 🦷✨`,
       const memoryCommand = parseMemoryCommand(userMessage.content);
       const updatedProfile = updateMemoryFromUserMessage(assistantMemory, userMessage.content);
       const memoryResult = applyMemoryCommand(updatedProfile, memoryCommand);
+      memoryDirtyRef.current = true;
       setAssistantMemory(memoryResult.profile);
 
       // Handle explicit memory commands locally (no AI call)
@@ -4184,7 +4284,10 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               </h2>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setAssistantMemory(clearAssistantMemory())}
+                  onClick={() => {
+                    memoryDirtyRef.current = true;
+                    setAssistantMemory(clearAssistantMemory());
+                  }}
                   className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
                   title="Clear memory"
                 >
