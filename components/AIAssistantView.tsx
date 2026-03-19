@@ -255,7 +255,6 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   currentAdminId,
   currency
 }) => {
-  const DAILY_LIMIT = 10;
   const MANAGER_EMAILS_KEY = 'loli_manager_emails';
   const EMAIL_SETTINGS_KEY = 'dc_email_settings';
 
@@ -427,25 +426,10 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
 • Clinical documentation
 • Medical history interpretation
 
-How can I assist you today?
-
-💡 *Note: You have ${DAILY_LIMIT} free requests per day.*`,
+How can I assist you today?`,
     timestamp: new Date()
   }];
 
-  // Daily usage limit tracking
-  const [dailyUsageCount, setDailyUsageCount] = useState<number>(() => {
-    const today = new Date().toDateString();
-    const savedData = localStorage.getItem('loli_usage');
-    if (savedData) {
-      const { date, count } = JSON.parse(savedData);
-      if (date === today) {
-        return count;
-      }
-    }
-    return 0;
-  });
-  
   // Chat session state
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
     const saved = localStorage.getItem('loli_chat_sessions');
@@ -2726,12 +2710,6 @@ I can provide guidance on:
         });
         setInputMessage('');
 
-        // Increment usage count
-        const newCount = dailyUsageCount + 1;
-        setDailyUsageCount(newCount);
-        const today = new Date().toDateString();
-        localStorage.setItem('loli_usage', JSON.stringify({ date: today, count: newCount }));
-
       } catch (error: any) {
         console.error('Action execution error:', error);
         const errorMessage: Message = {
@@ -2761,24 +2739,6 @@ I can provide guidance on:
         setIsLoading(false);
         inputRef.current?.focus();
       }
-      return;
-    }
-
-    // Check daily usage limit
-    if (dailyUsageCount >= DAILY_LIMIT) {
-      const limitMessage: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `⚠️ **Daily Limit Reached**
-
-You've used all ${DAILY_LIMIT} free requests for today. Your limit will reset tomorrow at midnight.
-
-**Current Usage:** ${dailyUsageCount}/${DAILY_LIMIT}
-
-Thank you for using Loli! 🦷✨`,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, limitMessage]);
       return;
     }
 
@@ -2820,12 +2780,6 @@ Thank you for using Loli! 🦷✨`,
         const finalMessages = [...updatedMessages, assistantMessage];
         setMessages(finalMessages);
         saveSession(finalMessages);
-
-        // Increment usage count
-        const newCount = dailyUsageCount + 1;
-        setDailyUsageCount(newCount);
-        const today = new Date().toDateString();
-        localStorage.setItem('loli_usage', JSON.stringify({ date: today, count: newCount }));
 
         setIsLoading(false);
         return;
@@ -3839,12 +3793,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         }));
       }
       
-      // Increment usage count and save to localStorage
-      const newCount = dailyUsageCount + 1;
-      setDailyUsageCount(newCount);
-      const today = new Date().toDateString();
-      localStorage.setItem('loli_usage', JSON.stringify({ date: today, count: newCount }));
-      
     } catch (error) {
       console.error('Error:', error);
       const errorMessage: Message = {
@@ -3936,7 +3884,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               <p className="text-sm text-indigo-600 font-medium">Clinical decision support & dental guidance</p>
             </div>
           </div>
-          <p className="text-xs text-indigo-500 mt-1 font-medium">by WinterArc Myanmar | Daily usage: {dailyUsageCount}/{DAILY_LIMIT} requests</p>
+          <p className="text-xs text-indigo-500 mt-1 font-medium">by WinterArc Myanmar</p>
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
