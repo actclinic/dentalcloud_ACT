@@ -8,6 +8,7 @@ import { Currency } from '../utils/currency';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, AIReportPayload } from '../utils/aiReport';
 import {
   AssistantMemoryProfile,
+  MemoryCommand,
   buildMemoryMarkdown,
   buildMemoryPromptSummary,
   clearAssistantMemory,
