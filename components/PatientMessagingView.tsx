@@ -339,8 +339,8 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         </div>
       )}
 
-      <div className="flex min-h-[520px] flex-col md:grid md:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className={`${selectedConversation ? 'hidden md:block' : 'block'} border-r border-gray-200 bg-gray-50`}>
+      <div className="flex h-[70vh] min-h-[520px] max-h-[720px] flex-col md:grid md:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className={`${selectedConversation ? 'hidden md:block' : 'block'} border-r border-gray-200 bg-gray-50 md:flex md:min-h-0 md:flex-col`}>
           <div className="border-b border-gray-200 px-4 py-4">
             <h3 className="text-sm font-semibold text-gray-900">Conversations</h3>
           </div>
@@ -392,7 +392,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
           </div>
         </aside>
 
-        <section className={`${selectedConversation ? 'flex' : 'hidden md:flex'} min-h-[520px] flex-col`}>
+        <section className={`${selectedConversation ? 'flex' : 'hidden md:flex'} min-h-0 flex-col`}>
           {selectedConversation ? (
             <>
               <div className="border-b border-gray-200 px-4 py-4">
@@ -416,7 +416,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                 </div>
               </div>
 
-              <div className="flex-1 space-y-4 overflow-y-auto bg-white px-4 py-4">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-white px-4 py-4">
                 {messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center text-center">
                     <div>

@@ -316,8 +316,8 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
         </div>
       )}
 
-      <div className="grid min-h-[680px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="border-r border-gray-200 bg-gray-50">
+      <div className="grid h-[78vh] min-h-[680px] max-h-[820px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col border-r border-gray-200 bg-gray-50">
           <div className="border-b border-gray-200 px-4 py-4">
             <h3 className="text-sm font-semibold text-gray-900">Conversations</h3>
             <p className="mt-1 text-xs text-gray-500">Updates arrive automatically through Supabase realtime.</p>
@@ -390,7 +390,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
           </div>
         </aside>
 
-        <section className="flex min-h-[680px] flex-col">
+        <section className="flex min-h-0 flex-col">
           {selectedConversation ? (
             <>
               <div className="border-b border-gray-200 px-6 py-4">
@@ -405,7 +405,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
                 </div>
               </div>
 
-              <div className="flex-1 space-y-4 overflow-y-auto bg-white px-6 py-5">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-white px-6 py-5">
                 {messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center text-center">
                     <div>
