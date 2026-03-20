@@ -14,9 +14,11 @@ import {
   clearAssistantMemory,
   createEmptyMemoryProfile,
   forgetMemoryItem,
+  loadAssistantMemory,
   parseMemoryCommand,
   rememberFact,
   rememberPreference,
+  saveAssistantMemory,
   updateMemoryFromUserMessage
 } from '../utils/assistantMemory';
 
@@ -240,6 +242,7 @@ interface AIAssistantViewProps {
   recalls?: Recall[];
   currentAdminId?: string;
   currency: Currency;
+  onDataRefresh?: () => Promise<void> | void;
 }
 
 const AIAssistantView: React.FC<AIAssistantViewProps> = ({ 
@@ -253,7 +256,8 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   expenses,
   recalls = [],
   currentAdminId,
-  currency
+  currency,
+  onDataRefresh
 }) => {
   const MANAGER_EMAILS_KEY = 'loli_manager_emails';
   const EMAIL_SETTINGS_KEY = 'dc_email_settings';
@@ -301,6 +305,106 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const saveManagerContacts = (contacts: ManagerContact[]) => {
     localStorage.setItem(MANAGER_EMAILS_KEY, JSON.stringify(contacts));
   };
+
+  const normalizeLookupText = (value: string | undefined | null) =>
+    (value || '').toString().trim().toLowerCase();
+
+  const getCurrentLocationId = () => {
+    const currentUserLocation = currentAdminId
+      ? users.find(user => user.id === currentAdminId)?.location_id
+      : null;
+    return currentUserLocation || users[0]?.location_id || 'main';
+  };
+
+  const resolvePatient = (identifier?: string | null) => {
+    const normalized = normalizeLookupText(identifier);
+    if (!normalized) return null;
+
+    return patients.find(patient =>
+      patient.id === identifier ||
+      normalizeLookupText(patient.name) === normalized ||
+      normalizeLookupText(patient.email) === normalized ||
+      normalizeLookupText(patient.phone) === normalized
+    ) || patients.find(patient =>
+      normalizeLookupText(patient.name).includes(normalized) ||
+      normalizeLookupText(patient.phone).includes(normalized)
+    ) || null;
+  };
+
+  const resolveDoctor = (identifier?: string | null) => {
+    const normalized = normalizeLookupText(identifier);
+    if (!normalized) return null;
+
+    return doctors.find(doctor =>
+      doctor.id === identifier ||
+      normalizeLookupText(doctor.name) === normalized ||
+      normalizeLookupText(doctor.email) === normalized ||
+      normalizeLookupText(doctor.phone) === normalized
+    ) || doctors.find(doctor =>
+      normalizeLookupText(doctor.name).includes(normalized) ||
+      normalizeLookupText(doctor.specialization).includes(normalized)
+    ) || null;
+  };
+
+  const resolveMedicine = (identifier?: string | null) => {
+    const normalized = normalizeLookupText(identifier);
+    if (!normalized) return null;
+
+    return medicines.find(medicine =>
+      medicine.id === identifier ||
+      normalizeLookupText(medicine.name) === normalized
+    ) || medicines.find(medicine =>
+      normalizeLookupText(medicine.name).includes(normalized) ||
+      normalizeLookupText(medicine.category).includes(normalized)
+    ) || null;
+  };
+
+  const resolveAppointment = (params: any) => {
+    const directId = params?.id || params?.appointment_id || params?.apt_id;
+    if (directId) {
+      const found = appointments.find(appointment => appointment.id === directId);
+      if (found) return found;
+    }
+
+    let candidatePatientId = params?.pid || params?.p_id || params?.patient_id;
+    if (!candidatePatientId && (params?.patient_name || params?.name || params?.n)) {
+      candidatePatientId = resolvePatient(params?.patient_name || params?.name || params?.n)?.id;
+    }
+
+    let candidateDoctorId = params?.dr_id || params?.doctor_id;
+    if (!candidateDoctorId && params?.doctor_name) {
+      candidateDoctorId = resolveDoctor(params.doctor_name)?.id;
+    }
+
+    const candidateDate = params?.dt || params?.date;
+    const candidateTime = params?.t || params?.tm || params?.time;
+    const candidateStatus = params?.status;
+
+    const matches = appointments.filter(appointment => {
+      if (candidatePatientId && appointment.patient_id !== candidatePatientId) return false;
+      if (candidateDoctorId && appointment.doctor_id !== candidateDoctorId) return false;
+      if (candidateDate && appointment.date !== candidateDate) return false;
+      if (candidateTime && appointment.time !== candidateTime) return false;
+      if (candidateStatus && appointment.status !== candidateStatus) return false;
+      return true;
+    });
+
+    return matches.sort((a, b) => {
+      const aValue = `${a.date}T${a.time}`;
+      const bValue = `${b.date}T${b.time}`;
+      return bValue.localeCompare(aValue);
+    })[0] || null;
+  };
+
+  const normalizeAppointmentStatus = (status?: string | null): Appointment['status'] => {
+    const normalized = normalizeLookupText(status);
+    if (normalized === 'completed' || normalized === 'complete' || normalized === 'done') return 'Completed';
+    if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'cancel') return 'Cancelled';
+    return 'Scheduled';
+  };
+
+  const formatAppointmentLabel = (appointment: Appointment) =>
+    `${appointment.patient_name || 'Unknown Patient'} on ${appointment.date} at ${appointment.time}${appointment.doctor_name ? ` with Dr. ${appointment.doctor_name}` : ''}`;
 
   const toBoolean = (value: any): boolean => {
     if (typeof value === 'boolean') return value;
@@ -520,20 +624,19 @@ How can I assist you today?`,
   // Help modal state
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [helpContent, setHelpContent] = useState<string>('');
-  const [assistantMemory, setAssistantMemory] = useState<AssistantMemoryProfile>(() => createEmptyMemoryProfile());
+  const [assistantMemory, setAssistantMemory] = useState<AssistantMemoryProfile>(() => loadAssistantMemory());
   const [showMemoryPanel, setShowMemoryPanel] = useState<boolean>(false);
-  const [memoryMarkdown, setMemoryMarkdown] = useState<string>(() => buildMemoryMarkdown(createEmptyMemoryProfile()));
+  const [memoryMarkdown, setMemoryMarkdown] = useState<string>(() => buildMemoryMarkdown(loadAssistantMemory()));
   const [memoryLoaded, setMemoryLoaded] = useState<boolean>(false);
+  const latestMemoryRef = useRef<AssistantMemoryProfile>(assistantMemory);
 
   useEffect(() => {
     setMemoryMarkdown(buildMemoryMarkdown(assistantMemory));
+    latestMemoryRef.current = assistantMemory;
+    saveAssistantMemory(assistantMemory);
   }, [assistantMemory]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('loli_memory_profile_v1');
-    }
-
     const adminId = currentAdminId;
     if (!adminId) {
       setMemoryLoaded(true);
@@ -541,20 +644,30 @@ How can I assist you today?`,
     }
 
     let isActive = true;
-    const locationId = users[0]?.location_id || 'main';
+    const locationId = getCurrentLocationId();
 
     const loadMemory = async () => {
       try {
         const profile = await api.assistantMemory.get(adminId, locationId);
-        if (isActive && profile) {
-          if (memoryDirtyRef.current) {
-            setAssistantMemory(prev => mergeMemoryProfiles(prev, profile));
-          } else {
-            setAssistantMemory(profile);
+        if (isActive) {
+          const localProfile = loadAssistantMemory();
+          if (profile) {
+            if (memoryDirtyRef.current) {
+              setAssistantMemory(prev => mergeMemoryProfiles(prev, profile));
+            } else {
+              const shouldPreferLocal =
+                new Date(localProfile.updatedAt || 0).getTime() > new Date(profile.updatedAt || 0).getTime();
+              setAssistantMemory(shouldPreferLocal ? mergeMemoryProfiles(profile, localProfile) : profile);
+            }
+          } else if (localProfile) {
+            setAssistantMemory(localProfile);
           }
         }
       } catch (error) {
         console.error('Failed to load assistant memory:', error);
+        if (isActive) {
+          setAssistantMemory(loadAssistantMemory());
+        }
       } finally {
         if (isActive) {
           setMemoryLoaded(true);
@@ -572,10 +685,11 @@ How can I assist you today?`,
     if (!memoryLoaded) return;
     if (!currentAdminId) return;
 
-    const locationId = users[0]?.location_id || 'main';
+    const locationId = getCurrentLocationId();
     const timeout = setTimeout(async () => {
       try {
         await api.assistantMemory.upsert(currentAdminId, locationId, assistantMemory);
+        memoryDirtyRef.current = false;
       } catch (error) {
         console.error('Failed to save assistant memory:', error);
       }
@@ -583,6 +697,41 @@ How can I assist you today?`,
 
     return () => clearTimeout(timeout);
   }, [assistantMemory, memoryLoaded, currentAdminId, users]);
+
+  useEffect(() => {
+    if (!memoryLoaded || !currentAdminId || typeof window === 'undefined') return;
+
+    const flushMemoryToDatabase = async () => {
+      try {
+        await api.assistantMemory.upsert(currentAdminId, getCurrentLocationId(), latestMemoryRef.current);
+        memoryDirtyRef.current = false;
+      } catch (error) {
+        console.error('Failed to flush assistant memory:', error);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        saveAssistantMemory(latestMemoryRef.current);
+        void flushMemoryToDatabase();
+      }
+    };
+
+    const handlePageHide = () => {
+      saveAssistantMemory(latestMemoryRef.current);
+      void flushMemoryToDatabase();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handlePageHide);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handlePageHide);
+    };
+  }, [memoryLoaded, currentAdminId, users]);
 
   const applyMemoryCommand = (
     profile: AssistantMemoryProfile,
@@ -1163,7 +1312,7 @@ Need more detailed help?
   };
 
   // Token-optimized context builder for cost-effective AI operations
-  const getOptimizedContextData = (isActionQuery: boolean = false, maxTokens: number = 1500) => {
+  const getOptimizedContextData = (isActionQuery: boolean = false, maxTokens: number = 10000) => {
     const today = new Date().toISOString().split('T')[0];
     const baseData = {
       td: today,
@@ -1259,6 +1408,10 @@ Need more detailed help?
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
 
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -1366,6 +1519,20 @@ Need more detailed help?
         s: a.status,
         ty: a.type
       })),
+      appointment_history: appointments
+        .filter(a => a.date >= ninetyDaysAgoStr)
+        .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))
+        .slice(0, 40)
+        .map(a => ({
+          i: a.id,
+          p: a.patient_name,
+          d: a.doctor_name,
+          dt: a.date,
+          t: a.time,
+          s: a.status,
+          ty: a.type,
+          n: a.notes ? a.notes.substring(0, 80) : ''
+        })),
       medicines: medicines.slice(0, 25).map(m => ({ 
         i: m.id, 
         n: m.name, 
@@ -1414,7 +1581,7 @@ Need more detailed help?
         total_inventory_value: medicines.reduce((sum, m) => sum + (m.stock * m.price), 0),
         fast_moving_items: medicines.slice(0, 5).map(m => ({ n: m.name, s: m.stock })) // Placeholder
       },
-      loc: users[0]?.location_id || 'main' // Use first user's location as default
+      loc: getCurrentLocationId()
     };
   };
 
@@ -1554,6 +1721,7 @@ APPOINTMENT MANAGEMENT:
 - apt_reschedule(id, dt, t): Reschedule appointment.
 - apt_status(id, status): Update appointment status.
 - apt_find_patient(name): Find appointments for patient.
+- apt_get_past(name): Get past appointment history for patient.
 - staff_availability(date, dr_id): Check doctor availability for date.
 - bulk_appointments(patients[], dr_id, date, time): Schedule multiple appointments.
 
@@ -1598,6 +1766,12 @@ EXPENSE MANAGEMENT:
 - exp_u(id, data): Update expense.
 - exp_d(id): Delete expense.
 
+RECALL MANAGEMENT:
+- recall_get_all(status): List recalls, optionally filtered by status.
+- recall_create(patient_name, title, due_date, reminder_days_before, notes): Create recall task.
+- recall_status(id, status): Update recall status.
+- recall_delete(id): Delete recall.
+
 MESSAGING MANAGEMENT:
 - msg_get_convs(): Get all active conversation threads with patients.
 - msg_get_history(pid): Get message history for a specific patient. pid=patient id (or use "name").
@@ -1641,6 +1815,8 @@ Response:
 
 To perform an action, include a JSON block at the END of your message. 
 IMPORTANT: You can use "name" instead of "pid" or "p_id" for any patient-related action. The system will automatically look up the ID.
+For doctor-related actions, you can use "doctor_name" if you do not know the doctor ID.
+For appointment updates, prefer passing id. If id is unknown, you may pass patient name plus date/time to help match the appointment.
 
 Examples:
 { "action": "p_c", "params": { "n": "John Doe", "e": "john@example.com", "ph": "1234567890", "m": "No known allergies" } }
@@ -1688,7 +1864,8 @@ Examples:
     // Check if message implies an action
     const actionKeywords = [
       'create', 'book', 'schedule', 'add', 'delete', 'remove', 'update', 'modify',
-      'change', 'edit', 'new', 'make', 'email', 'send', 'notify', 'message'
+      'change', 'edit', 'new', 'make', 'email', 'send', 'notify', 'message',
+      'status', 'complete', 'cancel', 'reschedule', 'move', 'follow-up', 'follow up'
     ];
     const isActionIntent = actionKeywords.some(kw => userMessage.toLowerCase().includes(kw));
     const isAgentMode = mode === 'agent';
@@ -1815,8 +1992,8 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
                             userMessage.toLowerCase().includes('audit');
       
       const contextData = isComplexQuery ? 
-        getOptimizedContextData(isActionIntent || isAgentMode, 2000) : 
-        getOptimizedContextData(isActionIntent || isAgentMode, 1500);
+        getOptimizedContextData(isActionIntent || isAgentMode, 10000) : 
+        getOptimizedContextData(isActionIntent || isAgentMode, 10000);
       
       const systemPrompt = `You are Loli, an expert dental clinical assistant with advanced reasoning capabilities by WinterArc Myanmar, designed by Min Thuta Saw Naing.
 
@@ -1968,7 +2145,7 @@ Example table format:
               }
             ],
             temperature: 0.7,
-            max_tokens: isComplexQuery ? 1500 : 1000, // Reduced token limits for cost optimization
+            max_tokens: 10000,
             top_p: 0.9, // Slightly reduced for more focused responses
             stream: false
           }),
@@ -2500,23 +2677,59 @@ I can provide guidance on:
         
         // Execute the pending action
         let result: any;
-        const locationId = users[0]?.location_id || 'main';
+        const locationId = getCurrentLocationId();
         
         switch (pendingAction.action) {
           case 'apt_c':
-            result = await api.appointments.create({ 
-              location_id: locationId,
-              patient_id: pendingAction.params.p_id,
-              doctor_id: pendingAction.params.dr_id,
-              date: pendingAction.params.dt,
-              time: pendingAction.params.t,
-              type: pendingAction.params.ty,
-              notes: pendingAction.params.n,
-              status: 'Scheduled'
-            });
+            {
+              const patientId = pendingAction.params.p_id || pendingAction.params.pid || pendingAction.params.patient_id || resolvePatient(pendingAction.params.name || pendingAction.params.n)?.id;
+              const doctorId = pendingAction.params.dr_id || pendingAction.params.doctor_id || resolveDoctor(pendingAction.params.doctor_name)?.id;
+              if (!patientId) throw new Error("Patient ID or Name is required for appointment creation.");
+              result = await api.appointments.create({ 
+                location_id: locationId,
+                patient_id: patientId,
+                doctor_id: doctorId,
+                date: pendingAction.params.dt || pendingAction.params.date,
+                time: pendingAction.params.t || pendingAction.params.tm || pendingAction.params.time,
+                type: pendingAction.params.ty || pendingAction.params.type,
+                notes: pendingAction.params.n || pendingAction.params.notes,
+                status: 'Scheduled'
+              });
+            }
+            break;
+          case 'apt_u':
+            {
+              const appointment = resolveAppointment(pendingAction.params);
+              if (!appointment) throw new Error("Appointment not found for update.");
+              result = await api.appointments.update(appointment.id, pendingAction.params.data || {});
+            }
+            break;
+          case 'apt_status':
+            {
+              const appointment = resolveAppointment(pendingAction.params);
+              if (!appointment) throw new Error("Appointment not found for status update.");
+              const status = normalizeAppointmentStatus(pendingAction.params.status);
+              await api.appointments.updateStatus(appointment.id, status);
+              result = { appointment, status };
+            }
+            break;
+          case 'apt_reschedule':
+            {
+              const appointment = resolveAppointment(pendingAction.params);
+              if (!appointment) throw new Error("Appointment not found for rescheduling.");
+              result = await api.appointments.update(appointment.id, {
+                date: pendingAction.params.dt || pendingAction.params.date,
+                time: pendingAction.params.t || pendingAction.params.tm || pendingAction.params.time
+              });
+            }
             break;
           case 'apt_d':
-            await api.appointments.delete(pendingAction.params.id);
+            {
+              const appointment = resolveAppointment(pendingAction.params);
+              if (!appointment) throw new Error("Appointment not found for deletion.");
+              await api.appointments.delete(appointment.id);
+              result = appointment;
+            }
             break;
           case 'p_c':
             result = await api.patients.create({ 
@@ -2643,8 +2856,38 @@ I can provide guidance on:
               };
             }
             break;
+          case 'recall_create':
+            {
+              const patient = resolvePatient(pendingAction.params.patient_name || pendingAction.params.name || pendingAction.params.n);
+              if (!patient) throw new Error("Patient is required for recall creation.");
+              result = await api.recalls.create({
+                location_id: locationId,
+                patient_id: patient.id,
+                title: pendingAction.params.title,
+                due_date: pendingAction.params.due_date,
+                reminder_days_before: pendingAction.params.reminder_days_before ?? 7,
+                notes: pendingAction.params.notes || null,
+                status: pendingAction.params.status || 'PENDING'
+              });
+            }
+            break;
+          case 'recall_status':
+            await api.recalls.updateStatus(pendingAction.params.id, pendingAction.params.status);
+            result = { status: pendingAction.params.status };
+            break;
+          case 'recall_delete':
+            await api.recalls.delete(pendingAction.params.id);
+            break;
           default:
             throw new Error(`Unknown action: ${pendingAction.action}`);
+        }
+
+        if (onDataRefresh) {
+          try {
+            await onDataRefresh();
+          } catch (refreshError) {
+            console.error('Failed to refresh data after confirmed AI action:', refreshError);
+          }
         }
 
         // Create success message
@@ -2652,6 +2895,15 @@ I can provide guidance on:
         switch (pendingAction.action) {
           case 'apt_c':
             successMessage = `✅ Appointment created successfully for ${result.patient_name} with Dr. ${result.doctor_name} at ${result.time}.`;
+            break;
+          case 'apt_u':
+            successMessage = `✅ Appointment updated successfully.`;
+            break;
+          case 'apt_status':
+            successMessage = `✅ Appointment status changed to ${result.status}.`;
+            break;
+          case 'apt_reschedule':
+            successMessage = `✅ Appointment rescheduled to ${result.date} at ${result.time}.`;
             break;
           case 'apt_d':
             successMessage = `✅ Appointment deleted successfully.`;
@@ -2679,6 +2931,15 @@ I can provide guidance on:
             break;
           case 'mgr_email_send':
             successMessage = `✅ Email sent to ${result.recipientLabel || result.recipientEmail}.${result.messageId ? ` Message ID: ${result.messageId}.` : ''}`;
+            break;
+          case 'recall_create':
+            successMessage = `✅ Recall created for ${result.patient_name || 'the patient'} on ${result.due_date}.`;
+            break;
+          case 'recall_status':
+            successMessage = `✅ Recall status updated to ${result.status}.`;
+            break;
+          case 'recall_delete':
+            successMessage = `✅ Recall deleted successfully.`;
             break;
         }
 
@@ -2860,7 +3121,8 @@ I can provide guidance on:
             'apt_c', 'apt_u', 'apt_d', 'p_c', 'p_u', 'p_d', 'dr_c', 'dr_u', 'dr_d', 
             'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
             'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d', 'msg_reply',
-            'mgr_email_add', 'mgr_email_list', 'mgr_email_remove', 'mgr_email_send'
+            'mgr_email_add', 'mgr_email_list', 'mgr_email_remove', 'mgr_email_send',
+            'recall_create', 'recall_status', 'recall_delete', 'patient_followup'
           ];
           
           if (crudActions.includes(action) && mode !== 'agent') {
@@ -2871,7 +3133,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           }
 
           let result: any;
-          const locationId = users[0]?.location_id || 'main';
+          let shouldRefreshData = false;
+          const locationId = getCurrentLocationId();
                 
           switch (action) {
             // Doctor Schedule Actions
@@ -3275,6 +3538,53 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               }
               break;
 
+            // Recall Management Actions
+            case 'recall_get_all':
+              try {
+                const recallStatus = params.status ? params.status.toUpperCase() : null;
+                const recallItems = recalls.filter(recall => !recallStatus || recall.status === recallStatus);
+                currentActionResult = recallItems.length === 0
+                  ? `📋 No recalls found${recallStatus ? ` with status ${recallStatus}` : ''}.`
+                  : `📋 Recalls (${recallItems.length}):\n\n${recallItems.slice(0, 15).map(recall => `• ${recall.patient_name || 'Unknown'} - ${recall.title} on ${recall.due_date} (${recall.status})`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get recalls: ${err.message}`;
+              }
+              break;
+            case 'recall_create':
+              try {
+                const patient = resolvePatient(params.patient_name || params.name || params.n || params.pid || params.p_id);
+                if (!patient) throw new Error("Patient not found for recall creation.");
+                result = await api.recalls.create({
+                  location_id: locationId,
+                  patient_id: patient.id,
+                  title: params.title,
+                  due_date: params.due_date,
+                  reminder_days_before: params.reminder_days_before ?? 7,
+                  status: params.status || 'PENDING',
+                  notes: params.notes || null
+                });
+                currentActionResult = `✅ Recall created for ${result.patient_name || patient.name} on ${result.due_date}.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to create recall: ${err.message}`;
+              }
+              break;
+            case 'recall_status':
+              try {
+                await api.recalls.updateStatus(params.id, params.status);
+                currentActionResult = `✅ Recall status updated to ${params.status}.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to update recall status: ${err.message}`;
+              }
+              break;
+            case 'recall_delete':
+              try {
+                await api.recalls.delete(params.id);
+                currentActionResult = `✅ Recall deleted successfully.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to delete recall: ${err.message}`;
+              }
+              break;
+
             // Messaging Management Actions
             case 'msg_get_convs':
               try {
@@ -3347,24 +3657,24 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             // Existing Actions (keep all existing cases)
             case 'apt_c':
               try {
-                let patientId = params.p_id || params.pid;
-                if (!patientId && (params.name || params.n)) {
-                  const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
-                  if (found) patientId = found.id;
+                const patient = resolvePatient(params.p_id || params.pid || params.patient_id || params.name || params.n);
+                const doctor = resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name);
+                if (!patient) throw new Error("Patient ID or Name is required for appointment creation.");
+                if (!doctor && (params.dr_id || params.doctor_id || params.doctor_name)) {
+                  throw new Error("Doctor not found.");
                 }
-                if (!patientId) throw new Error("Patient ID or Name is required for appointment creation.");
 
-                // --- PLANNING STEP ---
-                const availability = await api.planning.getDoctorAvailability(params.dr_id, params.dt);
-                console.log('Doctor Availability State:', availability);
+                if (doctor && (params.dt || params.date)) {
+                  const availability = await api.planning.getDoctorAvailability(doctor.id, params.dt || params.date);
+                  console.log('Doctor Availability State:', availability);
+                }
 
                 result = await api.appointments.create({ 
                   location_id: locationId,
-                  patient_id: patientId,
-                  doctor_id: params.dr_id,
-                  date: params.dt,
-                  time: params.t || params.tm,
+                  patient_id: patient.id,
+                  doctor_id: doctor?.id,
+                  date: params.dt || params.date,
+                  time: params.t || params.tm || params.time,
                   type: params.ty || params.type,
                   notes: params.n || params.notes,
                   status: 'Scheduled'
@@ -3377,20 +3687,115 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               break;
             case 'apt_u':
               try {
-                result = await api.appointments.update(params.id, params.data);
-                currentActionResult = `✅ Appointment updated successfully.`;
+                const appointment = resolveAppointment(params);
+                if (!appointment) throw new Error("Appointment not found for update.");
+                const data = { ...(params.data || {}) };
+                if (params.doctor_name && !data.doctor_id) {
+                  const doctor = resolveDoctor(params.doctor_name);
+                  if (!doctor) throw new Error("Doctor not found.");
+                  data.doctor_id = doctor.id;
+                }
+                result = await api.appointments.update(appointment.id, data);
+                currentActionResult = `✅ Appointment updated successfully for ${formatAppointmentLabel(result)}.`;
               } catch (err: any) {
                 console.error('Appointment update error:', err);
                 currentActionResult = `❌ Failed to update appointment: ${err.message}`;
               }
               break;
+            case 'apt_status':
+              try {
+                const appointment = resolveAppointment(params);
+                if (!appointment) throw new Error("Appointment not found for status change.");
+                const status = normalizeAppointmentStatus(params.status);
+                await api.appointments.updateStatus(appointment.id, status);
+                currentActionResult = `✅ Appointment status updated to ${status} for ${formatAppointmentLabel(appointment)}.`;
+              } catch (err: any) {
+                console.error('Appointment status error:', err);
+                currentActionResult = `❌ Failed to update appointment status: ${err.message}`;
+              }
+              break;
+            case 'apt_reschedule':
+              try {
+                const appointment = resolveAppointment(params);
+                if (!appointment) throw new Error("Appointment not found for rescheduling.");
+                result = await api.appointments.update(appointment.id, {
+                  date: params.dt || params.date,
+                  time: params.t || params.tm || params.time
+                });
+                currentActionResult = `✅ Appointment rescheduled to ${result.date} at ${result.time} for ${result.patient_name}.`;
+              } catch (err: any) {
+                console.error('Appointment reschedule error:', err);
+                currentActionResult = `❌ Failed to reschedule appointment: ${err.message}`;
+              }
+              break;
             case 'apt_d':
               try {
-                await api.appointments.delete(params.id);
-                currentActionResult = `✅ Appointment deleted successfully.`;
+                const appointment = resolveAppointment(params);
+                if (!appointment) throw new Error("Appointment not found for deletion.");
+                await api.appointments.delete(appointment.id);
+                currentActionResult = `✅ Appointment deleted successfully for ${formatAppointmentLabel(appointment)}.`;
               } catch (err: any) {
                 console.error('Appointment deletion error:', err);
                 currentActionResult = `❌ Failed to delete appointment: ${err.message}`;
+              }
+              break;
+            case 'apt_get_past':
+              try {
+                const patient = resolvePatient(params.name || params.n || params.patient_name || params.pid || params.p_id);
+                if (!patient) throw new Error("Patient not found.");
+                const today = new Date().toISOString().split('T')[0];
+                const patientAppointments = appointments
+                  .filter(a => a.patient_id === patient.id && a.date < today)
+                  .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`));
+
+                currentActionResult = patientAppointments.length === 0
+                  ? `📅 No past appointments found for ${patient.name}.`
+                  : `📅 Past appointments for ${patient.name}:\n\n${patientAppointments.slice(0, 12).map(a => `• ${a.date} at ${a.time}${a.doctor_name ? ` with Dr. ${a.doctor_name}` : ''} (${a.status})`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to get past appointments: ${err.message}`;
+              }
+              break;
+            case 'staff_availability':
+              try {
+                const doctor = resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name);
+                if (!doctor) throw new Error("Doctor not found.");
+                const date = params.date || params.dt;
+                const availableTimes = await api.doctors.getAvailableTimes(doctor.id, date);
+                currentActionResult = availableTimes.length === 0
+                  ? `⚠️ Dr. ${doctor.name} has no free slots on ${date}.`
+                  : `✅ Dr. ${doctor.name} is available on ${date} at: ${availableTimes.join(', ')}.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to check availability: ${err.message}`;
+              }
+              break;
+            case 'bulk_appointments':
+              try {
+                const doctor = resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name);
+                const patientInputs = Array.isArray(params.patients) ? params.patients : [];
+                if (patientInputs.length === 0) throw new Error("Patient list is required.");
+
+                const created: string[] = [];
+                for (const patientInput of patientInputs) {
+                  const patient = resolvePatient(typeof patientInput === 'string' ? patientInput : patientInput?.name || patientInput?.id);
+                  if (!patient) continue;
+                  const appointment = await api.appointments.create({
+                    location_id: locationId,
+                    patient_id: patient.id,
+                    doctor_id: doctor?.id,
+                    date: params.date,
+                    time: params.time,
+                    type: params.type || params.ty || 'Checkup',
+                    notes: params.notes,
+                    status: 'Scheduled'
+                  });
+                  created.push(`${appointment.patient_name} at ${appointment.time}`);
+                }
+
+                currentActionResult = created.length === 0
+                  ? `⚠️ No appointments were created because no patients could be matched.`
+                  : `✅ Created ${created.length} appointments:\n\n${created.map(item => `• ${item}`).join('\n')}`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to create bulk appointments: ${err.message}`;
               }
               break;
             case 'p_c':
@@ -3674,6 +4079,28 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 currentActionResult = `❌ Failed to generate financial report: ${err.message}`;
               }
               break;
+            case 'patient_followup':
+              try {
+                const patient = resolvePatient(params.patient_name || params.name || params.n);
+                if (!patient) throw new Error("Patient not found.");
+                const baseDate = new Date();
+                baseDate.setDate(baseDate.getDate() + Number(params.days || 0));
+                const followupDate = baseDate.toISOString().split('T')[0];
+                result = await api.appointments.create({
+                  location_id: locationId,
+                  patient_id: patient.id,
+                  doctor_id: resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name)?.id,
+                  date: followupDate,
+                  time: params.time || params.t || '09:00',
+                  type: params.type || 'Follow-up',
+                  notes: params.reason || params.notes,
+                  status: 'Scheduled'
+                });
+                currentActionResult = `✅ Follow-up appointment scheduled for ${patient.name} on ${result.date} at ${result.time}.`;
+              } catch (err: any) {
+                currentActionResult = `❌ Failed to schedule follow-up: ${err.message}`;
+              }
+              break;
             case 'p_find':
               try {
                 const searchTerm = (params.name || '').toLowerCase();
@@ -3718,8 +4145,20 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               currentActionResult = `⚠️ Action "${action}" not specifically handled yet or unknown.`;
           }
           
+          if (crudActions.includes(action)) {
+            shouldRefreshData = true;
+          }
+
           if (currentActionResult) {
             actionResults.push(currentActionResult);
+          }
+
+          if (shouldRefreshData && onDataRefresh) {
+            try {
+              await onDataRefresh();
+            } catch (refreshError) {
+              console.error('Failed to refresh data after AI action:', refreshError);
+            }
           }
         } catch (err: any) {
           console.error('Action Execution Error:', err);

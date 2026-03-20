@@ -400,6 +400,13 @@ const App: React.FC = () => {
     fetchInitialData(locId);
   };
 
+  const refreshAssistantData = async () => {
+    await fetchInitialData(currentLocationId || undefined);
+    if (isAdmin) {
+      await fetchUsers();
+    }
+  };
+
   useEffect(() => {
     if (currentView === 'users' && isAdmin) {
       fetchUsers();
@@ -1302,6 +1309,7 @@ const App: React.FC = () => {
                 recalls={recalls}
                 currentAdminId={auth.getCurrentUser()?.userId}
                 currency={currency}
+                onDataRefresh={refreshAssistantData}
               />}
             {currentView === 'messaging' && isAdmin && <MessagingView 
               patients={patients} 

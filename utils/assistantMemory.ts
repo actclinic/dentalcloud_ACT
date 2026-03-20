@@ -29,14 +29,27 @@ export const createEmptyMemoryProfile = (): AssistantMemoryProfile => ({
 
 export const loadAssistantMemory = (): AssistantMemoryProfile => {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem(MEMORY_KEY);
+    const raw = localStorage.getItem(MEMORY_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as AssistantMemoryProfile;
+        return {
+          updatedAt: parsed.updatedAt || nowIso(),
+          preferences: Array.isArray(parsed.preferences) ? parsed.preferences : [],
+          frequentRequests: Array.isArray(parsed.frequentRequests) ? parsed.frequentRequests : [],
+          savedFacts: Array.isArray(parsed.savedFacts) ? parsed.savedFacts : []
+        };
+      } catch (error) {
+        console.error('Failed to parse local assistant memory:', error);
+      }
+    }
   }
   return createEmptyMemoryProfile();
 };
 
 export const saveAssistantMemory = (profile: AssistantMemoryProfile): void => {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem(MEMORY_KEY);
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(profile));
   }
 };
 
