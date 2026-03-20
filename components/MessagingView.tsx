@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, Clock, Check, CheckCheck, MessageCircle } from 'lucide-react';
-import { Message, Conversation } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, CheckCheck, MessageCircle, Send, User } from 'lucide-react';
+import { Conversation, Message } from '../types';
 import { api } from '../services/api';
 import { auth } from '../services/auth';
+import { supabase } from '../services/supabase';
 
 interface MessagingViewProps {
   patients: any[];
@@ -10,538 +11,474 @@ interface MessagingViewProps {
   messagingEnabled: boolean;
 }
 
-const MessagingView: React.FC<MessagingViewProps> = ({ patients, users, messagingEnabled }) => {
+const formatTime = (timestamp?: string) => {
+  if (!timestamp) return '';
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatConversationTime = (timestamp?: string) => {
+  if (!timestamp) return '';
+
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return `Today at ${formatTime(timestamp)}`;
+  }
+
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Yesterday at ${formatTime(timestamp)}`;
+  }
+
+  return `${date.toLocaleDateString()} ${formatTime(timestamp)}`;
+};
+
+const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnabled }) => {
+  const adminSession = auth.getCurrentUser();
+  const adminId = adminSession?.role === 'admin' ? adminSession.userId : undefined;
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [startingConversation, setStartingConversation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
 
-  // Check if messaging is enabled
-  useEffect(() => {
-    if (!messagingEnabled) {
-      setError('Messaging system is currently disabled by the administrator. Please contact your system admin to enable it.');
-    }
-  }, [messagingEnabled]);
+  selectedConversationIdRef.current = selectedConversationId;
 
-  const [sessionState, setSessionState] = useState(() => {
-    const user = auth.getCurrentUser();
-    const isValid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-    
-    return { user, isValid };
-  });
-  
-  // Memoize session validation to prevent unnecessary re-renders
-  const isValidSession = sessionState.isValid;
-  const currentUser = sessionState.user;
+  const selectedConversation = useMemo(
+    () => conversations.find((conversation) => conversation.id === selectedConversationId) || null,
+    [conversations, selectedConversationId]
+  );
 
-  // Effect to check session validity periodically
-  useEffect(() => {
-    const checkSession = () => {
-      const user = auth.getCurrentUser();
-      
-      // Detailed debug logging
-      if (process.env.NODE_ENV === 'development') {
-        console.log('MessagingView Session Check:', {
-          hasUser: !!user,
-          userId: user?.userId,
-          role: user?.role,
-          isUndefined: user?.userId === 'undefined'
-        });
-      }
-
-      let valid = false;
-      let errorMsg = null;
-
-      if (!user || !user.userId || user.userId === 'undefined') {
-        valid = false;
-        errorMsg = 'Invalid user session. Please log in again.';
-      } else if (user.role !== 'admin') {
-        valid = false;
-        errorMsg = 'Only administrators have permission to use the messaging system.';
-      } else {
-        valid = true;
-      }
-        
-      setSessionState({ user, isValid: valid });
-      
-      if (!valid && user) {
-        setError(errorMsg);
-        setLoading(false);
-      } else if (valid) {
-        setError(null);
-        if (conversations.length === 0) {
-          fetchConversations();
-        }
-      }
-    };
-    
-    // Initial check
-    checkSession();
-    
-    // Set up interval to check session validity
-    const sessionCheckInterval = setInterval(checkSession, 60000); // Check every 60 seconds
-    
-    return () => {
-      clearInterval(sessionCheckInterval);
-    };
-  }, []);
-
-  // Effect for background refresh of conversations and messages
-  useEffect(() => {
-    let refreshInterval: NodeJS.Timeout;
-    
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-    
-    if (valid && user.userId) {
-      refreshInterval = setInterval(async () => {
-        try {
-          // Fetch conversations in background
-          const convs = await api.messages.getConversations(user.userId, 'admin');
-          
-          // Only update conversations if data actually changed
-          setConversations(prevConvs => {
-            // Compare conversation arrays for changes
-            const hasChanges = convs.length !== prevConvs.length || 
-              convs.some((conv, index) => {
-                const prevConv = prevConvs[index];
-                return !prevConv || 
-                  conv.id !== prevConv.id || 
-                  conv.last_message !== prevConv.last_message || 
-                  conv.unread_count !== prevConv.unread_count ||
-                  conv.last_message_time !== prevConv.last_message_time;
-              });
-            
-            return hasChanges ? convs : prevConvs;
-          });
-          
-          // If we have a selected conversation, refresh it as well
-          if (selectedConversation) {
-            const msgs = await api.messages.getMessages(selectedConversation.id);
-            
-            // Only update messages if data actually changed
-            setMessages(prevMsgs => {
-              // Compare message arrays for changes
-              const hasChanges = msgs.length !== prevMsgs.length || 
-                msgs.some((msg, index) => {
-                  const prevMsg = prevMsgs[index];
-                  return !prevMsg || 
-                    msg.id !== prevMsg.id || 
-                    msg.content !== prevMsg.content || 
-                    msg.read !== prevMsg.read ||
-                    msg.timestamp !== prevMsg.timestamp;
-                });
-              
-              return hasChanges ? msgs : prevMsgs;
-            });
-          }
-        } catch (err: any) {
-          // Only show error if it's a session-related issue
-          if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
-            setError(err.message);
-            setSessionState({ user: null, isValid: false });
-          }
-          // Otherwise, silently ignore network errors during background refresh
-        }
-      }, 30000); // Refresh every 30 seconds in background
-    }
-    
-    return () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
-    };
-  }, [selectedConversation?.id]);
-
-  useEffect(() => {
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-    
-    if (!valid && user) {
-      setSessionState({ user, isValid: valid });
-      setError('Invalid user session. Please log in again.');
-      return;
-    }
-    
-    if (selectedConversation && valid) {
-      fetchMessages(selectedConversation.id);
-      markConversationAsRead(selectedConversation.id);
-    }
-  }, [selectedConversation?.id]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  const availablePatients = useMemo(() => {
+    const existingPatientIds = new Set(conversations.map((conversation) => conversation.patient_id));
+    return patients
+      .filter((patient) => patient?.id && patient?.name)
+      .filter((patient) => !existingPatientIds.has(patient.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [conversations, patients]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const fetchConversations = async () => {
-    // Re-check session validity before fetching
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-      
-    if (!valid && user) {
-      setSessionState({ user, isValid: valid });
-      setError('Invalid user session. Please log in again.');
+  const loadConversations = async (showLoading = false) => {
+    if (!adminId) {
+      setConversations([]);
+      setSelectedConversationId(null);
       setLoading(false);
+      setError('Invalid admin session. Please log in again.');
       return;
     }
-    
+
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
+
+      const nextConversations = await api.messages.getConversations(adminId, 'admin');
+      setConversations(nextConversations);
+
+      setSelectedConversationId((currentId) => {
+        if (nextConversations.length === 0) {
+          return null;
+        }
+
+        if (currentId && nextConversations.some((conversation) => conversation.id === currentId)) {
+          return currentId;
+        }
+
+        return nextConversations[0].id;
+      });
       setError(null);
-      
-      const convs = await api.messages.getConversations(user.userId, 'admin');
-      setConversations(convs);
-      if (convs.length > 0 && !selectedConversation) {
-        setSelectedConversation(convs[0]);
-      }
     } catch (err: any) {
-      // Check if error is related to session
-      if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
-        setError('Invalid user session. Please log in again.');
-        setSessionState({ user: null, isValid: false });
-      } else {
-        setError(err.message);
-      }
+      setError(err.message || 'Failed to load conversations.');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
-  const fetchMessages = async (conversationId: string) => {
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-      
-    if (!valid && user) {
-      setSessionState({ user, isValid: valid });
-      setError('Invalid user session. Please log in again.');
-      return;
-    }
-    
+  const loadMessages = async (conversationId: string, showLoading = false) => {
     try {
-      const msgs = await api.messages.getMessages(conversationId);
-      setMessages(msgs);
+      if (showLoading) {
+        setLoading(true);
+      }
+
+      const nextMessages = await api.messages.getMessages(conversationId);
+      setMessages(nextMessages);
+      setError(null);
     } catch (err: any) {
-      // Check if error is related to session
-      if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
-        setError('Invalid user session. Please log in again.');
-        setSessionState({ user: null, isValid: false });
-      } else {
-        setError(err.message);
+      setError(err.message || 'Failed to load messages.');
+    } finally {
+      if (showLoading) {
+        setLoading(false);
       }
     }
   };
 
   const markConversationAsRead = async (conversationId: string) => {
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-    
-    if (!valid && user) {
-      setSessionState({ user, isValid: valid });
-      setError('Invalid user session. Please log in again.');
-      return;
-    }
-    
+    if (!adminId) return;
+
     try {
-      await api.messages.markAsRead(conversationId, user.userId, 'admin');
-      // Background refresh will automatically update conversation list
-      // No need to manually refresh here
-    } catch (err: any) {
-      console.error('Failed to mark as read:', err);
+      await api.messages.markAsRead(conversationId, adminId, 'admin');
+      const refreshedConversations = await api.messages.getConversations(adminId, 'admin');
+      setConversations(refreshedConversations);
+    } catch (err) {
+      console.error('Failed to mark messages as read:', err);
     }
   };
+
+  useEffect(() => {
+    if (!messagingEnabled) {
+      setLoading(false);
+      setError('Messaging is disabled right now.');
+      return;
+    }
+
+    if (!adminId) {
+      setLoading(false);
+      setError('Invalid admin session. Please log in again.');
+      return;
+    }
+
+    loadConversations(true);
+  }, [adminId, messagingEnabled]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      setMessages([]);
+      return;
+    }
+
+    loadMessages(selectedConversationId, true);
+    markConversationAsRead(selectedConversationId);
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    if (!messagingEnabled || !adminId) {
+      return;
+    }
+
+    const refreshConversationList = () => {
+      loadConversations(false);
+    };
+
+    const refreshCurrentMessages = (conversationId?: string) => {
+      const activeConversationId = selectedConversationIdRef.current;
+      if (!activeConversationId || conversationId !== activeConversationId) {
+        return;
+      }
+
+      loadMessages(activeConversationId, false);
+      markConversationAsRead(activeConversationId);
+    };
+
+    const conversationsChannel = supabase
+      .channel(`admin-conversations-${adminId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversations',
+        filter: `admin_id=eq.${adminId}`
+      }, () => {
+        refreshConversationList();
+      })
+      .subscribe();
+
+    const inboundMessagesChannel = supabase
+      .channel(`admin-messages-in-${adminId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `recipient_id=eq.${adminId}`
+      }, (payload) => {
+        const conversationId = (payload.new as any)?.conversation_id || (payload.old as any)?.conversation_id;
+        refreshConversationList();
+        refreshCurrentMessages(conversationId);
+      })
+      .subscribe();
+
+    const outboundMessagesChannel = supabase
+      .channel(`admin-messages-out-${adminId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `sender_id=eq.${adminId}`
+      }, (payload) => {
+        const conversationId = (payload.new as any)?.conversation_id || (payload.old as any)?.conversation_id;
+        refreshConversationList();
+        refreshCurrentMessages(conversationId);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(conversationsChannel);
+      supabase.removeChannel(inboundMessagesChannel);
+      supabase.removeChannel(outboundMessagesChannel);
+    };
+  }, [adminId, messagingEnabled]);
 
   const handleSendMessage = async () => {
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-    
-    if (!newMessage.trim() || !selectedConversation || !valid || !user?.userId) return;
-    
-    // Validate current user ID
-    if (!user.userId || user.userId === 'undefined') {
-      setError('Invalid user session. Please log in again.');
+    if (!adminId || !selectedConversation || !newMessage.trim() || sending) {
       return;
     }
 
     try {
-      const messageData = {
+      setSending(true);
+      await api.messages.createMessage({
         conversation_id: selectedConversation.id,
-        sender_id: user.userId,
-        sender_type: 'admin' as const,
+        sender_id: adminId,
+        sender_type: 'admin',
         recipient_id: selectedConversation.patient_id,
-        recipient_type: 'patient' as const,
+        recipient_type: 'patient',
         content: newMessage.trim()
-      };
-
-      await api.messages.createMessage(messageData);
+      });
       setNewMessage('');
-      fetchMessages(selectedConversation.id);
-      // Background refresh will automatically update conversation list
+      await loadMessages(selectedConversation.id, false);
+      await loadConversations(false);
+      setError(null);
     } catch (err: any) {
-      // Check if error is related to session
-      if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
-        setError('Invalid user session. Please log in again.');
-        setSessionState({ user: null, isValid: false });
-      } else {
-        setError(err.message);
-      }
+      setError(err.message || 'Failed to send message.');
+    } finally {
+      setSending(false);
     }
   };
 
-  const handleCreateConversation = async (patientId: string) => {
-    const user = auth.getCurrentUser();
-    const valid = user && 
-      user.userId && 
-      user.userId !== 'undefined' &&
-      user.role === 'admin';
-    
-    if (!valid || !user?.userId) return;
-    
-    // Validate current user ID
-    if (!user.userId || user.userId === 'undefined') {
-      setError('Invalid user session. Please log in again.');
+  const handleOpenConversation = async (patientId: string) => {
+    if (!adminId || startingConversation) {
       return;
     }
-    
-    try {
-      const conversation = await api.messages.createConversation(patientId, user.userId);
-      setConversations([conversation, ...conversations]);
-      setSelectedConversation(conversation);
-    } catch (err: any) {
-      // Check if error is related to session
-      if (err.message.includes('Invalid user session') || err.message.includes('session') || err.message.includes('auth')) {
-        setError('Invalid user session. Please log in again.');
-        setSessionState({ user: null, isValid: false });
-      } else {
-        setError(err.message);
-      }
+
+    const existingConversation = conversations.find((conversation) => conversation.patient_id === patientId);
+    if (existingConversation) {
+      setSelectedConversationId(existingConversation.id);
+      return;
     }
-  };
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString();
+    try {
+      setStartingConversation(patientId);
+      const conversation = await api.messages.createConversation(patientId, adminId);
+      await loadConversations(false);
+      setSelectedConversationId(conversation.id);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to start conversation.');
+    } finally {
+      setStartingConversation(null);
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
-  // Show full-screen message when messaging is disabled
   if (!messagingEnabled) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[500px] bg-gray-50 p-4">
-        <div className="text-center max-w-md mx-auto">
-          <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">Messaging System Disabled</h3>
-          <p className="text-gray-600 mb-4">The messaging feature has been temporarily disabled by the system administrator.</p>
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-800 text-sm rounded-lg border border-amber-200">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            Contact your system admin to enable this feature.
-          </div>
-        </div>
+      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <h2 className="text-xl font-semibold text-gray-900">Messaging disabled</h2>
+        <p className="mt-2 text-sm text-gray-500">Turn the feature back on to chat with patients in real time.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-6 border-b border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800">Messaging</h2>
-        <p className="text-sm text-gray-500 mt-1">Communicate with patients in real-time</p>
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-200 px-6 py-4">
+        <h2 className="text-xl font-semibold text-gray-900">Patient Messages</h2>
+        <p className="mt-1 text-sm text-gray-500">Live messaging between the front desk and patient portal.</p>
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border-b border-red-100">
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className="border-b border-red-100 bg-red-50 px-6 py-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 
-      <div className="flex h-[calc(100vh-200px)]">
-        {/* Conversations sidebar */}
-        <div className="w-80 border-r border-gray-200 flex flex-col">
-          <div className="p-4 border-b border-gray-200">
-            <h3 className="font-medium text-gray-900">Conversations</h3>
+      <div className="grid min-h-[680px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="border-r border-gray-200 bg-gray-50">
+          <div className="border-b border-gray-200 px-4 py-4">
+            <h3 className="text-sm font-semibold text-gray-900">Conversations</h3>
+            <p className="mt-1 text-xs text-gray-500">Updates arrive automatically through Supabase realtime.</p>
           </div>
-          
-          <div className="flex-1 overflow-y-auto">
+
+          <div className="max-h-[360px] overflow-y-auto border-b border-gray-200 bg-white">
             {conversations.length === 0 ? (
-              <div className="p-8 text-center">
-                <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">No conversations yet</p>
-                <p className="text-gray-400 text-xs mt-1">Start a conversation with a patient</p>
+              <div className="p-6 text-center">
+                <MessageCircle className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-3 text-sm font-medium text-gray-700">No conversations yet</p>
+                <p className="mt-1 text-xs text-gray-500">Start one from the patient list below.</p>
               </div>
             ) : (
-              conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
-                    selectedConversation?.id === conv.id ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : ''
+              conversations.map((conversation) => (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => setSelectedConversationId(conversation.id)}
+                  className={`w-full border-b border-gray-100 px-4 py-4 text-left transition-colors ${
+                    selectedConversationId === conversation.id ? 'bg-indigo-50' : 'bg-white hover:bg-gray-50'
                   }`}
-                  onClick={() => setSelectedConversation(conv)}
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-gray-900 truncate">{conv.patient_name}</h4>
-                      <p className="text-sm text-gray-500 truncate mt-1">
-                        {conv.last_message || 'No messages yet'}
-                      </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-gray-900">{conversation.patient_name}</div>
+                      <div className="mt-1 truncate text-xs text-gray-500">
+                        {conversation.last_message || 'No messages yet'}
+                      </div>
+                      <div className="mt-2 text-[11px] text-gray-400">
+                        {formatConversationTime(conversation.last_message_time || conversation.created_at)}
+                      </div>
                     </div>
-                    {conv.unread_count > 0 && (
-                      <span className="ml-2 bg-indigo-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">
-                        {conv.unread_count}
+                    {conversation.unread_count > 0 && (
+                      <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-indigo-600 px-2 text-xs font-semibold text-white">
+                        {conversation.unread_count}
                       </span>
                     )}
                   </div>
-                  {conv.last_message_time && (
-                    <p className="text-xs text-gray-400 mt-2">
-                      {formatDate(conv.last_message_time)} • {formatTime(conv.last_message_time)}
-                    </p>
-                  )}
-                </div>
+                </button>
               ))
             )}
           </div>
-        </div>
 
-        {/* Messages area */}
-        <div className="flex-1 flex flex-col">
+          <div className="px-4 py-4">
+            <h3 className="text-sm font-semibold text-gray-900">Start New Chat</h3>
+            <p className="mt-1 text-xs text-gray-500">Choose any patient to open a direct conversation.</p>
+          </div>
+
+          <div className="max-h-[260px] overflow-y-auto bg-white">
+            {availablePatients.length === 0 ? (
+              <div className="px-4 pb-6 text-xs text-gray-500">
+                Every patient already has an active conversation with this admin.
+              </div>
+            ) : (
+              availablePatients.map((patient) => (
+                <button
+                  key={patient.id}
+                  type="button"
+                  onClick={() => handleOpenConversation(patient.id)}
+                  disabled={startingConversation === patient.id}
+                  className="flex w-full items-center justify-between border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="truncate text-sm text-gray-800">{patient.name}</span>
+                  <span className="text-xs font-medium text-indigo-600">
+                    {startingConversation === patient.id ? 'Opening...' : 'Chat'}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        <section className="flex min-h-[680px] flex-col">
           {selectedConversation ? (
             <>
-              <div className="p-4 border-b border-gray-200">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
-                    <User className="w-5 h-5 text-indigo-600" />
+              <div className="border-b border-gray-200 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-100">
+                    <User className="h-5 w-5 text-indigo-600" />
                   </div>
                   <div>
-                    <h3 className="font-medium text-gray-900">{selectedConversation.patient_name}</h3>
-                    <p className="text-sm text-gray-500">Patient</p>
+                    <div className="text-sm font-semibold text-gray-900">{selectedConversation.patient_name}</div>
+                    <div className="text-xs text-gray-500">Live patient chat</div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="space-y-4">
-                  {messages.map((message) => (
+              <div className="flex-1 space-y-4 overflow-y-auto bg-white px-6 py-5">
+                {messages.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-center">
+                    <div>
+                      <MessageCircle className="mx-auto h-10 w-10 text-gray-300" />
+                      <p className="mt-3 text-sm font-medium text-gray-700">No messages yet</p>
+                      <p className="mt-1 text-xs text-gray-500">Send the first message to begin the conversation.</p>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`flex ${
-                        message.sender_type === 'admin' ? 'justify-end' : 'justify-start'
-                      }`}
+                      className={`flex ${message.sender_type === 'admin' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
+                        className={`max-w-xl rounded-2xl px-4 py-3 text-sm ${
                           message.sender_type === 'admin'
-                            ? 'bg-indigo-600 text-white rounded-br-md'
-                            : 'bg-gray-100 text-gray-900 rounded-bl-md'
+                            ? 'rounded-br-md bg-indigo-600 text-white'
+                            : 'rounded-bl-md bg-gray-100 text-gray-900'
                         }`}
                       >
-                        <p className="text-sm">{message.content}</p>
-                        <div className={`flex items-center mt-1 ${
-                          message.sender_type === 'admin' ? 'justify-end' : 'justify-start'
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        <div className={`mt-2 flex items-center gap-1 text-[11px] ${
+                          message.sender_type === 'admin' ? 'justify-end text-indigo-100' : 'text-gray-500'
                         }`}>
-                          <span className="text-xs opacity-70 mr-1">
-                            {formatTime(message.timestamp)}
-                          </span>
+                          <span>{formatTime(message.timestamp)}</span>
                           {message.sender_type === 'admin' && (
-                            message.read ? (
-                              <CheckCheck className="w-3 h-3 opacity-70" />
-                            ) : (
-                              <Check className="w-3 h-3 opacity-70" />
-                            )
+                            message.read ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />
                           )}
                         </div>
                       </div>
                     </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
               </div>
 
-              <div className="p-4 border-t border-gray-200">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
+              <div className="border-t border-gray-200 bg-white px-6 py-4">
+                <div className="flex gap-3">
+                  <textarea
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Type your message..."
-                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(event) => setNewMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    rows={2}
+                    placeholder="Type a message to the patient..."
+                    className="min-h-[52px] flex-1 resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   />
                   <button
+                    type="button"
                     onClick={handleSendMessage}
-                    disabled={!newMessage.trim()}
-                    className="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    disabled={!newMessage.trim() || sending}
+                    className="flex h-[52px] w-[52px] items-center justify-center rounded-xl bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Send className="w-5 h-5" />
+                    <Send className="h-5 w-5" />
                   </button>
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <MessageCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Select a conversation</h3>
-                <p className="text-gray-500">Choose a conversation from the sidebar to start messaging</p>
+            <div className="flex flex-1 items-center justify-center bg-white px-6 text-center">
+              <div>
+                <MessageCircle className="mx-auto h-12 w-12 text-gray-300" />
+                <p className="mt-4 text-lg font-semibold text-gray-900">Select a conversation</p>
+                <p className="mt-2 text-sm text-gray-500">Open an existing chat or start a new one from the patient list.</p>
               </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

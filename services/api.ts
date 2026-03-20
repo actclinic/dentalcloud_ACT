@@ -2397,6 +2397,18 @@ export const api = {
   },
 
   messages: {
+    mapConversationRow: (conv: any, unreadCount = 0): Conversation => ({
+      id: conv.id,
+      patient_id: conv.patient_id,
+      patient_name: conv.patients?.name || (Array.isArray(conv.patients) ? conv.patients[0]?.name : 'Unknown Patient'),
+      admin_id: conv.admin_id,
+      admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
+      last_message: conv.last_message,
+      last_message_time: conv.last_message_time,
+      unread_count: unreadCount,
+      created_at: conv.created_at
+    }),
+
     // Get conversations for a user
     getConversations: async (userId: string, userType: 'patient' | 'admin'): Promise<Conversation[]> => {
       // Perform automatic cleanup before fetching conversations
@@ -2431,6 +2443,10 @@ export const api = {
       const { data: conversations, error } = await query;
       
       if (error) throw new Error(error.message);
+
+      if (!conversations || conversations.length === 0) {
+        return [];
+      }
       
       // Get unread message counts for each conversation
       const conversationIds = conversations.map((conv: any) => conv.id);
@@ -2447,17 +2463,7 @@ export const api = {
       if (unreadError) {
         console.warn('Error fetching unread message counts:', unreadError.message);
         // Return conversations with 0 unread count if unread query fails
-        return conversations.map((conv: any) => ({
-          id: conv.id,
-          patient_id: conv.patient_id,
-          patient_name: conv.patients?.name || (Array.isArray(conv.patients) ? conv.patients[0]?.name : 'Unknown Patient'),
-          admin_id: conv.admin_id,
-          admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
-          last_message: conv.last_message,
-          last_message_time: conv.last_message_time,
-          unread_count: 0,
-          created_at: conv.created_at
-        }));
+        return conversations.map((conv: any) => api.messages.mapConversationRow(conv, 0));
       }
       
       // Create a map of conversation_id to unread count
@@ -2466,17 +2472,7 @@ export const api = {
         return acc;
       }, {} as Record<string, number>);
       
-      return conversations.map((conv: any) => ({
-        id: conv.id,
-        patient_id: conv.patient_id,
-        patient_name: conv.patients?.name || (Array.isArray(conv.patients) ? conv.patients[0]?.name : 'Unknown Patient'),
-        admin_id: conv.admin_id,
-        admin_name: conv.users?.username || (Array.isArray(conv.users) ? conv.users[0]?.username : 'Unknown Admin'),
-        last_message: conv.last_message,
-        last_message_time: conv.last_message_time,
-        unread_count: unreadCountMap[conv.id] || 0,
-        created_at: conv.created_at
-      }));
+      return conversations.map((conv: any) => api.messages.mapConversationRow(conv, unreadCountMap[conv.id] || 0));
     },
     
     // Get messages for a conversation
@@ -2517,17 +2513,6 @@ export const api = {
       
       if (messageError) throw new Error(messageError.message);
       
-      // Update conversation last message
-      const { error: convError } = await supabase
-        .from('conversations')
-        .update({
-          last_message: message.content,
-          last_message_time: newMessage.timestamp
-        })
-        .eq('id', message.conversation_id);
-      
-      if (convError) throw new Error(convError.message);
-      
       return messageData;
     },
     
@@ -2540,19 +2525,33 @@ export const api = {
       if (!patientId || patientId === 'undefined' || !adminId || adminId === 'undefined' || adminId === 'admin-default') {
         throw new Error('Invalid patient or admin ID for conversation creation');
       }
-      
-      const { data: patient } = await supabase
-        .from('patients')
-        .select('name')
-        .eq('id', patientId)
-        .single();
-      
-      const { data: admin } = await supabase
-        .from('users')
-        .select('username')
-        .eq('id', adminId)
-        .single();
-      
+
+      const selectClause = `
+        id,
+        patient_id,
+        patients!inner(name),
+        admin_id,
+        users!inner(username),
+        last_message,
+        last_message_time,
+        created_at
+      `;
+
+      const { data: existingConversation, error: existingError } = await supabase
+        .from('conversations')
+        .select(selectClause)
+        .eq('patient_id', patientId)
+        .eq('admin_id', adminId)
+        .maybeSingle();
+
+      if (existingError) {
+        throw new Error(existingError.message);
+      }
+
+      if (existingConversation) {
+        return api.messages.mapConversationRow(existingConversation, 0);
+      }
+
       const { data: conversation, error } = await supabase
         .from('conversations')
         .insert({
@@ -2561,22 +2560,12 @@ export const api = {
           last_message: null,
           last_message_time: null
         })
-        .select()
+        .select(selectClause)
         .single();
       
       if (error) throw new Error(error.message);
-      
-      return {
-        id: conversation.id,
-        patient_id: patientId,
-        patient_name: patient?.name || 'Unknown Patient',
-        admin_id: adminId,
-        admin_name: admin?.username || 'Unknown Admin',
-        last_message: null,
-        last_message_time: null,
-        unread_count: 0,
-        created_at: conversation.created_at
-      };
+
+      return api.messages.mapConversationRow(conversation, 0);
     },
     
     // Mark messages as read
