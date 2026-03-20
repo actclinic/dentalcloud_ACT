@@ -406,6 +406,65 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const formatAppointmentLabel = (appointment: Appointment) =>
     `${appointment.patient_name || 'Unknown Patient'} on ${appointment.date} at ${appointment.time}${appointment.doctor_name ? ` with Dr. ${appointment.doctor_name}` : ''}`;
 
+  const getLocalTimeZone = () => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (error) {
+      return 'UTC';
+    }
+  };
+
+  const formatScheduledDateTime = (value?: string | null) => {
+    if (!value) return 'Unknown time';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString(undefined, { timeZone: getLocalTimeZone() });
+  };
+
+  const normalizeScheduledRunAt = (value?: string | null) => {
+    const raw = (value || '').trim();
+    if (!raw) {
+      throw new Error('run_at is required.');
+    }
+
+    if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) {
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new Error('Invalid scheduled datetime.');
+      }
+      return parsed.toISOString();
+    }
+
+    const normalized = raw.replace(' ', 'T');
+    const match = normalized.match(
+      /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
+
+    if (!match) {
+      const fallback = new Date(raw);
+      if (Number.isNaN(fallback.getTime())) {
+        throw new Error('Invalid scheduled datetime.');
+      }
+      return fallback.toISOString();
+    }
+
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = match;
+    const localDate = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+
+    if (Number.isNaN(localDate.getTime())) {
+      throw new Error('Invalid scheduled datetime.');
+    }
+
+    return localDate.toISOString();
+  };
+
   const toBoolean = (value: any): boolean => {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'number') return value === 1;
@@ -1785,6 +1844,7 @@ MANAGER EMAIL:
 - mgr_email_send(to, subject, body): Email the manager. "to" can be email, name, or role; if omitted, uses primary or only saved manager.
 - email_schedule(to, subject, body, run_at): Schedule an email for later. run_at must be ISO datetime.
 - report_schedule(to, run_at, subject): Schedule an end-of-day profit report email.
+Important: for scheduled tasks, interpret times in the clinic's local timezone unless the user explicitly gives a timezone.
 
 LOYALTY SYSTEM:
 - loyalty_rules_get(): Get all loyalty rules.
@@ -2040,6 +2100,7 @@ When users ask complex questions, think through this framework:
 - Doctor popularity insights (identify most famous doctor by treatment volume in the last 30 days when asked)
 
 Today: ${contextData.td}
+Clinic Time Zone: ${getLocalTimeZone()}
 Current Mode: ${isAgentMode ? 'AGENT (Full CRUD access)' : 'ASK (Read-only analysis)'}
 Persistent Memory: ${memorySummary}
 Practice Data: ${JSON.stringify(contextData)}
@@ -2063,6 +2124,7 @@ INTELLIGENCE GUIDELINES:
 - USER PROFICIENCY: Always communicate in simple, non-technical language appropriate for clinical staff.
 - FEEDBACK INTEGRATION: Adapt your response style based on user feedback patterns (adjust detail level, format, or approach as needed).
 - COMPOUND ACTIONS: Process complex requests efficiently using internal reasoning to determine optimal action sequences.
+- SCHEDULED TASKS: When the user says times like "1:00 PM", "tonight", or "9:00 PM", treat them as the clinic's local time zone unless the user explicitly gives another time zone.
 - INTERNAL PROCESSING: All analytical thinking and planning occurs internally. Only present final, formatted results to users.
 
 **MANDATORY DOUBLE-CHECK STAGE:**
@@ -2873,7 +2935,7 @@ I can provide guidance on:
                 admin_id: currentAdminId || null,
                 task_type: 'EMAIL',
                 status: 'PENDING',
-                run_at: pendingAction.params.run_at || pendingAction.params.scheduled_at,
+                run_at: normalizeScheduledRunAt(pendingAction.params.run_at || pendingAction.params.scheduled_at),
                 payload: {
                   to: recipient.email,
                   subject: pendingAction.params.subject || pendingAction.params.sub || '',
@@ -2900,7 +2962,7 @@ I can provide guidance on:
                 admin_id: currentAdminId || null,
                 task_type: 'DAILY_REPORT_EMAIL',
                 status: 'PENDING',
-                run_at: pendingAction.params.run_at || pendingAction.params.scheduled_at,
+                run_at: normalizeScheduledRunAt(pendingAction.params.run_at || pendingAction.params.scheduled_at),
                 payload: {
                   to: recipient.email,
                   subject: pendingAction.params.subject || 'Daily Clinic Report',
@@ -2989,10 +3051,10 @@ I can provide guidance on:
             successMessage = `✅ Email sent to ${result.recipientLabel || result.recipientEmail}.${result.messageId ? ` Message ID: ${result.messageId}.` : ''}`;
             break;
           case 'email_schedule':
-            successMessage = `✅ Email scheduled for ${result.recipientLabel || 'recipient'} at ${new Date(result.run_at).toLocaleString()}.`;
+            successMessage = `✅ Email scheduled for ${result.recipientLabel || 'recipient'} at ${formatScheduledDateTime(result.run_at)}.`;
             break;
           case 'report_schedule':
-            successMessage = `✅ Daily report email scheduled for ${result.recipientLabel || 'recipient'} at ${new Date(result.run_at).toLocaleString()}.`;
+            successMessage = `✅ Daily report email scheduled for ${result.recipientLabel || 'recipient'} at ${formatScheduledDateTime(result.run_at)}.`;
             break;
           case 'recall_create':
             successMessage = `✅ Recall created for ${result.patient_name || 'the patient'} on ${result.due_date}.`;
@@ -3616,7 +3678,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 if (!emailSettings.senderEmail) {
                   throw new Error("Sender email is required. Please set it in Settings first.");
                 }
-                const runAt = params.run_at || params.scheduled_at;
+                const runAt = normalizeScheduledRunAt(params.run_at || params.scheduled_at);
                 if (!runAt) throw new Error("run_at is required for scheduled email.");
 
                 result = await api.scheduledTasks.create({
@@ -3633,7 +3695,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     fromEmail: emailSettings.senderEmail
                   }
                 });
-                currentActionResult = `✅ Email scheduled for ${recipient.label} at ${new Date(result.run_at).toLocaleString()}.`;
+                currentActionResult = `✅ Email scheduled for ${recipient.label} at ${formatScheduledDateTime(result.run_at)}.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to schedule email: ${err.message}`;
               }
@@ -3648,7 +3710,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 if (!emailSettings.senderEmail) {
                   throw new Error("Sender email is required. Please set it in Settings first.");
                 }
-                const runAt = params.run_at || params.scheduled_at;
+                const runAt = normalizeScheduledRunAt(params.run_at || params.scheduled_at);
                 if (!runAt) throw new Error("run_at is required for scheduled report email.");
 
                 result = await api.scheduledTasks.create({
@@ -3665,7 +3727,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     currency
                   }
                 });
-                currentActionResult = `✅ Daily report email scheduled for ${recipient.label} at ${new Date(result.run_at).toLocaleString()}.`;
+                currentActionResult = `✅ Daily report email scheduled for ${recipient.label} at ${formatScheduledDateTime(result.run_at)}.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to schedule report email: ${err.message}`;
               }
