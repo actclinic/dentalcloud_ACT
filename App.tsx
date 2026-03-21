@@ -117,6 +117,14 @@ const App: React.FC = () => {
   const [dashboardLocationId, setDashboardLocationId] = useState<string>(() => {
     return localStorage.getItem('dashboardLocationId') || ALL_BRANCHES_VALUE;
   });
+  const [assistantPatients, setAssistantPatients] = useState<Patient[]>([]);
+  const [assistantAppointments, setAssistantAppointments] = useState<Appointment[]>([]);
+  const [assistantDoctors, setAssistantDoctors] = useState<Doctor[]>([]);
+  const [assistantTreatmentTypes, setAssistantTreatmentTypes] = useState<TreatmentType[]>([]);
+  const [assistantRecords, setAssistantRecords] = useState<ClinicalRecord[]>([]);
+  const [assistantMedicines, setAssistantMedicines] = useState<Medicine[]>([]);
+  const [assistantExpenses, setAssistantExpenses] = useState<Expense[]>([]);
+  const [assistantRecalls, setAssistantRecalls] = useState<Recall[]>([]);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -301,6 +309,14 @@ const App: React.FC = () => {
     setDashboardAppointments([]);
     setDashboardRecords([]);
     setDashboardLocationId(ALL_BRANCHES_VALUE);
+    setAssistantPatients([]);
+    setAssistantAppointments([]);
+    setAssistantDoctors([]);
+    setAssistantTreatmentTypes([]);
+    setAssistantRecords([]);
+    setAssistantMedicines([]);
+    setAssistantExpenses([]);
+    setAssistantRecalls([]);
     localStorage.removeItem('dashboardLocationId');
   };
 
@@ -367,6 +383,34 @@ const App: React.FC = () => {
     setDashboardRecords(recordsData);
     setDashboardLocationId(sanitizedScope);
     localStorage.setItem('dashboardLocationId', sanitizedScope);
+  };
+
+  const fetchAssistantData = async () => {
+    const session = auth.getSession();
+    const restrictedLocationId = session?.location_id || '';
+    const queryLocationId = restrictedLocationId || currentLocationId || undefined;
+    const canAccessAllLocations = isAdmin && !restrictedLocationId;
+    const assistantLocationId = canAccessAllLocations ? undefined : queryLocationId;
+
+    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, recallData] = await Promise.all([
+      api.patients.getAll(assistantLocationId),
+      api.appointments.getAll(assistantLocationId),
+      api.doctors.getAll(assistantLocationId),
+      api.treatments.getTypes(assistantLocationId),
+      api.treatments.getAllRecords(assistantLocationId),
+      api.medicines.getAll(assistantLocationId),
+      api.expenses.getAll(assistantLocationId),
+      api.recalls.getAll(assistantLocationId)
+    ]);
+
+    setAssistantPatients(patData);
+    setAssistantAppointments(aptData);
+    setAssistantDoctors(docData);
+    setAssistantTreatmentTypes(typeData);
+    setAssistantRecords(recordsData);
+    setAssistantMedicines(medData);
+    setAssistantExpenses(expenseData);
+    setAssistantRecalls(recallData);
   };
 
   const fetchInitialData = async (overrideLocationId?: string) => {
@@ -478,6 +522,7 @@ const App: React.FC = () => {
 
   const refreshAssistantData = async () => {
     await fetchInitialData(currentLocationId || undefined);
+    await fetchAssistantData();
     if (isAdmin) {
       await fetchUsers();
     }
@@ -573,7 +618,12 @@ const App: React.FC = () => {
     if (currentView === 'inventory') {
       fetchMedicines();
     }
-  }, [currentView, isAdmin]);
+    if (currentView === 'ai-assistant') {
+      fetchAssistantData().catch(err => {
+        console.warn('Error fetching AI assistant data:', err);
+      });
+    }
+  }, [currentView, isAdmin, currentLocationId]);
 
   useEffect(() => {
     if (!isAuthenticated || !currentLocationId) return;
@@ -1479,15 +1529,18 @@ const App: React.FC = () => {
                 isAdmin={isAdmin} 
             />}
             {currentView === 'ai-assistant' && <AIAssistantView 
-                patients={patients} 
-                treatmentRecords={globalRecords} 
-                appointments={appointments}
-                doctors={doctors}
-                treatmentTypes={treatmentTypes}
+                patients={assistantPatients} 
+                treatmentRecords={assistantRecords} 
+                appointments={assistantAppointments}
+                doctors={assistantDoctors}
+                treatmentTypes={assistantTreatmentTypes}
                 users={users}
-                medicines={medicines}
-                expenses={expenses}
-                recalls={recalls}
+                medicines={assistantMedicines}
+                expenses={assistantExpenses}
+                recalls={assistantRecalls}
+                locations={locations}
+                currentLocationId={currentLocationId}
+                canAccessAllLocations={isAdmin && !auth.getSession()?.location_id}
                 currentAdminId={auth.getCurrentUser()?.userId}
                 currency={currency}
                 onDataRefresh={refreshAssistantData}

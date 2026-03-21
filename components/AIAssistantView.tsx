@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall } from '../types';
+import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall, Location } from '../types';
 import { api } from '../services/api';
 import { Currency } from '../utils/currency';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, AIReportPayload } from '../utils/aiReport';
@@ -240,6 +240,9 @@ interface AIAssistantViewProps {
   medicines: Medicine[];
   expenses: Expense[];
   recalls?: Recall[];
+  locations?: Location[];
+  currentLocationId?: string;
+  canAccessAllLocations?: boolean;
   currentAdminId?: string;
   currency: Currency;
   onDataRefresh?: () => Promise<void> | void;
@@ -255,12 +258,17 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   medicines,
   expenses,
   recalls = [],
+  locations = [],
+  currentLocationId = '',
+  canAccessAllLocations = false,
   currentAdminId,
   currency,
   onDataRefresh
 }) => {
   const MANAGER_EMAILS_KEY = 'loli_manager_emails';
   const EMAIL_SETTINGS_KEY = 'dc_email_settings';
+  const AI_SCOPE_KEY = 'loli_location_scope';
+  const ALL_BRANCHES_VALUE = '__all_branches__';
 
   const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
@@ -309,23 +317,133 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const normalizeLookupText = (value: string | undefined | null) =>
     (value || '').toString().trim().toLowerCase();
 
+  const resolveLocationId = (identifier?: string | null) => {
+    const normalized = normalizeLookupText(identifier);
+    if (!normalized) return '';
+
+    const matchedLocation = locations.find(location =>
+      location.id === identifier ||
+      normalizeLookupText(location.name) === normalized ||
+      normalizeLookupText(location.address) === normalized ||
+      normalizeLookupText(location.phone) === normalized
+    ) || locations.find(location =>
+      normalizeLookupText(location.name).includes(normalized) ||
+      normalizeLookupText(location.address).includes(normalized)
+    );
+
+    return matchedLocation?.id || '';
+  };
+
   const getCurrentLocationId = () => {
     const currentUserLocation = currentAdminId
       ? users.find(user => user.id === currentAdminId)?.location_id
       : null;
-    return currentUserLocation || users[0]?.location_id || 'main';
+    return resolveLocationId(currentLocationId) || currentUserLocation || users[0]?.location_id || locations[0]?.id || 'main';
+  };
+
+  const [selectedLocationScope, setSelectedLocationScope] = useState<string>(() => {
+    const savedScope = localStorage.getItem(AI_SCOPE_KEY);
+    return savedScope || ALL_BRANCHES_VALUE;
+  });
+
+  useEffect(() => {
+    const defaultScope = canAccessAllLocations
+      ? (selectedLocationScope || ALL_BRANCHES_VALUE)
+      : (currentLocationId || getCurrentLocationId());
+
+    setSelectedLocationScope(defaultScope);
+    localStorage.setItem(AI_SCOPE_KEY, defaultScope);
+  }, [canAccessAllLocations, currentLocationId]);
+
+  const analysisLocationId = canAccessAllLocations && selectedLocationScope === ALL_BRANCHES_VALUE
+    ? undefined
+    : (resolveLocationId(selectedLocationScope) || currentLocationId || getCurrentLocationId());
+
+  const filterByLocation = <T extends { location_id: string }>(items: T[]) =>
+    analysisLocationId ? items.filter(item => item.location_id === analysisLocationId) : items;
+
+  const activePatients = useMemo(() => filterByLocation(patients), [patients, analysisLocationId]);
+  const activeAppointments = useMemo(() => filterByLocation(appointments), [appointments, analysisLocationId]);
+  const activeDoctors = useMemo(() => filterByLocation(doctors), [doctors, analysisLocationId]);
+  const activeTreatmentTypes = useMemo(() => filterByLocation(treatmentTypes), [treatmentTypes, analysisLocationId]);
+  const activeMedicines = useMemo(() => filterByLocation(medicines), [medicines, analysisLocationId]);
+  const activeExpenses = useMemo(() => filterByLocation(expenses), [expenses, analysisLocationId]);
+  const activeRecalls = useMemo(() => filterByLocation(recalls), [recalls, analysisLocationId]);
+  const activeTreatmentRecords = useMemo(() => filterByLocation(treatmentRecords), [treatmentRecords, analysisLocationId]);
+
+  const branchSummaries = useMemo(() => {
+    return locations.map(location => ({
+      id: location.id,
+      name: location.name,
+      patients: patients.filter(patient => patient.location_id === location.id).length,
+      appointments: appointments.filter(appointment => appointment.location_id === location.id).length,
+      treatments: treatmentRecords.filter(record => record.location_id === location.id).length,
+      expenses: expenses.filter(expense => expense.location_id === location.id).length,
+      recalls: recalls.filter(recall => recall.location_id === location.id).length,
+      medicines: medicines.filter(medicine => medicine.location_id === location.id).length
+    }));
+  }, [appointments, expenses, locations, medicines, patients, recalls, treatmentRecords]);
+
+  const selectedLocationLabel = analysisLocationId
+    ? (locations.find(location => location.id === analysisLocationId)?.name || 'Selected Branch')
+    : 'All Branches';
+
+  const ACTIONS_REQUIRING_SINGLE_BRANCH = new Set([
+    'apt_c',
+    'bulk_appointments',
+    'dr_c',
+    'email_schedule',
+    'exp_c',
+    'loyalty_redeem',
+    'loyalty_rule_create',
+    'm_c',
+    'm_sell',
+    'p_c',
+    'patient_followup',
+    'recall_create',
+    'report_schedule',
+    'tr_create',
+    'treatment_type_create',
+    'user_create'
+  ]);
+
+  const getActionLocationId = (params?: any) => {
+    const explicitLocationId = resolveLocationId(
+      params?.location_id ||
+      params?.location ||
+      params?.location_name ||
+      params?.branch_id ||
+      params?.branch ||
+      params?.branch_name ||
+      params?.loc
+    );
+
+    if (explicitLocationId) return explicitLocationId;
+    if (analysisLocationId) return analysisLocationId;
+    return canAccessAllLocations ? undefined : getCurrentLocationId();
+  };
+
+  const getResolvedActionLocationId = (action: string, params?: any) => {
+    const locationId = getActionLocationId(params);
+    if (locationId) return locationId;
+
+    if (ACTIONS_REQUIRING_SINGLE_BRANCH.has(action)) {
+      throw new Error('This action needs a specific branch. Select one in AI Scope or include a branch/location in your request.');
+    }
+
+    return undefined;
   };
 
   const resolvePatient = (identifier?: string | null) => {
     const normalized = normalizeLookupText(identifier);
     if (!normalized) return null;
 
-    return patients.find(patient =>
+    return activePatients.find(patient =>
       patient.id === identifier ||
       normalizeLookupText(patient.name) === normalized ||
       normalizeLookupText(patient.email) === normalized ||
       normalizeLookupText(patient.phone) === normalized
-    ) || patients.find(patient =>
+    ) || activePatients.find(patient =>
       normalizeLookupText(patient.name).includes(normalized) ||
       normalizeLookupText(patient.phone).includes(normalized)
     ) || null;
@@ -335,12 +453,12 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     const normalized = normalizeLookupText(identifier);
     if (!normalized) return null;
 
-    return doctors.find(doctor =>
+    return activeDoctors.find(doctor =>
       doctor.id === identifier ||
       normalizeLookupText(doctor.name) === normalized ||
       normalizeLookupText(doctor.email) === normalized ||
       normalizeLookupText(doctor.phone) === normalized
-    ) || doctors.find(doctor =>
+    ) || activeDoctors.find(doctor =>
       normalizeLookupText(doctor.name).includes(normalized) ||
       normalizeLookupText(doctor.specialization).includes(normalized)
     ) || null;
@@ -350,10 +468,10 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     const normalized = normalizeLookupText(identifier);
     if (!normalized) return null;
 
-    return medicines.find(medicine =>
+    return activeMedicines.find(medicine =>
       medicine.id === identifier ||
       normalizeLookupText(medicine.name) === normalized
-    ) || medicines.find(medicine =>
+    ) || activeMedicines.find(medicine =>
       normalizeLookupText(medicine.name).includes(normalized) ||
       normalizeLookupText(medicine.category).includes(normalized)
     ) || null;
@@ -362,7 +480,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const resolveAppointment = (params: any) => {
     const directId = params?.id || params?.appointment_id || params?.apt_id;
     if (directId) {
-      const found = appointments.find(appointment => appointment.id === directId);
+      const found = activeAppointments.find(appointment => appointment.id === directId);
       if (found) return found;
     }
 
@@ -380,7 +498,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     const candidateTime = params?.t || params?.tm || params?.time;
     const candidateStatus = params?.status;
 
-    const matches = appointments.filter(appointment => {
+    const matches = activeAppointments.filter(appointment => {
       if (candidatePatientId && appointment.patient_id !== candidatePatientId) return false;
       if (candidateDoctorId && appointment.doctor_id !== candidateDoctorId) return false;
       if (candidateDate && appointment.date !== candidateDate) return false;
@@ -638,6 +756,10 @@ How can I assist you today?`,
   useEffect(() => {
     localStorage.setItem('loli_mode', mode);
   }, [mode]);
+
+  useEffect(() => {
+    localStorage.setItem(AI_SCOPE_KEY, selectedLocationScope);
+  }, [selectedLocationScope]);
 
   useEffect(() => {
     // Clean up legacy mock email outbox data
@@ -1375,13 +1497,18 @@ Need more detailed help?
     const today = new Date().toISOString().split('T')[0];
     const baseData = {
       td: today,
+      scope: {
+        selected: selectedLocationLabel,
+        location_id: analysisLocationId || null,
+        all_branches: !analysisLocationId
+      },
       s: {
-        p: patients.length,
-        a: appointments.length,
-        d: doctors.length,
-        t: treatmentTypes.length,
-        m: medicines.length,
-        r: recalls.length
+        p: activePatients.length,
+        a: activeAppointments.length,
+        d: activeDoctors.length,
+        t: activeTreatmentTypes.length,
+        m: activeMedicines.length,
+        r: activeRecalls.length
       }
     };
 
@@ -1395,16 +1522,17 @@ Need more detailed help?
       // Ultra-compressed mode for minimal token usage
       return {
         ...baseData,
-        dr: doctors.slice(0, 5).map(d => ({ n: d.name, s: d.specialization.substring(0, 20) })), 
-        ta: appointments.filter(a => a.status === 'Scheduled' && a.date === today).slice(0, 3).map(a => ({ p: a.patient_name.substring(0, 15), t: a.time })),
+        branches: canAccessAllLocations ? branchSummaries : undefined,
+        dr: activeDoctors.slice(0, 5).map(d => ({ n: d.name, s: (d.specialization || '').substring(0, 20) })), 
+        ta: activeAppointments.filter(a => a.status === 'Scheduled' && a.date === today).slice(0, 3).map(a => ({ p: (a.patient_name || 'Unknown').substring(0, 15), t: a.time })),
         inv: {
-          total: medicines.length,
-          low: medicines.filter(m => m.stock <= (m.min_stock || 0)).length
+          total: activeMedicines.length,
+          low: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).length
         },
         rec: {
-          total: recalls.length,
-          overdue: recalls.filter(r => r.status === 'OVERDUE').length,
-          due_today: recalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
+          total: activeRecalls.length,
+          overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
+          due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
         }
       };
     }
@@ -1413,9 +1541,9 @@ Need more detailed help?
       // Medium context for action queries with token constraints
       return {
         ...baseData,
-        patients: patients.slice(0, 10).map(p => ({ i: p.id, n: p.name.substring(0, 20), ph: p.phone })),
-        doctors: doctors.slice(0, 8).map(d => ({ i: d.id, n: d.name, s: d.specialization })),
-        medicines: medicines.slice(0, 10).map(m => ({ i: m.id, n: m.name.substring(0, 25), s: m.stock }))
+        patients: activePatients.slice(0, 10).map(p => ({ i: p.id, n: p.name.substring(0, 20), ph: p.phone, loc: p.location_id })),
+        doctors: activeDoctors.slice(0, 8).map(d => ({ i: d.id, n: d.name, s: d.specialization, loc: d.location_id })),
+        medicines: activeMedicines.slice(0, 10).map(m => ({ i: m.id, n: m.name.substring(0, 25), s: m.stock, loc: m.location_id }))
       };
     }
 
@@ -1429,15 +1557,20 @@ Need more detailed help?
     // Basic stats always included
     const baseData = {
       td: today,
+      scope: {
+        selected: selectedLocationLabel,
+        location_id: analysisLocationId || null,
+        all_branches: !analysisLocationId
+      },
       s: {
-        p: patients.length,
-        a: appointments.length,
-        d: doctors.length,
-        t: treatmentTypes.length,
-        m: medicines.length,
-        r: recalls.length,
+        p: activePatients.length,
+        a: activeAppointments.length,
+        d: activeDoctors.length,
+        t: activeTreatmentTypes.length,
+        m: activeMedicines.length,
+        r: activeRecalls.length,
         u: users.length,
-        l: 1 // locations count
+        l: analysisLocationId ? 1 : Math.max(locations.length, 1)
       }
     };
 
@@ -1445,20 +1578,21 @@ Need more detailed help?
       // Highly optimized/compressed data for minimal token usage
       return {
         ...baseData,
-        dr: doctors.map(d => ({ i: d.id, n: d.name, s: d.specialization })), 
-        ta: appointments.filter(a => a.status === 'Scheduled' && a.date === today).map(a => ({ p: a.patient_name, d: a.doctor_name, t: a.time })),
-        ua: appointments.filter(a => a.status === 'Scheduled' && a.date >= today).slice(0, 5).map(a => ({ p: a.patient_name, d: a.doctor_name, dt: a.date, t: a.time })),
-        tr: treatmentRecords.slice(0, 5).map(r => ({ p: r.patient_name, d: r.description, dt: r.date })),
-        ls: medicines.filter(m => m.stock <= (m.min_stock || 0)).map(m => ({ n: m.name, q: m.stock })),
+        branches: canAccessAllLocations ? branchSummaries : undefined,
+        dr: activeDoctors.map(d => ({ i: d.id, n: d.name, s: d.specialization, loc: d.location_id })), 
+        ta: activeAppointments.filter(a => a.status === 'Scheduled' && a.date === today).map(a => ({ p: a.patient_name, d: a.doctor_name, t: a.time, loc: a.location_id })),
+        ua: activeAppointments.filter(a => a.status === 'Scheduled' && a.date >= today).slice(0, 5).map(a => ({ p: a.patient_name, d: a.doctor_name, dt: a.date, t: a.time, loc: a.location_id })),
+        tr: activeTreatmentRecords.slice(0, 5).map(r => ({ p: r.patient_name, d: r.description, dt: r.date, loc: r.location_id })),
+        ls: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).map(m => ({ n: m.name, q: m.stock, loc: m.location_id })),
         inv: {
-          total_items: medicines.length,
-          total_stock: medicines.reduce((sum, med) => sum + (med.stock || 0), 0),
-          low_stock_count: medicines.filter(m => m.stock <= (m.min_stock || 0)).length
+          total_items: activeMedicines.length,
+          total_stock: activeMedicines.reduce((sum, med) => sum + (med.stock || 0), 0),
+          low_stock_count: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).length
         },
         rec: {
-          total: recalls.length,
-          overdue: recalls.filter(r => r.status === 'OVERDUE').length,
-          due_today: recalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
+          total: activeRecalls.length,
+          overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
+          due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
         }
       };
     }
@@ -1477,18 +1611,18 @@ Need more detailed help?
     const sixMonthsAgoStr = sixMonthsAgo.toISOString().split('T')[0];
 
     // Identify patients overdue for checkup (no treatments in 6 months)
-    const overdueCheckups = patients.filter(p => {
-      const lastTreatment = treatmentRecords.find(tr => tr.patient_id === p.id);
+    const overdueCheckups = activePatients.filter(p => {
+      const lastTreatment = activeTreatmentRecords.find(tr => tr.patient_id === p.id);
       return !lastTreatment || lastTreatment.date < sixMonthsAgoStr;
-    }).slice(0, 5).map(p => ({ n: p.name, last: treatmentRecords.find(tr => tr.patient_id === p.id)?.date || 'Never' }));
+    }).slice(0, 5).map(p => ({ n: p.name, last: activeTreatmentRecords.find(tr => tr.patient_id === p.id)?.date || 'Never', loc: p.location_id }));
 
     // Identify high-priority stock issues
-    const criticalStock = medicines.filter(m => m.stock <= (m.min_stock || 0) * 0.2).map(m => ({ n: m.name, s: m.stock, m: m.min_stock }));
+    const criticalStock = activeMedicines.filter(m => m.stock <= (m.min_stock || 0) * 0.2).map(m => ({ n: m.name, s: m.stock, m: m.min_stock, loc: m.location_id }));
 
     // Identify high outstanding balances
-    const highBalances = patients.filter(p => (p.balance || 0) > 500000).slice(0, 5).map(p => ({ n: p.name, b: p.balance }));
+    const highBalances = activePatients.filter(p => (p.balance || 0) > 500000).slice(0, 5).map(p => ({ n: p.name, b: p.balance, loc: p.location_id }));
 
-    const monthlyRevenue = treatmentRecords.filter(tr => {
+    const monthlyRevenue = activeTreatmentRecords.filter(tr => {
       const recordDate = new Date(tr.date);
       const currentDate = new Date();
       return recordDate.getMonth() === currentDate.getMonth() && 
@@ -1500,7 +1634,7 @@ Need more detailed help?
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
 
-    treatmentRecords
+    activeTreatmentRecords
       .filter(tr => tr.date >= thirtyDaysAgoStr)
       .forEach(tr => {
         const doctorName = tr.doctor_name?.trim() || 'Unassigned Doctor';
@@ -1512,7 +1646,7 @@ Need more detailed help?
       .slice(0, 8)
       .map(([name, treatments]) => ({ name, treatments }));
 
-    const monthlyExpenses = expenses.filter(exp => {
+    const monthlyExpenses = activeExpenses.filter(exp => {
       const expDate = new Date(exp.date);
       const currentDate = new Date();
       return expDate.getMonth() === currentDate.getMonth() && 
@@ -1520,15 +1654,15 @@ Need more detailed help?
     }).reduce((sum, exp) => sum + (exp.amount || 0), 0);
 
     const recallSummary = {
-      total: recalls.length,
-      pending: recalls.filter(r => r.status === 'PENDING').length,
-      scheduled: recalls.filter(r => r.status === 'SCHEDULED').length,
-      overdue: recalls.filter(r => r.status === 'OVERDUE').length,
-      completed: recalls.filter(r => r.status === 'COMPLETED').length,
-      due_today: recalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
+      total: activeRecalls.length,
+      pending: activeRecalls.filter(r => r.status === 'PENDING').length,
+      scheduled: activeRecalls.filter(r => r.status === 'SCHEDULED').length,
+      overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
+      completed: activeRecalls.filter(r => r.status === 'COMPLETED').length,
+      due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
     };
 
-    const upcomingRecalls = recalls
+    const upcomingRecalls = activeRecalls
       .filter(r => (r.status === 'PENDING' || r.status === 'SCHEDULED') && r.due_date >= today)
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
       .slice(0, 10)
@@ -1537,37 +1671,41 @@ Need more detailed help?
         p: r.patient_name || 'Unknown',
         t: r.title,
         dd: r.due_date,
-        s: r.status
+        s: r.status,
+        loc: r.location_id
       }));
 
     return {
       ...baseData,
+      branches: canAccessAllLocations ? branchSummaries : undefined,
       clinical_insights: {
         overdue_checkups: overdueCheckups,
-        high_risk_conditions: patients.filter(p => p.medicalHistory?.match(/heart|diabetes|allergy/i)).slice(0, 5).map(p => ({ n: p.name, c: p.medicalHistory?.substring(0, 30) })),
-        upcoming_appointments: appointments.filter(a => a.date === today && a.status === 'Scheduled').length
+        high_risk_conditions: activePatients.filter(p => p.medicalHistory?.match(/heart|diabetes|allergy/i)).slice(0, 5).map(p => ({ n: p.name, c: p.medicalHistory?.substring(0, 30), loc: p.location_id })),
+        upcoming_appointments: activeAppointments.filter(a => a.date === today && a.status === 'Scheduled').length
       },
       operational_insights: {
         critical_stock: criticalStock,
         high_balances: highBalances,
-        doctors_free_today: doctors.filter(d => !appointments.some(a => a.doctor_id === d.id && a.date === today)).map(d => d.name)
+        doctors_free_today: activeDoctors.filter(d => !activeAppointments.some(a => a.doctor_id === d.id && a.date === today)).map(d => d.name)
       },
-      patients: patients.slice(0, 25).map(p => ({ 
+      patients: activePatients.slice(0, 25).map(p => ({ 
         i: p.id, 
         n: p.name, 
         ph: p.phone, 
         b: p.balance,
         lp: p.loyalty_points,
-        mh: p.medicalHistory ? p.medicalHistory.substring(0, 100) : ''
+        mh: p.medicalHistory ? p.medicalHistory.substring(0, 100) : '',
+        loc: p.location_id
       })),
-      doctors: doctors.map(d => ({ 
+      doctors: activeDoctors.map(d => ({ 
         i: d.id, 
         n: d.name, 
         s: d.specialization, 
         sch: d.schedules,
-        appts_today: appointments.filter(a => a.doctor_id === d.id && a.date === today && a.status === 'Scheduled').length
+        appts_today: activeAppointments.filter(a => a.doctor_id === d.id && a.date === today && a.status === 'Scheduled').length,
+        loc: d.location_id
       })),
-      appointments: appointments.filter(a => a.date >= sevenDaysAgoStr).slice(0, 30).map(a => ({ 
+      appointments: activeAppointments.filter(a => a.date >= sevenDaysAgoStr).slice(0, 30).map(a => ({ 
         i: a.id, 
         p: a.patient_name, 
         pi: a.patient_id, 
@@ -1576,9 +1714,10 @@ Need more detailed help?
         dt: a.date, 
         t: a.time, 
         s: a.status,
-        ty: a.type
+        ty: a.type,
+        loc: a.location_id
       })),
-      appointment_history: appointments
+      appointment_history: activeAppointments
         .filter(a => a.date >= ninetyDaysAgoStr)
         .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))
         .slice(0, 40)
@@ -1590,39 +1729,43 @@ Need more detailed help?
           t: a.time,
           s: a.status,
           ty: a.type,
-          n: a.notes ? a.notes.substring(0, 80) : ''
+          n: a.notes ? a.notes.substring(0, 80) : '',
+          loc: a.location_id
         })),
-      medicines: medicines.slice(0, 25).map(m => ({ 
+      medicines: activeMedicines.slice(0, 25).map(m => ({ 
         i: m.id, 
         n: m.name, 
         s: m.stock, 
         ms: m.min_stock, 
         p: m.price,
         c: m.category,
-        sales_7days: 0 // Would be calculated from sales data
+        sales_7days: 0, // Would be calculated from sales data
+        loc: m.location_id
       })),
-      treatment_records: treatmentRecords.slice(0, 20).map(tr => ({
+      treatment_records: activeTreatmentRecords.slice(0, 20).map(tr => ({
         i: tr.id,
         pid: tr.patient_id,
         pn: tr.patient_name,
         t: tr.teeth,
         d: tr.description,
         c: tr.cost,
-        dt: tr.date
+        dt: tr.date,
+        loc: tr.location_id
       })),
-      expenses: expenses.slice(0, 20).map(exp => ({
+      expenses: activeExpenses.slice(0, 20).map(exp => ({
         i: exp.id,
         d: exp.description,
         a: exp.amount,
         c: exp.category,
-        dt: exp.date
+        dt: exp.date,
+        loc: exp.location_id
       })),
       financial_summary: {
-        daily_revenue: treatmentRecords.filter(tr => tr.date === today).reduce((sum, tr) => sum + (tr.cost || 0), 0),
-        weekly_revenue: treatmentRecords.filter(tr => tr.date >= sevenDaysAgoStr).reduce((sum, tr) => sum + (tr.cost || 0), 0),
+        daily_revenue: activeTreatmentRecords.filter(tr => tr.date === today).reduce((sum, tr) => sum + (tr.cost || 0), 0),
+        weekly_revenue: activeTreatmentRecords.filter(tr => tr.date >= sevenDaysAgoStr).reduce((sum, tr) => sum + (tr.cost || 0), 0),
         monthly_revenue: monthlyRevenue,
-        daily_expenses: expenses.filter(exp => exp.date === today).reduce((sum, exp) => sum + (exp.amount || 0), 0),
-        weekly_expenses: expenses.filter(exp => exp.date >= sevenDaysAgoStr).reduce((sum, exp) => sum + (exp.amount || 0), 0),
+        daily_expenses: activeExpenses.filter(exp => exp.date === today).reduce((sum, exp) => sum + (exp.amount || 0), 0),
+        weekly_expenses: activeExpenses.filter(exp => exp.date >= sevenDaysAgoStr).reduce((sum, exp) => sum + (exp.amount || 0), 0),
         monthly_expenses: monthlyExpenses,
         monthly_profit: monthlyRevenue - monthlyExpenses
       },
@@ -1635,12 +1778,12 @@ Need more detailed help?
         upcoming: upcomingRecalls
       },
       inventory_insights: {
-        low_stock_items: medicines.filter(m => m.stock <= (m.min_stock || 0)).length,
-        out_of_stock_items: medicines.filter(m => m.stock === 0).length,
-        total_inventory_value: medicines.reduce((sum, m) => sum + (m.stock * m.price), 0),
-        fast_moving_items: medicines.slice(0, 5).map(m => ({ n: m.name, s: m.stock })) // Placeholder
+        low_stock_items: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).length,
+        out_of_stock_items: activeMedicines.filter(m => m.stock === 0).length,
+        total_inventory_value: activeMedicines.reduce((sum, m) => sum + (m.stock * m.price), 0),
+        fast_moving_items: activeMedicines.slice(0, 5).map(m => ({ n: m.name, s: m.stock, loc: m.location_id })) // Placeholder
       },
-      loc: getCurrentLocationId()
+      loc: analysisLocationId || getCurrentLocationId()
     };
   };
 
@@ -1763,6 +1906,11 @@ Rules:
 
   const API_DOCS = `
 ACTIONS (Available in all modes - Full Database Access):
+
+BRANCH AWARENESS:
+- You can analyze either all branches or one selected branch based on Practice Data scope.
+- For branch-specific actions in Agent Mode, include one of these in params when needed: location_id, location_name, branch_id, branch_name, or loc.
+- If the current scope is "All Branches" and the task changes data, prefer specifying the branch explicitly.
 
 PATIENT MANAGEMENT:
 - p_c(n, e, ph, m, lp): Create patient. n=name, e=email, ph=phone, m=medicalHistory, lp=loyalty_points.
@@ -1958,7 +2106,7 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
     
     const isReportQuery = isReportingQuery(userMessage);
     if (isReportQuery) {
-      const report = buildFinancialReport(treatmentRecords, expenses, medicines, currency);
+      const report = buildFinancialReport(activeTreatmentRecords, activeExpenses, activeMedicines, currency);
       const reportMarkdown = renderFinancialReportMarkdown(report, currency);
       const insights = buildInsightsNoNumbers(report);
       const insightsMarkdown = buildInsightsMarkdown(insights);
@@ -2125,6 +2273,7 @@ INTELLIGENCE GUIDELINES:
 - FEEDBACK INTEGRATION: Adapt your response style based on user feedback patterns (adjust detail level, format, or approach as needed).
 - COMPOUND ACTIONS: Process complex requests efficiently using internal reasoning to determine optimal action sequences.
 - SCHEDULED TASKS: When the user says times like "1:00 PM", "tonight", or "9:00 PM", treat them as the clinic's local time zone unless the user explicitly gives another time zone.
+- BRANCH DISCIPLINE: Always respect the selected branch scope in Practice Data. When the scope is all branches, make that clear in analysis. For write actions, ask for or include the branch when it is ambiguous.
 - INTERNAL PROCESSING: All analytical thinking and planning occurs internally. Only present final, formatted results to users.
 
 **MANDATORY DOUBLE-CHECK STAGE:**
@@ -2741,7 +2890,7 @@ I can provide guidance on:
         
         // Execute the pending action
         let result: any;
-        const locationId = getCurrentLocationId();
+        const locationId = getResolvedActionLocationId(pendingAction.action, pendingAction.params);
         
         switch (pendingAction.action) {
           case 'apt_c':
@@ -3265,7 +3414,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
           let result: any;
           let shouldRefreshData = false;
-          const locationId = getCurrentLocationId();
+          const locationId = getResolvedActionLocationId(action, params);
                 
           switch (action) {
             // Doctor Schedule Actions
@@ -4532,6 +4681,33 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
+          <div className="w-full sm:w-60">
+            <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-1.5">
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" />
+                AI Scope
+              </span>
+            </label>
+            {canAccessAllLocations ? (
+              <select
+                value={selectedLocationScope}
+                onChange={(e) => setSelectedLocationScope(e.target.value)}
+                className="w-full bg-white/90 text-sm text-gray-800 border border-indigo-200 rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value={ALL_BRANCHES_VALUE}>All Branches</option>
+                {locations.map(location => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="rounded-xl border border-indigo-200 bg-white/90 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm">
+                {selectedLocationLabel}
+              </div>
+            )}
+          </div>
+
           {/* Mode Toggle */}
           <div className="flex bg-indigo-50/50 p-1 rounded-xl border border-indigo-100 shadow-inner backdrop-blur-sm flex-wrap">
             <button
