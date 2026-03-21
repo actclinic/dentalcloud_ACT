@@ -103,19 +103,32 @@ serve(async (req) => {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const message = data?.message || "Failed to send email.";
+      const message =
+        data?.message ||
+        data?.error?.message ||
+        data?.errors?.[0]?.message ||
+        "Failed to send email.";
       return new Response(JSON.stringify({ error: message }), {
         status: response.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
 
-    return new Response(JSON.stringify({ id: data?.id || data?.data?.id || null }), {
+    const deliveryId = data?.id || data?.data?.id || null;
+    if (!deliveryId) {
+      return new Response(JSON.stringify({ error: "Email provider accepted the request but did not return a delivery id.", providerResponse: data }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    return new Response(JSON.stringify({ id: deliveryId, messageId: deliveryId }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: "Unexpected error sending email." }), {
+    const message = error instanceof Error ? error.message : "Unexpected error sending email.";
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

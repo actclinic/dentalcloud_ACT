@@ -3221,7 +3221,7 @@ I can provide guidance on:
             successMessage = `✅ Message sent successfully to ${result.patient_name || 'the patient'}.`;
             break;
           case 'mgr_email_send':
-            successMessage = `✅ Email sent to ${result.recipientLabel || result.recipientEmail}.${result.messageId ? ` Message ID: ${result.messageId}.` : ''}`;
+            successMessage = `✅ Email delivery request accepted for ${result.recipientLabel || result.recipientEmail}.${result.messageId ? ` Delivery ID: ${result.messageId}.` : ''}`;
             break;
           case 'email_schedule':
             successMessage = `✅ Email scheduled for ${result.recipientLabel || 'recipient'} at ${formatScheduledDateTime(result.run_at)}.`;
@@ -4537,6 +4537,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       const actionResultText = actionResults.join('\n\n---\n\n');
       const hasSuccessfulAction = actionResults.some(result => result.includes('✅'));
       const hasActionAttempt = allActionMatches.length > 0;
+      const needsConfirmation = actionResultText.toLowerCase().includes('confirmation') || actionResultText.toLowerCase().includes('confirm');
       // Clean the AI response to remove internal processing artifacts
       let cleanedAiResponse = cleanAIResponse(aiResponse);
       // Remove all JSON blocks from the AI response to clean it up
@@ -4544,7 +4545,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         cleanedAiResponse = cleanedAiResponse.replace(match, '');
       });
       
-      const assistantContent = actionIntentDetected && !hasActionAttempt
+      const assistantContent = needsConfirmation
+        ? actionResultText
+        : actionIntentDetected && !hasActionAttempt
         ? mode !== 'agent'
           ? `${cleanedAiResponse.trim()}\n\n⚠️ I did not execute any real system action for that request, so no appointment or database record was created.\n\nPlease try again in Agent Mode, and I will only confirm completion after the system action succeeds.`.trim()
           : (cleanedAiResponse.trim() || `⚠️ I understood the request, but I could not form a real system action to run. Please try again with the recipient, subject, body, and branch if needed.`)
@@ -4566,8 +4569,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       saveSession(finalMessages);
       
       // Check if this response contains a pending action that requires confirmation
-      const needsConfirmation = actionResultText.toLowerCase().includes('confirmation') || actionResultText.toLowerCase().includes('confirm');
-      
       if (allActionMatches.length > 0 && needsConfirmation) {
         // Extract the action details for pending confirmation
         try {

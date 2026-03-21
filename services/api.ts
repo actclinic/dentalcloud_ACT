@@ -2686,7 +2686,7 @@ export const api = {
       fromName?: string; 
       fromEmail?: string;
       replyTo?: string;
-    }): Promise<{ id?: string; messageId?: string }> => {
+    }): Promise<{ id: string; messageId: string }> => {
       const { data, error } = await supabase.functions.invoke('send-manager-email', {
         body: payload
       });
@@ -2698,7 +2698,14 @@ export const api = {
         console.error('Supabase email function response error:', data.error);
         throw new Error(data.error);
       }
-      return data || {};
+      const deliveryId = data?.id || data?.messageId;
+      if (!deliveryId) {
+        throw new Error('Email provider did not confirm delivery acceptance.');
+      }
+      return {
+        id: deliveryId,
+        messageId: deliveryId
+      };
     }
   },
   scheduledTasks: {
