@@ -4680,8 +4680,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           <p className="text-xs text-indigo-500 mt-1 font-medium">by WinterArc Myanmar</p>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
-          <div className="w-full sm:w-60">
+        <div className="w-full md:w-auto md:max-w-[720px]">
+          <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(220px,260px)_auto] md:items-end">
+          <div className="w-full">
             <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-1.5">
               <span className="inline-flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" />
@@ -4708,61 +4709,62 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             )}
           </div>
 
-          {/* Mode Toggle */}
-          <div className="flex bg-indigo-50/50 p-1 rounded-xl border border-indigo-100 shadow-inner backdrop-blur-sm flex-wrap">
-            <button
-              onClick={() => setMode('ask')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 whitespace-nowrap ${
-                mode === 'ask' 
-                ? 'bg-white text-indigo-600 shadow-md transform scale-105' 
-                : 'text-indigo-400 hover:text-indigo-600 hover:bg-white/50'
-              }`}
-            >
-              <ShieldQuestion className="w-3.5 h-3.5" />
-              <span>Ask Mode</span>
-            </button>
-            <button
-              onClick={() => setMode('agent')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 whitespace-nowrap ${
-                mode === 'agent' 
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg transform scale-105' 
-                : 'text-indigo-400 hover:text-indigo-600 hover:bg-white/50'
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Agent Mode</span>
-            </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex bg-indigo-50/50 p-1 rounded-xl border border-indigo-100 shadow-inner backdrop-blur-sm w-full sm:w-fit">
+              <button
+                onClick={() => setMode('ask')}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all duration-300 whitespace-nowrap ${
+                  mode === 'ask' 
+                  ? 'bg-white text-indigo-600 shadow-md transform scale-105' 
+                  : 'text-indigo-400 hover:text-indigo-600 hover:bg-white/50'
+                }`}
+              >
+                <ShieldQuestion className="w-3.5 h-3.5" />
+                <span>Ask Mode</span>
+              </button>
+              <button
+                onClick={() => setMode('agent')}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all duration-300 whitespace-nowrap ${
+                  mode === 'agent' 
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg transform scale-105' 
+                  : 'text-indigo-400 hover:text-indigo-600 hover:bg-white/50'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Agent Mode</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => setShowHelpModal(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full"
+                title="Quick start guide and command reference"
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span>Quick Help</span>
+              </button>
+
+              <button
+                onClick={() => setShowMemoryPanel(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full"
+                title="View assistant memory"
+              >
+                <Brain className="w-4 h-4" />
+                <span>Memory</span>
+              </button>
+
+              <button
+                onClick={createNewSession}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full"
+                title="Start new conversation"
+              >
+                <Plus className="w-4 h-4" />
+                <span>New Chat</span>
+              </button>
+            </div>
           </div>
-
-          {/* Help Button */}
-          <button
-            onClick={() => setShowHelpModal(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
-            title="Quick start guide and command reference"
-          >
-            <HelpCircle className="w-4 h-4" />
-            <span className="hidden sm:inline">Quick Help</span>
-            <span className="sm:hidden">Help</span>
-          </button>
-
-          <button
-            onClick={() => setShowMemoryPanel(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
-            title="View assistant memory"
-          >
-            <Brain className="w-4 h-4" />
-            <span className="hidden sm:inline">Memory</span>
-            <span className="sm:hidden">Memory</span>
-          </button>
-
-          <button
-            onClick={createNewSession}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-medium transition-all duration-300 text-sm shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
-            title="Start new conversation"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Chat</span>
-          </button>
+          </div>
         </div>
       </div>
 
