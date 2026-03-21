@@ -449,6 +449,30 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     ) || null;
   };
 
+  const findScopedPatientByName = (name?: string | null) => {
+    const normalized = normalizeLookupText(name);
+    if (!normalized) return null;
+    return activePatients.find(patient => normalizeLookupText(patient.name).includes(normalized)) || null;
+  };
+
+  const findScopedPatientsByName = (name?: string | null) => {
+    const normalized = normalizeLookupText(name);
+    if (!normalized) return [];
+    return activePatients.filter(patient => normalizeLookupText(patient.name).includes(normalized));
+  };
+
+  const getScopedPatientById = (patientId?: string | null) =>
+    activePatients.find(patient => patient.id === patientId) || null;
+
+  const getScopedTreatmentHistory = (patientId?: string | null) =>
+    activeTreatmentRecords.filter(record => record.patient_id === patientId);
+
+  const getScopedAppointmentsForPatients = (patientIds: string[]) =>
+    activeAppointments.filter(appointment => patientIds.includes(appointment.patient_id));
+
+  const getScopedMedicineById = (medicineId?: string | null) =>
+    activeMedicines.find(medicine => medicine.id === medicineId) || null;
+
   const resolveDoctor = (identifier?: string | null) => {
     const normalized = normalizeLookupText(identifier);
     if (!normalized) return null;
@@ -2040,6 +2064,8 @@ Examples:
 { "action": "fin_pay", "params": { "name": "Sarah Johnson", "amt": 175 } }
 { "action": "pat_hist", "params": { "name": "John Smith" } }
 { "action": "p_u", "params": { "name": "John Doe", "data": { "phone": "0912345678", "medicalHistory": "Allergic to Penicillin" } } }
+{ "action": "mgr_email_send", "params": { "to": "manager", "subject": "Daily update", "body": "Today we completed 18 treatments and scheduled 6 recalls." } }
+{ "action": "email_schedule", "params": { "to": "owner", "subject": "Inventory alert", "body": "Composite resin stock is low at the downtown branch.", "run_at": "2026-03-21T18:00:00" } }
 `
 
   // Post-process AI responses to remove internal processing artifacts
@@ -2957,9 +2983,7 @@ I can provide guidance on:
             // Handle patient deletion by name or ID
             if (pendingAction.params.name || pendingAction.params.n) {
               const patientName = pendingAction.params.name || pendingAction.params.n;
-              const patientToDelete = patients.find(p => 
-                p.name.toLowerCase().includes(patientName.toLowerCase())
-              );
+              const patientToDelete = findScopedPatientByName(patientName);
               
               if (!patientToDelete) {
                 throw new Error(`Patient with name '${patientName}' not found`);
@@ -2976,7 +3000,7 @@ I can provide guidance on:
               let patientId = pendingAction.params.id || pendingAction.params.pid;
               if (!patientId && (pendingAction.params.name || pendingAction.params.n)) {
                 const pName = pendingAction.params.name || pendingAction.params.n;
-                const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                const found = findScopedPatientByName(pName);
                 if (found) patientId = found.id;
               }
               if (!patientId) throw new Error("Patient ID or Name is required for update.");
@@ -3013,7 +3037,7 @@ I can provide guidance on:
               let patientId = pendingAction.params.pid;
               if (!patientId && (pendingAction.params.name || pendingAction.params.n)) {
                 const pName = pendingAction.params.name || pendingAction.params.n;
-                const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                const found = findScopedPatientByName(pName);
                 if (found) patientId = found.id;
               }
               if (!patientId) throw new Error("Patient ID or Name is required.");
@@ -3536,7 +3560,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               try {
                 let patientId = params.pid;
                 if (!patientId && params.name) {
-                  const found = patients.find(p => p.name.toLowerCase().includes(params.name.toLowerCase()));
+                  const found = findScopedPatientByName(params.name);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for medicine sale.");
@@ -3601,7 +3625,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               try {
                 let patientId = params.pid;
                 if (!patientId && params.name) {
-                  const found = patients.find(p => p.name.toLowerCase().includes(params.name.toLowerCase()));
+                  const found = findScopedPatientByName(params.name);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for loyalty redemption.");
@@ -3615,7 +3639,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'loyalty_reset_all':
               try {
                 // Check if user has admin rights
-                const currentUser = users.find(u => u.id === 'current');
+                const currentUser = currentAdminId
+                  ? users.find(u => u.id === currentAdminId)
+                  : null;
                 if (currentUser?.role !== 'admin') {
                   currentActionResult = `❌ Admin permission required to reset all loyalty points.`;
                   break;
@@ -3630,13 +3656,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               try {
                 let patientId = params.pid;
                 if (!patientId && params.name) {
-                  const found = patients.find(p => p.name.toLowerCase().includes(params.name.toLowerCase()));
+                  const found = findScopedPatientByName(params.name);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required.");
                 
                 const transactions = await api.loyalty.getTransactions(patientId, locationId);
-                const pName = patients.find(p => p.id === patientId)?.name || patientId;
+                const pName = getScopedPatientById(patientId)?.name || patientId;
                 
                 if (transactions.length === 0) {
                   currentActionResult = `📋 No loyalty transactions found for ${pName}.`;
@@ -3886,7 +3912,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'recall_get_all':
               try {
                 const recallStatus = params.status ? params.status.toUpperCase() : null;
-                const recallItems = recalls.filter(recall => !recallStatus || recall.status === recallStatus);
+                const recallItems = activeRecalls.filter(recall => !recallStatus || recall.status === recallStatus);
                 currentActionResult = recallItems.length === 0
                   ? `📋 No recalls found${recallStatus ? ` with status ${recallStatus}` : ''}.`
                   : `📋 Recalls (${recallItems.length}):\n\n${recallItems.slice(0, 15).map(recall => `• ${recall.patient_name || 'Unknown'} - ${recall.title} on ${recall.due_date} (${recall.status})`).join('\n')}`;
@@ -3947,7 +3973,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.pid;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required.");
@@ -3959,7 +3985,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 const conv = convs.find(c => c.patient_id === patientId);
                 
                 if (!conv) {
-                  const pName = patients.find(p => p.id === patientId)?.name || "this patient";
+                  const pName = getScopedPatientById(patientId)?.name || "this patient";
                   currentActionResult = `💬 No messaging history found for ${pName}.`;
                 } else {
                   const msgs = await api.messages.getMessages(conv.id);
@@ -3976,7 +4002,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.pid;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required.");
@@ -4088,7 +4114,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 const patient = resolvePatient(params.name || params.n || params.patient_name || params.pid || params.p_id);
                 if (!patient) throw new Error("Patient not found.");
                 const today = new Date().toISOString().split('T')[0];
-                const patientAppointments = appointments
+                const patientAppointments = activeAppointments
                   .filter(a => a.patient_id === patient.id && a.date < today)
                   .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`));
 
@@ -4162,7 +4188,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.id;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for update.");
@@ -4178,9 +4204,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               try {
                 if (params.name || params.n) {
                   const patientName = params.name || params.n;
-                  const patientToDelete = patients.find(p => 
-                    p.name.toLowerCase().includes(patientName.toLowerCase())
-                  );
+                  const patientToDelete = findScopedPatientByName(patientName);
                   if (!patientToDelete) {
                     throw new Error(`Patient with name '${patientName}' not found`);
                   }
@@ -4258,7 +4282,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               break;
             case 'm_restock':
               try {
-                const medicine = medicines.find(m => m.id === params.id);
+                const medicine = getScopedMedicineById(params.id);
                 if (!medicine) throw new Error(`Medicine with ID ${params.id} not found`);
                 const newStock = (medicine.stock || 0) + (params.qty || 0);
                 result = await api.medicines.update(params.id, { stock: newStock });
@@ -4274,7 +4298,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 // Patient Name Lookup
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 
@@ -4307,13 +4331,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.pid || params.p_id;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for undoing treatment.");
 
                 await api.treatments.undoRecord(params.id, patientId, params.cost);
-                const pName = patients.find(p => p.id === patientId)?.name || patientId;
+                const pName = getScopedPatientById(patientId)?.name || patientId;
                 currentActionResult = `✅ Treatment record undone successfully for ${pName}.`;
               } catch (err: any) {
                 console.error('Treatment undo error:', err);
@@ -4325,13 +4349,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.pid || params.p_id;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for payment processing.");
 
                 result = await api.finance.processPayment(patientId, params.amt);
-                const pName = patients.find(p => p.id === patientId)?.name || patientId;
+                const pName = getScopedPatientById(patientId)?.name || patientId;
                 currentActionResult = `✅ Payment of ${params.amt} MMK processed for ${pName}. New balance: ${result.new_balance} MMK.`;
               } catch (err: any) {
                 console.error('Payment processing error:', err);
@@ -4343,12 +4367,12 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.pid || params.p_id;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required to check balance.");
 
-                const patient = patients.find(p => p.id === patientId);
+                const patient = getScopedPatientById(patientId);
                 if (!patient) throw new Error("Patient not found.");
                 currentActionResult = `💰 Balance for ${patient.name}: ${patient.balance} MMK.`;
               } catch (err: any) {
@@ -4361,13 +4385,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 let patientId = params.pid || params.p_id;
                 if (!patientId && (params.name || params.n)) {
                   const pName = params.name || params.n;
-                  const found = patients.find(p => p.name.toLowerCase().includes(pName.toLowerCase()));
+                  const found = findScopedPatientByName(pName);
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required to check history.");
 
-                const history = treatmentRecords.filter(tr => tr.patient_id === patientId);
-                const pName = patients.find(p => p.id === patientId)?.name || patientId;
+                const history = getScopedTreatmentHistory(patientId);
+                const pName = getScopedPatientById(patientId)?.name || patientId;
                 
                 if (history.length === 0) {
                   currentActionResult = `📜 No treatment history found for ${pName}.`;
@@ -4383,7 +4407,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               break;
             case 'inv_low':
               try {
-                const lowStockItems = medicines.filter(m => m.stock <= (m.min_stock || 0));
+                const lowStockItems = activeMedicines.filter(m => m.stock <= (m.min_stock || 0));
                 currentActionResult = lowStockItems.length === 0 
                   ? `✅ All inventory items are adequately stocked.`
                   : `⚠️ Low Stock Alert:\n\n${lowStockItems.map(m => `• ${m.name}: ${m.stock} units (min: ${m.min_stock || 0})`).join('\n')}`;
@@ -4414,7 +4438,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   default: startDate = endDate = now.toISOString().split('T')[0]; periodLabel = 'Today';
                 }
                 
-                const periodRecords = treatmentRecords.filter(tr => tr.date >= startDate && tr.date <= endDate);
+                const periodRecords = activeTreatmentRecords.filter(tr => tr.date >= startDate && tr.date <= endDate);
                 const totalRevenue = periodRecords.reduce((sum, tr) => sum + (tr.cost || 0), 0);
                 const treatmentCount = periodRecords.length;
                 
@@ -4448,7 +4472,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'p_find':
               try {
                 const searchTerm = (params.name || '').toLowerCase();
-                const matches = patients.filter(p => p.name.toLowerCase().includes(searchTerm));
+                const matches = findScopedPatientsByName(searchTerm);
                 if (matches.length === 0) {
                   currentActionResult = `🔍 No patients found matching "${params.name}".`;
                 } else if (matches.length === 1) {
@@ -4464,13 +4488,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'apt_find_patient':
               try {
                 const searchTerm = (params.name || '').toLowerCase();
-                const matchedPatients = patients.filter(p => p.name.toLowerCase().includes(searchTerm));
+                const matchedPatients = findScopedPatientsByName(searchTerm);
                 
                 if (matchedPatients.length === 0) {
                   currentActionResult = `🔍 No patients found matching "${params.name}".`;
                 } else {
                   const patientIds = matchedPatients.map(p => p.id);
-                  const patientAppointments = appointments.filter(a => patientIds.includes(a.patient_id));
+                  const patientAppointments = getScopedAppointmentsForPatients(patientIds);
                   
                   if (patientAppointments.length === 0) {
                     currentActionResult = `📅 No appointments found for ${matchedPatients.length === 1 ? matchedPatients[0].name : 'matching patients'}.`;
@@ -4521,7 +4545,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       });
       
       const assistantContent = actionIntentDetected && !hasActionAttempt
-        ? `⚠️ I did not execute any real system action for that request, so no appointment or database record was created.\n\nPlease try again in Agent Mode, and I will only confirm completion after the system action succeeds.`
+        ? mode !== 'agent'
+          ? `${cleanedAiResponse.trim()}\n\n⚠️ I did not execute any real system action for that request, so no appointment or database record was created.\n\nPlease try again in Agent Mode, and I will only confirm completion after the system action succeeds.`.trim()
+          : (cleanedAiResponse.trim() || `⚠️ I understood the request, but I could not form a real system action to run. Please try again with the recipient, subject, body, and branch if needed.`)
         : actionIntentDetected && hasActionAttempt && !hasSuccessfulAction
           ? `${cleanedAiResponse.trim()}\n\n${actionResultText || '⚠️ I could not complete the requested system action.'}`.trim()
           : actionResultText
