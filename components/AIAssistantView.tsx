@@ -4692,80 +4692,60 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
   const showQuickPromptPanel = messages.length <= 1 && !isLoading;
   
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-indigo-50 shadow-[0_24px_70px_-32px_rgba(15,23,42,0.35)] animate-fade-in">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-16 top-0 h-48 w-48 rounded-full bg-indigo-200/35 blur-3xl" />
-        <div className="absolute right-0 top-0 h-56 w-56 rounded-full bg-cyan-100/60 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-fuchsia-100/50 blur-3xl" />
-        {particles.slice(0, 6).map(particle => (
-          <div
-            key={particle.id}
-            className="absolute rounded-full bg-slate-300/30 blur-xl"
-            style={{
-              left: `${particle.x}%`,
-              top: `${particle.y}%`,
-              width: `${particle.size * 14}px`,
-              height: `${particle.size * 14}px`
-            }}
-          />
-        ))}
-      </div>
-      
-      <div className="relative border-b border-slate-200/80 bg-white/80 px-5 py-5 backdrop-blur-xl md:px-8 md:py-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-gradient-to-br from-slate-900 via-indigo-900 to-indigo-700 shadow-lg shadow-indigo-950/15">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
+      <div className="border-b border-slate-200 bg-white">
+        <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
                 <img
                   src="./assets/loli-logo.png"
                   alt="Loli AI Assistant Logo"
-                  className="h-11 w-11 rounded-xl object-cover"
+                  className="h-9 w-9 rounded-lg object-cover"
                 />
               </div>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-indigo-500">DentalCloud Assistant</p>
-                  <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Loli AI Assistant</h2>
-                  <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                    Clinical guidance, database actions, and follow-up workflows in one assistant workspace.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600 shadow-sm">
-                    <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-                    Ready for care coordination
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600 shadow-sm">
-                    <MapPin className="h-3.5 w-3.5 text-indigo-500" />
-                    {selectedLocationLabel}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600 shadow-sm">
-                    <MessageCircle className="h-3.5 w-3.5 text-indigo-500" />
-                    {chatSessions.length} saved chat{chatSessions.length === 1 ? '' : 's'}
-                  </span>
-                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 shadow-sm ${modeDetails.badgeClass}`}>
-                    {modeDetails.icon}
-                    {mode === 'ask' ? 'Ask Mode' : 'Agent Mode'}
-                  </span>
-                </div>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Loli AI Assistant</h2>
+                <p className="text-sm text-slate-500">Ask questions, review records, or run clinic actions from one workspace.</p>
               </div>
             </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowHelpModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                title="Quick start guide and command reference"
+              >
+                <HelpCircle className="h-4 w-4" />
+                Help
+              </button>
+              <button
+                onClick={() => setShowMemoryPanel(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                title="View assistant memory"
+              >
+                <Brain className="h-4 w-4" />
+                Memory
+              </button>
+              <button
+                onClick={createNewSession}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                title="Start new conversation"
+              >
+                <Plus className="h-4 w-4" />
+                New Chat
+              </button>
+            </div>
           </div>
-          
-          <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-950/5 backdrop-blur">
-            <div className="grid gap-4 xl:grid-cols-[minmax(240px,280px)_1fr]">
-              <div>
-                <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-indigo-500" />
-                    Practice Scope
-                  </span>
-                </label>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="min-w-[220px]">
                 {canAccessAllLocations ? (
                   <select
                     value={selectedLocationScope}
                     onChange={(e) => setSelectedLocationScope(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
                   >
                     <option value={ALL_BRANCHES_VALUE}>All Branches</option>
                     {locations.map(location => (
@@ -4775,136 +4755,90 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     ))}
                   </select>
                 ) : (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
                     {selectedLocationLabel}
                   </div>
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <button
-                    onClick={() => setShowHelpModal(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
-                    title="Quick start guide and command reference"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                    <span>Quick Help</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowMemoryPanel(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
-                    title="View assistant memory"
-                  >
-                    <Brain className="h-4 w-4" />
-                    <span>Memory</span>
-                  </button>
-
-                  <button
-                    onClick={createNewSession}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                    title="Start new conversation"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>New Chat</span>
-                  </button>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-950 p-1.5 shadow-inner">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      onClick={() => setMode('ask')}
-                      className={`rounded-[18px] px-4 py-3 text-left transition ${
-                        mode === 'ask'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-sm font-semibold">
-                        <ShieldQuestion className="h-4 w-4" />
-                        <span>Ask Mode</span>
-                      </div>
-                      <p className={`mt-1 text-[11px] leading-4 ${mode === 'ask' ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Read-only guidance and analysis
-                      </p>
-                    </button>
-
-                    <button
-                      onClick={() => setMode('agent')}
-                      className={`rounded-[18px] px-4 py-3 text-left transition ${
-                        mode === 'agent'
-                          ? 'bg-gradient-to-br from-indigo-500 via-indigo-600 to-violet-600 text-white shadow-sm'
-                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-sm font-semibold">
-                        <Zap className="h-4 w-4" />
-                        <span>Agent Mode</span>
-                      </div>
-                      <p className={`mt-1 text-[11px] leading-4 ${mode === 'agent' ? 'text-indigo-100/90' : 'text-slate-400'}`}>
-                        Executes updates and actions
-                      </p>
-                    </button>
-                  </div>
-                </div>
+              <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                <MapPin className="h-3.5 w-3.5" />
+                {selectedLocationLabel}
               </div>
+            </div>
+
+            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1">
+              <button
+                onClick={() => setMode('ask')}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  mode === 'ask'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <ShieldQuestion className="h-4 w-4" />
+                Ask
+              </button>
+              <button
+                onClick={() => setMode('agent')}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  mode === 'agent'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Zap className="h-4 w-4" />
+                Agent
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="relative grid h-[calc(100vh-220px)] grid-cols-1 lg:grid-cols-[290px,minmax(0,1fr)]">
-        <aside className="hidden border-r border-slate-200/80 bg-slate-950/[0.03] lg:flex lg:flex-col">
-          <div className="border-b border-slate-200/80 px-5 py-5">
-            <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Workspace</p>
-              <h3 className="mt-2 text-base font-bold text-slate-900">{activeSession?.title || 'New conversation'}</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                {mode === 'ask'
-                  ? 'Use this space for explanations, summaries, and treatment guidance.'
-                  : 'Use this space for operational tasks that update your clinic data.'}
-              </p>
-            </div>
+      <div className="grid h-[calc(100vh-220px)] grid-cols-1 lg:grid-cols-[280px,minmax(0,1fr)]">
+        <aside className="hidden min-h-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200 lg:flex">
+          <div className="border-b border-slate-800 px-4 py-4">
+            <button
+              onClick={createNewSession}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-white"
+            >
+              <Plus className="h-4 w-4" />
+              New chat
+            </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 py-4">
-            <div className="mb-3 flex items-center justify-between px-1">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Conversations</p>
-                <p className="mt-1 text-xs text-slate-500">{chatSessions.length} saved thread{chatSessions.length === 1 ? '' : 's'}</p>
-              </div>
+          <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="mb-3 px-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Chats</p>
             </div>
 
             {chatSessions.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-6 text-center text-sm text-slate-500">
-                <MessageCircle className="mx-auto mb-3 h-8 w-8 text-slate-300" />
-                <p className="font-medium text-slate-600">No saved conversations yet</p>
-                <p className="mt-1 text-xs text-slate-400">Start a new chat to build a reusable history.</p>
+              <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-5 text-sm text-slate-500">
+                No conversations yet.
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {chatSessions.map(session => (
                   <div
                     key={session.id}
-                    className={`group rounded-2xl border transition ${
+                    className={`group rounded-xl border transition ${
                       currentSessionId === session.id
-                        ? 'border-indigo-200 bg-white shadow-sm'
-                        : 'border-transparent bg-white/65 hover:border-slate-200 hover:bg-white'
+                        ? 'border-slate-700 bg-slate-900'
+                        : 'border-transparent hover:border-slate-800 hover:bg-slate-900/70'
                     }`}
                   >
                     <div className="flex items-start gap-2 p-3">
                       <button
                         onClick={() => switchSession(session.id)}
-                        className="flex-1 rounded-xl text-left focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="flex-1 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-slate-500"
                         title={session.title}
                       >
-                        <div className="truncate text-sm font-semibold text-slate-800">{session.title}</div>
+                        <div className="truncate text-sm font-medium text-slate-100">{session.title}</div>
                         <div className="mt-1 text-xs text-slate-500">{session.messages.length} messages</div>
                       </button>
                       <button
                         onClick={() => deleteSession(session.id)}
-                        className="rounded-xl p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
+                        className="rounded-lg p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400"
                         title="Delete conversation"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -4916,8 +4850,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             )}
           </div>
 
-          <div className="border-t border-slate-200/80 p-4">
-            <p className="mb-3 px-1 text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Prompt Starters</p>
+          <div className="border-t border-slate-800 px-4 py-4">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Prompt Starters</p>
             <div className="space-y-2">
               {quickPrompts.map(prompt => (
                 <button
@@ -4926,7 +4860,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     setInputMessage(prompt);
                     inputRef.current?.focus();
                   }}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left text-sm text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-left text-sm text-slate-300 transition hover:border-slate-700 hover:bg-slate-800"
                 >
                   {prompt}
                 </button>
@@ -4935,26 +4869,22 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           </div>
         </aside>
 
-        <div className="flex min-h-0 flex-col">
-          <div className="border-b border-slate-200/80 bg-white/70 px-4 py-3 backdrop-blur lg:px-6">
+        <div className="flex min-h-0 flex-col bg-white">
+          <div className="border-b border-slate-200 px-4 py-3 lg:px-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Current Session</p>
-                <h3 className="mt-1 text-sm font-semibold text-slate-900">{activeSession?.title || 'Fresh conversation'}</h3>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-900">{activeSession?.title || 'New chat'}</p>
+                <p className="text-xs text-slate-500">{mode === 'ask' ? 'Ask mode is active' : 'Agent mode is active'}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${modeDetails.badgeClass}`}>
-                  {modeDetails.icon}
-                  {mode === 'ask' ? 'Read-only workspace' : 'Action workspace'}
-                </span>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 {apiStatus === 'mock' && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 shadow-sm">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-medium text-amber-700">
                     <AlertCircle className="h-3.5 w-3.5" />
-                    Mock API connected
+                    Mock API
                   </span>
                 )}
                 {apiStatus === 'error' && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 font-medium text-red-700">
                     <AlertCircle className="h-3.5 w-3.5" />
                     Connection issue
                   </span>
@@ -4966,46 +4896,23 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           <div className="flex-1 overflow-hidden">
             <div className="h-full overflow-y-auto px-4 py-5 lg:px-6">
               <div className="mx-auto max-w-4xl space-y-4">
-                <div className="lg:hidden">
-                  <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Saved Conversations</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{chatSessions.length} thread{chatSessions.length === 1 ? '' : 's'} available</p>
-                      </div>
-                      <button
-                        onClick={createNewSession}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-                      >
-                        <Plus className="h-4 w-4" />
-                        New Chat
-                      </button>
-                    </div>
-                    {showQuickPromptPanel && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {quickPrompts.map(prompt => (
-                          <button
-                            key={prompt}
-                            onClick={() => {
-                              setInputMessage(prompt);
-                              inputRef.current?.focus();
-                            }}
-                            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
-                          >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <div className="flex items-center justify-between lg:hidden">
+                  <p className="text-sm text-slate-500">{chatSessions.length} saved chat{chatSessions.length === 1 ? '' : 's'}</p>
+                  <button
+                    onClick={createNewSession}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New chat
+                  </button>
                 </div>
 
                 {apiStatus === 'mock' && (
-                  <div className="rounded-3xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm">
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
                       <div className="text-sm text-amber-800">
-                        <p className="font-semibold">Mock mode is active.</p>
+                        <p className="font-medium">Mock mode is active.</p>
                         <p className="mt-1 text-amber-700">
                           Connect to <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[13px]">apifree.ai</code> to receive live AI responses.
                         </p>
@@ -5015,11 +4922,11 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 )}
 
                 {apiStatus === 'error' && (
-                  <div className="rounded-3xl border border-red-200 bg-red-50/90 p-4 shadow-sm">
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
                       <div className="text-sm text-red-800">
-                        <p className="font-semibold">AI connection problem.</p>
+                        <p className="font-medium">AI connection problem.</p>
                         <p className="mt-1 text-red-700">Check your configuration and try again.</p>
                       </div>
                     </div>
@@ -5027,13 +4934,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 )}
 
                 {showQuickPromptPanel && (
-                  <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-5 shadow-sm">
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Suggested Starts</p>
-                    <h3 className="mt-2 text-lg font-bold text-slate-900">Start with a focused clinical or operational question</h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Pick a prompt to get moving, then switch to Agent Mode when you want Loli to perform real actions.
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-medium text-slate-800">Start with one of these familiar prompts.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {quickPrompts.map(prompt => (
                         <button
                           key={prompt}
@@ -5041,7 +4944,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                             setInputMessage(prompt);
                             inputRef.current?.focus();
                           }}
-                          className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
                         >
                           {prompt}
                         </button>
@@ -5058,27 +4961,27 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       style={{ animationDelay: `${index * 45}ms` }}
                     >
                       {message.role === 'assistant' && (
-                        <div className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+                        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
                           <Bot className="h-4 w-4" />
                         </div>
                       )}
                       
                       <div
-                        className={`group max-w-[min(100%,52rem)] rounded-[24px] border px-4 py-4 shadow-sm transition ${
+                        className={`group max-w-[min(100%,52rem)] rounded-2xl border px-4 py-4 transition ${
                           message.role === 'user'
                             ? 'border-slate-900 bg-slate-900 text-white'
-                            : 'border-slate-200 bg-white text-slate-900'
+                            : 'border-slate-200 bg-slate-50 text-slate-900'
                         }`}
                       >
                         {message.role === 'assistant' && (
-                          <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
                             <div className="flex items-center gap-2">
-                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-600">
                                 <Sparkles className="h-3.5 w-3.5" />
                               </span>
                               <div>
-                                <p className="text-sm font-semibold text-slate-900">Loli</p>
-                                <p className="text-xs text-slate-500">Assistant response</p>
+                                <p className="text-sm font-medium text-slate-900">Loli</p>
+                                <p className="text-xs text-slate-500">Assistant</p>
                               </div>
                             </div>
                           </div>
@@ -5128,7 +5031,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                         )}
 
                         <div className={`mt-4 flex items-center gap-2 border-t pt-3 ${
-                          message.role === 'user' ? 'border-white/10' : 'border-slate-100'
+                          message.role === 'user' ? 'border-white/10' : 'border-slate-200'
                         }`}>
                           <span className={`text-xs ${
                             message.role === 'user' ? 'text-slate-300' : 'text-slate-500'
@@ -5176,7 +5079,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       </div>
 
                       {message.role === 'user' && (
-                        <div className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm">
+                        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
                           <User className="h-4 w-4" />
                         </div>
                       )}
@@ -5185,10 +5088,10 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
                   {isLoading && (
                     <div className="flex justify-start gap-3 animate-fade-in-up">
-                      <div className="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+                      <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
                         <Bot className="h-4 w-4" />
                       </div>
-                      <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                         <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                           <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
                           Thinking through your request...
@@ -5204,9 +5107,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           </div>
 
           {/* Input Area */}
-          <div className="border-t border-slate-200/80 bg-white/80 px-4 py-4 backdrop-blur-xl lg:px-6 lg:py-5">
+          <div className="border-t border-slate-200 bg-white px-4 py-4 lg:px-6">
             <div className="mx-auto max-w-4xl">
-              <div className="rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
                 <div className="flex flex-col gap-3 md:flex-row">
                   <textarea
                     ref={inputRef}
@@ -5214,12 +5117,12 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyDown={handleKeyPress}
                     placeholder={inputPlaceholder}
-                    className="min-h-[112px] flex-1 resize-none rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200"
-                    rows={4}
+                    className="min-h-[96px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
+                    rows={3}
                     disabled={isLoading || isListening}
                   />
 
-                  <div className="flex w-full flex-col gap-3 md:w-[190px]">
+                  <div className="flex w-full flex-col gap-2 md:w-[180px]">
                     {/* Speech-to-text button */}
                     {typeof window !== 'undefined' && 'webkitSpeechRecognition' in window && (
                       <button
@@ -5258,12 +5161,12 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                             }
                           }
                         }}
-                        className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                           isProcessing
                             ? 'bg-amber-500 text-white focus:ring-amber-300'
                             : isListening
                               ? 'bg-rose-600 text-white focus:ring-rose-300'
-                              : 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 focus:ring-slate-300'
+                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-300'
                         }`}
                         title={isProcessing ? "Processing speech..." : isListening ? "Stop listening" : "Start voice input"}
                         disabled={isLoading}
@@ -5281,17 +5184,16 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     <button
                       onClick={handleSendMessage}
                       disabled={!inputMessage.trim() || isLoading}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:bg-slate-300"
                       title="Send message"
                     >
                       {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       <span>Send</span>
                     </button>
 
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Current Mode</p>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">{mode === 'ask' ? 'Ask Mode' : 'Agent Mode'}</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">{mode === 'ask' ? 'Answers, summaries, and safe analysis' : 'Real actions for appointments, records, and workflows'}</p>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                      <p className="text-xs font-medium text-slate-600">{mode === 'ask' ? 'Ask mode' : 'Agent mode'}</p>
+                      <p className="mt-1 text-xs text-slate-500">{mode === 'ask' ? 'Read-only analysis' : 'Can run actions'}</p>
                     </div>
                   </div>
                 </div>
@@ -5299,13 +5201,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 md:flex-row md:items-center md:justify-between">
                   <div className="flex flex-wrap items-center gap-2">
                     {isProcessing && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         Processing speech
                       </span>
                     )}
                     {pendingAction && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
                         <AlertCircle className="h-3.5 w-3.5" />
                         Waiting for confirmation
                       </span>
