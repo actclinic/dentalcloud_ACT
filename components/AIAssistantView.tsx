@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall, Location } from '../types';
@@ -4796,7 +4796,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     </div>
                     <div className="min-w-0">
                       <p className="text-[13px] font-semibold leading-4 text-gray-800">{modeDetails.title}</p>
-                      <p className="text-[10px] leading-3.5 text-gray-600">{modeDetails.description}</p>
+                      <p className="text-[10px] leading-[0.875rem] text-gray-600">{modeDetails.description}</p>
                     </div>
                   </div>
                 </div>
@@ -4814,7 +4814,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       <ShieldQuestion className="w-4 h-4" />
                       <span>Ask</span>
                     </div>
-                    <p className={`mt-0.5 text-[10px] leading-3.5 ${mode === 'ask' ? 'text-emerald-50/90' : 'text-slate-400'}`}>
+                    <p className={`mt-0.5 text-[10px] leading-[0.875rem] ${mode === 'ask' ? 'text-emerald-50/90' : 'text-slate-400'}`}>
                       Safe answers and analysis
                     </p>
                   </button>
@@ -4831,7 +4831,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       <Zap className="w-4 h-4" />
                       <span>Agent</span>
                     </div>
-                    <p className={`mt-0.5 text-[10px] leading-3.5 ${mode === 'agent' ? 'text-indigo-50/90' : 'text-slate-400'}`}>
+                    <p className={`mt-0.5 text-[10px] leading-[0.875rem] ${mode === 'agent' ? 'text-indigo-50/90' : 'text-slate-400'}`}>
                       Change records and run actions
                     </p>
                   </button>
@@ -4998,7 +4998,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                 }`}
                                 title="Rate as helpful"
                               >
-                                👍
+                                <ThumbsUp className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleFeedback(message.id, 'not-helpful')}
@@ -5009,7 +5009,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                 }`}
                                 title="Rate as not helpful"
                               >
-                                👎
+                                <ThumbsDown className="w-4 h-4" />
                               </button>
                             </div>
                           )}
@@ -5140,8 +5140,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   <p className="text-xs text-yellow-600 text-center font-medium animate-pulse">Processing your speech...</p>
                 )}
                 {pendingAction && (
-                  <div className="px-3 py-1 bg-amber-100 border border-amber-300 rounded-full text-amber-800 text-xs font-medium animate-pulse">
-                    ⚠️ Waiting for confirmation...
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 border border-amber-300 rounded-full text-amber-800 text-xs font-medium animate-pulse">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Waiting for confirmation...</span>
                   </div>
                 )}
                 <p className="text-xs text-indigo-500 text-center font-medium mt-1">AI guidance is for reference. Always verify with clinical judgment.</p>

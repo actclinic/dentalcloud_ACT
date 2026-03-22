@@ -225,7 +225,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         </div>
         
         <div className="text-indigo-300 text-xs">
-          © {new Date().getFullYear()} WinterArc Myanmar Company Limited. All rights reserved.
+          &copy; {new Date().getFullYear()} WinterArc Myanmar Company Limited. All rights reserved.
         </div>
       </div>
       
@@ -438,7 +438,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </div>
           
           <div className="text-center mt-4 text-xs text-gray-500">
-            <p>© {new Date().getFullYear()} WinterArc Myanmar. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} WinterArc Myanmar. All rights reserved.</p>
           </div>
         </div>
       </div>
