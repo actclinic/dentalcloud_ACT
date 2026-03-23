@@ -1,6 +1,37 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
 import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask } from '../types';
+import { FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
+import { resolveAllowedTabs } from '../utils/permissions';
+
+let usersAllowedTabsSupport: boolean | null = null;
+
+const isMissingColumnError = (error: any, columnName: string): boolean => {
+  return typeof error?.message === 'string' && error.message.toLowerCase().includes(columnName.toLowerCase());
+};
+
+const detectUsersAllowedTabsSupport = async (): Promise<boolean> => {
+  if (usersAllowedTabsSupport !== null) {
+    return usersAllowedTabsSupport;
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .select('allowed_tabs')
+    .limit(1);
+
+  if (error) {
+    if (isMissingColumnError(error, 'allowed_tabs')) {
+      usersAllowedTabsSupport = false;
+      return false;
+    }
+
+    throw error;
+  }
+
+  usersAllowedTabsSupport = true;
+  return true;
+};
 
 // Utility: map DB snake_case fields to app camelCase
 const mapPatient = (row: any): Patient => ({
@@ -1504,9 +1535,12 @@ export const api = {
   users: {
     getAll: async (): Promise<User[]> => {
       try {
+        const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
         const { data, error } = await supabase
           .from('users')
-          .select('id, location_id, username, role, created_at, updated_at')
+          .select(supportsAllowedTabs
+            ? 'id, location_id, username, role, allowed_tabs, created_at, updated_at'
+            : 'id, location_id, username, role, created_at, updated_at')
           .order('created_at', { ascending: false });
         
         if (error) throw error;
@@ -1515,6 +1549,7 @@ export const api = {
           location_id: u.location_id,
           username: u.username,
           role: u.role,
+          allowed_tabs: resolveAllowedTabs(u.role, supportsAllowedTabs ? u.allowed_tabs : undefined),
           created_at: u.created_at,
           updated_at: u.updated_at
         }));
@@ -1527,10 +1562,13 @@ export const api = {
       try {
         const trimmedUsername = username.trim();
         console.log('Attempting to authenticate user:', trimmedUsername);
+        const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
 
         const { data, error } = await supabase
           .from('users')
-          .select('id, location_id, username, password, role')
+          .select(supportsAllowedTabs
+            ? 'id, location_id, username, password, role, allowed_tabs'
+            : 'id, location_id, username, password, role')
           .eq('username', trimmedUsername);
 
         console.log('Supabase response:', { data, error });
@@ -1554,7 +1592,8 @@ export const api = {
             id: user.id,
             location_id: user.location_id,
             username: user.username,
-            role: user.role
+            role: user.role,
+            allowed_tabs: resolveAllowedTabs(user.role, supportsAllowedTabs ? user.allowed_tabs : undefined)
           };
         }
 
@@ -1566,6 +1605,7 @@ export const api = {
       }
     },
     create: async (data: Partial<User>): Promise<User> => {
+      const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
       const trimmedUsername = data.username?.trim();
       if (!trimmedUsername) {
         throw new Error('Username is required');
@@ -1583,16 +1623,24 @@ export const api = {
       }
 
       const payload = {
-        location_id: data.location_id,
+        location_id: data.location_id || null,
         username: trimmedUsername,
         password: data.password, // In production, hash this
         role: data.role || 'normal'
       };
 
+      if (supportsAllowedTabs) {
+        (payload as any).allowed_tabs = data.role === 'admin'
+          ? FULL_ACCESS_TAB_PERMISSIONS
+          : resolveAllowedTabs(data.role || 'normal', data.allowed_tabs);
+      }
+
       const { data: result, error } = await supabase
         .from('users')
         .insert(payload)
-        .select('id, location_id, username, role, created_at, updated_at')
+        .select(supportsAllowedTabs
+          ? 'id, location_id, username, role, allowed_tabs, created_at, updated_at'
+          : 'id, location_id, username, role, created_at, updated_at')
         .single();
 
       if (error) throw new Error(error.message);
@@ -1601,12 +1649,23 @@ export const api = {
         location_id: result.location_id,
         username: result.username,
         role: result.role,
+        allowed_tabs: resolveAllowedTabs(result.role, supportsAllowedTabs ? result.allowed_tabs : undefined),
         created_at: result.created_at,
         updated_at: result.updated_at
       };
     },
     update: async (id: string, data: Partial<User>): Promise<User> => {
+      const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
       const payload: any = {};
+      const { data: currentUser, error: currentUserError } = await supabase
+        .from('users')
+        .select(supportsAllowedTabs ? 'role, allowed_tabs' : 'role')
+        .eq('id', id)
+        .single();
+
+      if (currentUserError) {
+        throw new Error(currentUserError.message);
+      }
 
       if (data.username !== undefined) {
         const trimmedUsername = data.username.trim();
@@ -1636,13 +1695,27 @@ export const api = {
         payload.role = data.role;
       }
 
+      if (data.location_id !== undefined) {
+        payload.location_id = data.location_id || null;
+      }
+
+      if (supportsAllowedTabs && (data.allowed_tabs !== undefined || data.role !== undefined)) {
+        const nextRole = (data.role || currentUser.role) as User['role'];
+        const nextAllowedTabs = nextRole === 'admin'
+          ? FULL_ACCESS_TAB_PERMISSIONS
+          : resolveAllowedTabs(nextRole, data.allowed_tabs ?? currentUser.allowed_tabs);
+        payload.allowed_tabs = nextAllowedTabs;
+      }
+
       payload.updated_at = new Date().toISOString();
 
       const { data: result, error } = await supabase
         .from('users')
         .update(payload)
         .eq('id', id)
-        .select('id, location_id, username, role, created_at, updated_at')
+        .select(supportsAllowedTabs
+          ? 'id, location_id, username, role, allowed_tabs, created_at, updated_at'
+          : 'id, location_id, username, role, created_at, updated_at')
         .single();
 
       if (error) throw new Error(error.message);
@@ -1651,6 +1724,7 @@ export const api = {
         location_id: result.location_id,
         username: result.username,
         role: result.role,
+        allowed_tabs: resolveAllowedTabs(result.role, supportsAllowedTabs ? result.allowed_tabs : undefined),
         created_at: result.created_at,
         updated_at: result.updated_at
       };

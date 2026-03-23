@@ -1,3 +1,5 @@
+import type { AppTabPermission } from './constants';
+
 export interface Location {
   id: string;
   name: string;
@@ -119,6 +121,7 @@ export interface User {
   username: string;
   password?: string; // Only for creation/update, not returned in queries
   role: 'admin' | 'normal';
+  allowed_tabs?: AppTabPermission[];
   created_at?: string;
   updated_at?: string;
 }

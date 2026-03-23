@@ -39,8 +39,8 @@ const formatConversationTime = (timestamp?: string) => {
 };
 
 const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnabled }) => {
-  const adminSession = auth.getCurrentUser();
-  const adminId = adminSession?.role === 'admin' ? adminSession.userId : undefined;
+  const staffSession = auth.getCurrentUser();
+  const adminId = staffSession && staffSession.role !== 'patient' ? staffSession.userId : undefined;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);

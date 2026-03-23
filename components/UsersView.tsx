@@ -3,6 +3,8 @@ import { Plus, Edit2, Trash2, Loader2, User, Shield, UserCheck, FileDown } from 
 import { User as UserType } from '../types';
 import { Modal, Input } from './Shared';
 import Pagination from './Pagination';
+import { FLEXIBLE_STAFF_TABS } from '../constants';
+import { resolveAllowedTabs } from '../utils/permissions';
 
 interface UsersViewProps {
   users: UserType[];
@@ -32,7 +34,11 @@ const UsersView: React.FC<UsersViewProps> = ({
     const term = searchTerm.toLowerCase();
     return users.filter(user => 
       user.username.toLowerCase().includes(term) ||
-      user.role.toLowerCase().includes(term)
+      user.role.toLowerCase().includes(term) ||
+      resolveAllowedTabs(user.role, user.allowed_tabs).some(tab => {
+        const match = FLEXIBLE_STAFF_TABS.find(item => item.key === tab);
+        return match?.label.toLowerCase().includes(term);
+      })
     );
   }, [users, searchTerm]);
 
@@ -49,8 +55,15 @@ const UsersView: React.FC<UsersViewProps> = ({
   }, [users]);
 
   const handleDownloadCSV = () => {
-    const csv = ['Username,Role,Created',
-      ...users.map(u => `"${u.username}","${u.role}","${u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}"`)].join('\n');
+    const csv = ['Username,Role,Tab Access,Created',
+      ...users.map(u => {
+        const tabSummary = u.role === 'admin'
+          ? 'Full access'
+          : resolveAllowedTabs(u.role, u.allowed_tabs)
+              .map(tab => FLEXIBLE_STAFF_TABS.find(item => item.key === tab)?.label || tab)
+              .join(' | ');
+        return `"${u.username}","${u.role}","${tabSummary}","${u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}"`;
+      })].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -67,7 +80,7 @@ const UsersView: React.FC<UsersViewProps> = ({
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
           <Shield size={12} />
-          Admin
+          Manager
         </span>
       );
     }
@@ -84,7 +97,7 @@ const UsersView: React.FC<UsersViewProps> = ({
       <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold text-gray-800">User Management</h2>
-          <p className="text-sm text-gray-500">Manage system users and their roles</p>
+          <p className="text-sm text-gray-500">Manage staff accounts and tab access permissions</p>
         </div>
         <div className="flex gap-3">
           <div className="relative">
@@ -138,6 +151,7 @@ const UsersView: React.FC<UsersViewProps> = ({
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Username</th>
                   <th className="text-left py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="text-left py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Tab Access</th>
                   <th className="text-left py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Created</th>
                   {isAdmin && (
                     <th className="text-right py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Actions</th>
@@ -157,6 +171,25 @@ const UsersView: React.FC<UsersViewProps> = ({
                     </td>
                     <td className="py-4 px-4">
                       {getRoleBadge(user.role)}
+                    </td>
+                    <td className="py-4 px-4">
+                      {user.role === 'admin' ? (
+                        <span className="text-sm font-medium text-gray-700">Full access</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {resolveAllowedTabs(user.role, user.allowed_tabs).map(tab => {
+                            const match = FLEXIBLE_STAFF_TABS.find(item => item.key === tab);
+                            return (
+                              <span
+                                key={`${user.id}-${tab}`}
+                                className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700"
+                              >
+                                {match?.label || tab}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-4 text-sm text-gray-600">
                       {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}

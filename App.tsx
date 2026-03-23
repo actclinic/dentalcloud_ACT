@@ -46,12 +46,19 @@ import {
   Recall,
   ScheduledTask
 } from './types';
-import { TREATMENT_CATEGORIES } from './constants';
+import {
+  TREATMENT_CATEGORIES,
+  DEFAULT_NORMAL_TAB_PERMISSIONS,
+  FLEXIBLE_STAFF_TABS,
+  FULL_ACCESS_TAB_PERMISSIONS,
+  type AppTabPermission
+} from './constants';
 import { api } from './services/api';
 import { formatCurrency, getCurrencySymbol, Currency } from './utils/currency';
 import { buildFinancialReport, renderFinancialReportMarkdown } from './utils/aiReport';
 import { auth } from './services/auth';
 import { supabase } from './services/supabase';
+import { resolveAllowedTabs } from './utils/permissions';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -77,12 +84,21 @@ const RecallsView = React.lazy(() => import('./components/RecallsView'));
 const EMAIL_SETTINGS_KEY = 'dc_email_settings';
 const ALL_BRANCHES_VALUE = '__all_branches__';
 
-type ViewState = 'dashboard' | 'patients' | 'appointments' | 'doctors' | 'finance' | 'treatments' | 'records' | 'settings' | 'users' | 'inventory' | 'ai-assistant' | 'messaging' | 'recalls';
+type ViewState = AppTabPermission;
+
+const getDefaultUserFormData = (): Partial<User> => ({
+  username: '',
+  password: '',
+  role: 'normal',
+  location_id: null,
+  allowed_tabs: [...DEFAULT_NORMAL_TAB_PERMISSIONS]
+});
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [allowedViews, setAllowedViews] = useState<ViewState[]>([]);
   const [currentUser, setCurrentUser] = useState<string>('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [currentLocationId, setCurrentLocationId] = useState<string>(() => {
@@ -220,27 +236,114 @@ const App: React.FC = () => {
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: 'Preventative' });
   const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', schedules: [] });
-  const [newUserData, setNewUserData] = useState<Partial<User>>({ username: '', password: '', role: 'normal' });
+  const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });
+
+  const applySessionState = (session: ReturnType<typeof auth.getSession>) => {
+    if (!session) {
+      return;
+    }
+
+    setIsAuthenticated(true);
+    setIsAdmin(session.role === 'admin');
+    setCurrentUser(session.username);
+
+    if (session.role === 'patient') {
+      setAllowedViews([]);
+      return;
+    }
+
+    const nextAllowedViews = resolveAllowedTabs(session.role, session.allowed_tabs) as ViewState[];
+    setAllowedViews(nextAllowedViews);
+  };
+
+  const resetStaffSession = () => {
+    setIsAuthenticated(false);
+    setIsAdmin(false);
+    setAllowedViews([]);
+    setCurrentUser('');
+  };
+
+  const canAccessView = (view: ViewState): boolean => {
+    return allowedViews.includes(view);
+  };
+
+  const toggleUserTabAccess = (tab: ViewState) => {
+    setNewUserData(prev => {
+      const currentTabs = resolveAllowedTabs('normal', prev.allowed_tabs) as ViewState[];
+      const nextTabs = currentTabs.includes(tab)
+        ? currentTabs.filter(currentTab => currentTab !== tab)
+        : [...currentTabs, tab];
+
+      return {
+        ...prev,
+        allowed_tabs: nextTabs
+      };
+    });
+  };
+
+  const handleUserRoleChange = (role: User['role']) => {
+    setNewUserData(prev => ({
+      ...prev,
+      role,
+      allowed_tabs: role === 'admin'
+        ? [...FULL_ACCESS_TAB_PERMISSIONS]
+        : resolveAllowedTabs('normal', prev.allowed_tabs)
+    }));
+  };
+
+  const syncCurrentSessionUser = async (updatedUser: User) => {
+    const session = auth.getSession();
+    if (!session || session.role === 'patient' || session.userId !== updatedUser.id) {
+      return;
+    }
+
+    const updatedSession = {
+      ...session,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      allowed_tabs: resolveAllowedTabs(updatedUser.role, updatedUser.allowed_tabs),
+      location_id: updatedUser.location_id || null
+    };
+
+    auth.setSession(updatedSession);
+    applySessionState(updatedSession);
+
+    if (updatedSession.location_id) {
+      setCurrentLocationId(updatedSession.location_id);
+      localStorage.setItem('currentLocationId', updatedSession.location_id);
+      setDashboardLocationId(updatedSession.location_id);
+      localStorage.setItem('dashboardLocationId', updatedSession.location_id);
+      await fetchInitialData(updatedSession.location_id);
+      return;
+    }
+
+    const unrestrictedDashboardScope = updatedSession.role === 'admin'
+      ? ALL_BRANCHES_VALUE
+      : currentLocationId || dashboardLocationId || locations[0]?.id || '';
+
+    if (unrestrictedDashboardScope) {
+      setDashboardLocationId(unrestrictedDashboardScope);
+      localStorage.setItem('dashboardLocationId', unrestrictedDashboardScope);
+    }
+
+    await fetchInitialData(currentLocationId || undefined);
+  };
 
   // Check authentication on mount
   useEffect(() => {
     const checkAuth = () => {
       const session = auth.getSession();
       if (session) {
-        setIsAuthenticated(true);
-        setIsAdmin(session.role === 'admin');
-        setCurrentUser(session.username);
+        applySessionState(session);
         // Initialize default admin and fetch data
         auth.initializeDefaultAdmin().then(() => {
           fetchInitialData();
           fetchUsers();
         });
       } else {
-        setIsAuthenticated(false);
-        setIsAdmin(false);
-        setCurrentUser('');
+        resetStaffSession();
         // Still initialize default admin for first-time setup
         auth.initializeDefaultAdmin();
       }
@@ -263,11 +366,12 @@ const App: React.FC = () => {
   const handleLoginSuccess = () => {
     const session = auth.getSession();
     if (session) {
-      setIsAuthenticated(true);
-      setIsAdmin(session.role === 'admin');
-      setCurrentUser(session.username);
+      applySessionState(session);
 
-      const initialDashboardScope = session.location_id || ALL_BRANCHES_VALUE;
+      const canSeeAllBranches = session.role === 'admin' && !session.location_id;
+      const initialDashboardScope = canSeeAllBranches
+        ? ALL_BRANCHES_VALUE
+        : (session.location_id || currentLocationId || localStorage.getItem('currentLocationId') || '');
       setDashboardLocationId(initialDashboardScope);
       localStorage.setItem('dashboardLocationId', initialDashboardScope);
       
@@ -287,9 +391,7 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     auth.logout();
-    setIsAuthenticated(false);
-    setIsAdmin(false);
-    setCurrentUser('');
+    resetStaffSession();
     setCurrentView('dashboard');
     // Reset all data state
     setPatients([]);
@@ -362,10 +464,17 @@ const App: React.FC = () => {
     const requestId = ++dashboardFetchRequestRef.current;
     const session = auth.getSession();
     const restrictedLocationId = session?.location_id || '';
+    const canViewAllBranches = session?.role === 'admin' && !restrictedLocationId;
     const availableLocations = knownLocations || locations;
-    const requestedScope = restrictedLocationId || scopeLocationId || dashboardLocationId || ALL_BRANCHES_VALUE;
-    const hasMatchingLocation = requestedScope === ALL_BRANCHES_VALUE || availableLocations.some(loc => loc.id === requestedScope);
-    const sanitizedScope = restrictedLocationId || (hasMatchingLocation ? requestedScope : ALL_BRANCHES_VALUE);
+    const requestedScope = canViewAllBranches
+      ? (scopeLocationId || dashboardLocationId || ALL_BRANCHES_VALUE)
+      : (restrictedLocationId || scopeLocationId || currentLocationId || availableLocations[0]?.id || '');
+    const hasMatchingLocation = requestedScope !== ALL_BRANCHES_VALUE && availableLocations.some(loc => loc.id === requestedScope);
+    const sanitizedScope = restrictedLocationId || (
+      canViewAllBranches
+        ? (requestedScope === ALL_BRANCHES_VALUE || hasMatchingLocation ? requestedScope : ALL_BRANCHES_VALUE)
+        : (hasMatchingLocation ? requestedScope : (availableLocations[0]?.id || requestedScope))
+    );
     const queryLocationId = sanitizedScope === ALL_BRANCHES_VALUE ? undefined : sanitizedScope;
 
     const [patData, aptData, recordsData] = await Promise.all([
@@ -612,18 +721,28 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (currentView === 'users' && isAdmin) {
+    if (currentView === 'users' && canAccessView('users')) {
       fetchUsers();
     }
-    if (currentView === 'inventory') {
+    if (currentView === 'inventory' && canAccessView('inventory')) {
       fetchMedicines();
     }
-    if (currentView === 'ai-assistant') {
+    if (currentView === 'ai-assistant' && canAccessView('ai-assistant')) {
       fetchAssistantData().catch(err => {
         console.warn('Error fetching AI assistant data:', err);
       });
     }
-  }, [currentView, isAdmin, currentLocationId]);
+  }, [currentView, currentLocationId, allowedViews]);
+
+  useEffect(() => {
+    if (!isAuthenticated || auth.isPatient() || allowedViews.length === 0) {
+      return;
+    }
+
+    if (!canAccessView(currentView)) {
+      setCurrentView(allowedViews[0]);
+    }
+  }, [allowedViews, currentView, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !currentLocationId) return;
@@ -864,25 +983,51 @@ const App: React.FC = () => {
     }
   };
 
+  const buildUserPayload = (userData: Partial<User>): Partial<User> => {
+    const nextRole = userData.role || 'normal';
+    const nextAllowedTabs = nextRole === 'admin'
+      ? FULL_ACCESS_TAB_PERMISSIONS
+      : resolveAllowedTabs('normal', userData.allowed_tabs);
+
+    return {
+      ...userData,
+      location_id: userData.location_id || null,
+      role: nextRole,
+      allowed_tabs: nextAllowedTabs
+    };
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      const payload = buildUserPayload(newUserData);
+      if (payload.role === 'normal' && (!payload.allowed_tabs || payload.allowed_tabs.length === 0)) {
+        alert('Select at least one tab for this normal account.');
+        setIsSubmitting(false);
+        return;
+      }
+
       if (editingUser) {
-        await api.users.update(editingUser.id, newUserData);
+        const updatedUser = await api.users.update(editingUser.id, payload);
+        await syncCurrentSessionUser(updatedUser);
       } else {
         if (!newUserData.password || newUserData.password === '') {
           alert('Password is required');
           setIsSubmitting(false);
           return;
         }
-        await api.users.create(newUserData);
+        await api.users.create(payload);
       }
       setShowUserModal(false);
       setEditingUser(null);
-      setNewUserData({ username: '', password: '', role: 'normal' });
-      fetchUsers();
+      setNewUserData(getDefaultUserFormData());
+      if (auth.getSession()?.role === 'admin') {
+        fetchUsers();
+      } else {
+        setUsers([]);
+      }
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -1346,6 +1491,7 @@ const App: React.FC = () => {
   }
 
   const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging';
+  const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs) as ViewState[];
 
   return (
     <div className="min-h-screen flex bg-gray-50 flex-col md:flex-row">
@@ -1387,38 +1533,38 @@ const App: React.FC = () => {
         </div>
         
         <nav className="sidebar-scrollbar mt-2 px-6 space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pb-4">
-          <NavItem icon={<LayoutDashboard size={18} />} label="Overview" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsMobileMenuOpen(false); }} />
-          <NavItem icon={<Users size={18} />} label="Patients" active={currentView === 'patients'} onClick={() => { setCurrentView('patients'); setIsMobileMenuOpen(false); }} />
-          <NavItem icon={<Calendar size={18} />} label="Appointments" active={currentView === 'appointments'} onClick={() => { setCurrentView('appointments'); setIsMobileMenuOpen(false); }} />
-          <NavItem icon={<UserCheck size={18} />} label="Doctors" active={currentView === 'doctors'} onClick={() => { setCurrentView('doctors'); setIsMobileMenuOpen(false); }} />
+          {canAccessView('dashboard') && <NavItem icon={<LayoutDashboard size={18} />} label="Overview" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsMobileMenuOpen(false); }} />}
+          {canAccessView('patients') && <NavItem icon={<Users size={18} />} label="Patients" active={currentView === 'patients'} onClick={() => { setCurrentView('patients'); setIsMobileMenuOpen(false); }} />}
+          {canAccessView('appointments') && <NavItem icon={<Calendar size={18} />} label="Appointments" active={currentView === 'appointments'} onClick={() => { setCurrentView('appointments'); setIsMobileMenuOpen(false); }} />}
+          {canAccessView('doctors') && <NavItem icon={<UserCheck size={18} />} label="Doctors" active={currentView === 'doctors'} onClick={() => { setCurrentView('doctors'); setIsMobileMenuOpen(false); }} />}
           
           <div className="pt-8 pb-2">
              <p className="px-3 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Operations</p>
-             {isAdmin && (
+             {canAccessView('treatments') && (
                <NavItem icon={<Stethoscope size={18} />} label="Service Menu" active={currentView === 'treatments'} onClick={() => { setCurrentView('treatments'); setIsMobileMenuOpen(false); }} />
              )}
-             {isAdmin && (
+             {canAccessView('records') && (
                <NavItem icon={<ClipboardList size={18} />} label="Audit Log" active={currentView === 'records'} onClick={() => { setCurrentView('records'); setIsMobileMenuOpen(false); }} />
              )}
-             <NavItem icon={<CreditCard size={18} />} label="Clinical Focus" active={currentView === 'finance'} onClick={() => { setCurrentView('finance'); setIsMobileMenuOpen(false); }} />
-             {isAdmin && (
+             {canAccessView('finance') && <NavItem icon={<CreditCard size={18} />} label="Clinical Focus" active={currentView === 'finance'} onClick={() => { setCurrentView('finance'); setIsMobileMenuOpen(false); }} />}
+             {canAccessView('inventory') && (
                <NavItem icon={<Package size={18} />} label="Inventory" active={currentView === 'inventory'} onClick={() => { setCurrentView('inventory'); setIsMobileMenuOpen(false); }} />
              )}
-             {isAdmin && (
+             {canAccessView('messaging') && (
                <NavItem icon={<MessageCircle size={18} />} label="Messaging" active={currentView === 'messaging'} onClick={() => { setCurrentView('messaging'); setIsMobileMenuOpen(false); }} />
              )}
-             {isAdmin && (
+             {canAccessView('recalls') && (
                <NavItem icon={<BellRing size={18} />} label="Recalls" active={currentView === 'recalls'} onClick={() => { setCurrentView('recalls'); setIsMobileMenuOpen(false); }} />
              )}
-             <NavItem icon={<Sparkles size={18} />} label="AI Assistant" active={currentView === 'ai-assistant'} onClick={() => { setCurrentView('ai-assistant'); setIsMobileMenuOpen(false); }} />
+             {canAccessView('ai-assistant') && <NavItem icon={<Sparkles size={18} />} label="AI Assistant" active={currentView === 'ai-assistant'} onClick={() => { setCurrentView('ai-assistant'); setIsMobileMenuOpen(false); }} />}
           </div>
           
           <div className="pt-8 pb-2">
              <p className="px-3 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">System</p>
-             {isAdmin && (
+             {canAccessView('users') && (
                <NavItem icon={<Shield size={18} />} label="Users" active={currentView === 'users'} onClick={() => { setCurrentView('users'); setIsMobileMenuOpen(false); }} />
              )}
-             {isAdmin && (
+             {canAccessView('settings') && (
                <NavItem icon={<Settings size={18} />} label="Settings" active={currentView === 'settings'} onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }} />
              )}
           </div>
@@ -1456,7 +1602,7 @@ const App: React.FC = () => {
       <main className={isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 md:h-screen" : "flex-1 min-w-0 p-4 md:p-10"}>
         <div className={isWorkspaceView ? "flex min-h-0 flex-1 flex-col" : "max-w-6xl mx-auto"}>
           <Suspense fallback={<div className="flex justify-center p-20"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>}>
-            {currentView === 'dashboard' && <DashboardView
+            {currentView === 'dashboard' && canAccessView('dashboard') && <DashboardView
                 patients={dashboardPatients}
                 appointments={dashboardAppointments}
                 treatmentRecords={dashboardRecords}
@@ -1468,7 +1614,7 @@ const App: React.FC = () => {
                 onLocationChange={handleDashboardLocationChange}
                 loading={loading}
               />}
-            {currentView === 'patients' && <PatientsView 
+            {currentView === 'patients' && canAccessView('patients') && <PatientsView 
                 patients={patients} 
                 loading={loading} 
                 currency={currency} 
@@ -1498,13 +1644,13 @@ const App: React.FC = () => {
                   }
                 }}
             />}
-            {currentView === 'appointments' && <AppointmentsView appointments={appointments} loading={loading} onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' }); setAvailableTimes([]); setShowAppointmentModal(true)}} onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || 'Checkup', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); if (apt.doctor_id && apt.date) fetchAvailableTimes(apt.doctor_id, apt.date); setShowAppointmentModal(true)}} onDeleteAppointment={handleDeleteAppointment} onUpdateStatus={handleUpdateAppointmentStatus} />}
-            {currentView === 'doctors' && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
-            {currentView === 'treatments' && isAdmin && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={handleDeleteTreatmentType} />}
-            {currentView === 'records' && isAdmin && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
-            {currentView === 'inventory' && isAdmin && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
-            {currentView === 'users' && isAdmin && <UsersView users={users} loading={loading} isAdmin={isAdmin} onAdd={() => {setEditingUser(null); setNewUserData({ username: '', password: '', role: 'normal' }); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setNewUserData({ username: user.username, password: '', role: user.role }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
-            {currentView === 'settings' && isAdmin && <SettingsView 
+            {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView appointments={appointments} loading={loading} onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' }); setAvailableTimes([]); setShowAppointmentModal(true)}} onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || 'Checkup', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); if (apt.doctor_id && apt.date) fetchAvailableTimes(apt.doctor_id, apt.date); setShowAppointmentModal(true)}} onDeleteAppointment={handleDeleteAppointment} onUpdateStatus={handleUpdateAppointmentStatus} />}
+            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
+            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={handleDeleteTreatmentType} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
+            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'users' && canAccessView('users') && <UsersView users={users} loading={loading} isAdmin={isAdmin} onAdd={() => {setEditingUser(null); setNewUserData(getDefaultUserFormData()); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setNewUserData({ username: user.username, password: '', role: user.role, location_id: user.location_id, allowed_tabs: resolveAllowedTabs(user.role, user.allowed_tabs) }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
+            {currentView === 'settings' && canAccessView('settings') && <SettingsView 
                 currency={currency} 
                 onCurrencyChange={handleCurrencyChange} 
                 locations={locations} 
@@ -1523,7 +1669,7 @@ const App: React.FC = () => {
                 onRemoveAllMessages={handleRemoveAllMessages}
                 isAdmin={isAdmin} 
             />}
-            {currentView === 'ai-assistant' && <AIAssistantView 
+            {currentView === 'ai-assistant' && canAccessView('ai-assistant') && <AIAssistantView 
                 patients={assistantPatients} 
                 treatmentRecords={assistantRecords} 
                 appointments={assistantAppointments}
@@ -1540,12 +1686,12 @@ const App: React.FC = () => {
                 currency={currency}
                 onDataRefresh={refreshAssistantData}
               />}
-            {currentView === 'messaging' && isAdmin && <MessagingView 
+            {currentView === 'messaging' && canAccessView('messaging') && <MessagingView 
               patients={patients} 
               users={users} 
               messagingEnabled={messagingEnabled}
             />}
-            {currentView === 'recalls' && isAdmin && <RecallsView
+            {currentView === 'recalls' && canAccessView('recalls') && <RecallsView
               recalls={recalls}
               patients={patients}
               loading={loading}
@@ -1877,7 +2023,7 @@ const App: React.FC = () => {
       )}
 
       {showUserModal && isAdmin && (
-        <Modal title={editingUser ? "Edit User" : "New User"} onClose={() => {setShowUserModal(false); setEditingUser(null); setNewUserData({ username: '', password: '', role: 'normal' });}}>
+        <Modal title={editingUser ? "Edit User" : "New User"} onClose={() => {setShowUserModal(false); setEditingUser(null); setNewUserData(getDefaultUserFormData());}}>
           <form onSubmit={handleCreateUser} className="space-y-5">
             <Input 
               label="Username" 
@@ -1899,9 +2045,9 @@ const App: React.FC = () => {
               <select 
                 className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={newUserData.location_id || ''} 
-                onChange={(e: any) => setNewUserData({...newUserData, location_id: e.target.value})}
+                onChange={(e: any) => setNewUserData({...newUserData, location_id: e.target.value || null})}
               >
-                <option value="">All Locations (Global Admin)</option>
+                <option value="">{newUserData.role === 'admin' ? 'All Locations (Global Manager)' : 'All Assigned Locations'}</option>
                 {locations.map(loc => (
                   <option key={loc.id} value={loc.id}>{loc.name}</option>
                 ))}
@@ -1912,12 +2058,57 @@ const App: React.FC = () => {
               <select 
                 className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={newUserData.role} 
-                onChange={(e: any) => setNewUserData({...newUserData, role: e.target.value})}
+                onChange={(e: any) => handleUserRoleChange(e.target.value)}
               >
-                <option value="normal">Normal</option>
-                <option value="admin">Admin</option>
+                <option value="normal">Normal Staff</option>
+                <option value="admin">Manager</option>
               </select>
             </div>
+            {newUserData.role === 'admin' ? (
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+                <p className="text-sm font-semibold text-indigo-900">Manager accounts always get full system access.</p>
+                <p className="mt-1 text-xs text-indigo-700">Users and Settings remain manager-only. Staff permissions below are only for normal accounts.</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Tab Access</label>
+                    <p className="text-sm text-gray-500">Choose which tabs this normal account can open.</p>
+                  </div>
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
+                    {editableAllowedTabs.length} tab{editableAllowedTabs.length === 1 ? '' : 's'} selected
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {FLEXIBLE_STAFF_TABS.map(tab => {
+                    const checked = editableAllowedTabs.includes(tab.key);
+                    return (
+                      <label
+                        key={tab.key}
+                        className={`flex cursor-pointer gap-3 rounded-2xl border p-4 transition ${
+                          checked ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleUserTabAccess(tab.key)}
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{tab.label}</p>
+                          <p className="mt-1 text-xs text-gray-500">{tab.description}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {editableAllowedTabs.length === 0 && (
+                  <p className="mt-3 text-xs font-medium text-red-600">Select at least one tab for this account.</p>
+                )}
+              </div>
+            )}
             <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20">
               {editingUser ? 'Update User' : 'Create User'}
             </button>

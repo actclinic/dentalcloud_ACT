@@ -1,6 +1,8 @@
 import { User, Patient } from '../types';
 import { api } from './api';
 import { supabase } from './supabase';
+import type { AppTabPermission } from '../constants';
+import { resolveAllowedTabs } from '../utils/permissions';
 
 // Default admin credentials
 export const DEFAULT_ADMIN = {
@@ -16,6 +18,7 @@ export interface AuthSession {
   userId: string;
   username: string;
   role: 'admin' | 'normal' | 'patient';
+  allowed_tabs?: AppTabPermission[];
   location_id: string | null;
   loginTime: number;
   patientId?: string; // For patient sessions
@@ -62,6 +65,7 @@ export const auth = {
             userId: retryUser.id,
             username: retryUser.username,
             role: retryUser.role,
+            allowed_tabs: resolveAllowedTabs(retryUser.role, retryUser.allowed_tabs),
             location_id: retryUser.location_id || null,
             loginTime: Date.now()
           };
@@ -78,6 +82,7 @@ export const auth = {
         userId: user.id,
         username: user.username,
         role: user.role,
+        allowed_tabs: resolveAllowedTabs(user.role, user.allowed_tabs),
         location_id: user.location_id || null,
         loginTime: Date.now()
       };
