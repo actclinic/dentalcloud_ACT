@@ -4692,7 +4692,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
   const showQuickPromptPanel = messages.length <= 1 && !isLoading;
   
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white animate-fade-in">
       <div className="border-b border-slate-200 bg-white">
         <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -4795,7 +4795,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         </div>
       </div>
 
-      <div className="grid h-[calc(100vh-220px)] grid-cols-1 lg:grid-cols-[280px,minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[280px,minmax(0,1fr)]">
         <aside className="hidden min-h-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200 lg:flex">
           <div className="border-b border-slate-800 px-4 py-4">
             <button
@@ -4895,7 +4895,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
           <div className="flex-1 overflow-hidden">
             <div className="h-full overflow-y-auto px-4 py-5 lg:px-6">
-              <div className="mx-auto max-w-4xl space-y-4">
+              <div className="w-full space-y-4">
                 <div className="flex items-center justify-between lg:hidden">
                   <p className="text-sm text-slate-500">{chatSessions.length} saved chat{chatSessions.length === 1 ? '' : 's'}</p>
                   <button
@@ -5108,7 +5108,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
           {/* Input Area */}
           <div className="border-t border-slate-200 bg-white px-4 py-4 lg:px-6">
-            <div className="mx-auto max-w-4xl">
+            <div className="w-full">
               <div className="rounded-2xl border border-slate-200 bg-white p-3">
                 <div className="flex flex-col gap-3 md:flex-row">
                   <textarea
