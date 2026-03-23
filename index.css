@@ -95,3 +95,26 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #111827;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: #111827;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 9999px;
+  border: 2px solid #111827;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}

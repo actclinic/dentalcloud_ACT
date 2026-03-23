@@ -308,6 +308,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       <div className="p-6 space-y-6">
+        <div className="border border-emerald-100 rounded-xl p-6 bg-gradient-to-r from-emerald-50 to-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 mb-2">Connected Database</p>
+              <h3 className="text-lg font-semibold text-gray-900">High Performance</h3>
+              <p className="text-sm text-gray-600 mt-1">Your clinic system is connected and running with the primary database service.</p>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Online
+            </div>
+          </div>
+        </div>
+
         {/* Currency Settings */}
         <div className="border border-gray-200 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-4">

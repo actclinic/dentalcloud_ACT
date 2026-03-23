@@ -4641,13 +4641,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
     }
   };
 
-  const quickPrompts = [
-    "Who are you, Loli?",
-    "What's the protocol for root canal treatment?",
-    "How to manage acute dental pain?",
-    "Crown preparation steps explained",
-  ];
-
   // Floating particles effect state
   const [particles, setParticles] = useState<Array<{id: number, x: number, y: number, size: number}>>([]);
   
@@ -4689,7 +4682,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
     : 'Tell Loli what to update, schedule, record, or create in the system...';
 
   const activeSession = chatSessions.find(session => session.id === currentSessionId) ?? null;
-  const showQuickPromptPanel = messages.length <= 1 && !isLoading;
   
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white animate-fade-in">
@@ -4850,23 +4842,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             )}
           </div>
 
-          <div className="border-t border-slate-800 px-4 py-4">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Prompt Starters</p>
-            <div className="space-y-2">
-              {quickPrompts.map(prompt => (
-                <button
-                  key={prompt}
-                  onClick={() => {
-                    setInputMessage(prompt);
-                    inputRef.current?.focus();
-                  }}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-left text-sm text-slate-300 transition hover:border-slate-700 hover:bg-slate-800"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
         </aside>
 
         <div className="flex min-h-0 flex-col bg-white">
@@ -4929,26 +4904,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                         <p className="font-medium">AI connection problem.</p>
                         <p className="mt-1 text-red-700">Check your configuration and try again.</p>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {showQuickPromptPanel && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                    <p className="text-sm font-medium text-slate-800">Start with one of these familiar prompts.</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {quickPrompts.map(prompt => (
-                        <button
-                          key={prompt}
-                          onClick={() => {
-                            setInputMessage(prompt);
-                            inputRef.current?.focus();
-                          }}
-                          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 )}

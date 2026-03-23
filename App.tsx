@@ -1386,7 +1386,7 @@ const App: React.FC = () => {
           <span className="text-xl font-black text-white tracking-tight text-center">DentalCloud<span className="text-indigo-400">Pro</span></span>
         </div>
         
-        <nav className="mt-2 px-6 space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pb-4">
+        <nav className="sidebar-scrollbar mt-2 px-6 space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pb-4">
           <NavItem icon={<LayoutDashboard size={18} />} label="Overview" active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsMobileMenuOpen(false); }} />
           <NavItem icon={<Users size={18} />} label="Patients" active={currentView === 'patients'} onClick={() => { setCurrentView('patients'); setIsMobileMenuOpen(false); }} />
           <NavItem icon={<Calendar size={18} />} label="Appointments" active={currentView === 'appointments'} onClick={() => { setCurrentView('appointments'); setIsMobileMenuOpen(false); }} />
@@ -1425,13 +1425,6 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-8 pt-4 flex-shrink-0 border-t border-gray-800">
-           <div className="p-4 bg-gray-800 rounded-2xl border border-gray-700 mb-4">
-              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Connected Database</p>
-              <div className="flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                 <span className="text-xs text-gray-300 font-medium">High Performance</span>
-              </div>
-           </div>
            <div className="p-4 bg-gray-800 rounded-2xl border border-gray-700">
               <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Logged in as</p>
               <div className="flex items-center justify-between">
