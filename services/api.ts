@@ -2632,23 +2632,6 @@ export const api = {
         return;
       }
 
-      const { count: unreadCount, error: unreadError } = await supabase
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('conversation_id', message.conversation_id)
-        .eq('recipient_id', message.recipient_id)
-        .eq('recipient_type', 'patient')
-        .eq('sender_type', 'admin')
-        .eq('read', false);
-
-      if (unreadError) {
-        throw new Error(unreadError.message);
-      }
-
-      if ((unreadCount || 0) !== 1) {
-        return;
-      }
-
       const { data: patientRecord, error: patientError } = await supabase
         .from('patients')
         .select('name, email, location_id')
@@ -2692,7 +2675,7 @@ export const api = {
         fromName: emailSettings.senderName || clinicName,
         fromEmail: emailSettings.senderEmail,
         subject: `New message from ${clinicName}`,
-        body: `Hi ${resolvedPatientName},\n\n${resolvedAdminName} sent you a new message in ${clinicName}.\n\n"${preview}"\n\nOpen the patient portal to read and reply.\n\nThis email is sent once per unread reply thread to avoid duplicates.`,
+        body: `Hi ${resolvedPatientName},\n\n${resolvedAdminName} sent you a new message in ${clinicName}.\n\n"${preview}"\n\nOpen the patient portal to read and reply.`,
         html: `
           <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 24px; color: #0f172a;">
             <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">

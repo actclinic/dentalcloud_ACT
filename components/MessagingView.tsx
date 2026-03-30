@@ -244,6 +244,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
     try {
       setSending(true);
       const content = newMessage.trim();
+      let notificationErrorMessage: string | null = null;
       const sentMessage = await api.messages.createMessage({
         conversation_id: selectedConversation.id,
         sender_id: adminId,
@@ -261,12 +262,15 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
         });
       } catch (notificationError) {
         console.warn('Message notification email failed:', notificationError);
+        notificationErrorMessage = notificationError instanceof Error
+          ? notificationError.message
+          : 'The message was saved, but the email notification failed.';
       }
 
       setNewMessage('');
       await loadMessages(selectedConversation.id, false);
       await loadConversations(false);
-      setError(null);
+      setError(notificationErrorMessage);
     } catch (err: any) {
       setError(err.message || 'Failed to send message.');
     } finally {
