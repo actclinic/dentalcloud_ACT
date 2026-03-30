@@ -3,7 +3,7 @@ import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, Rota
 import { Location, LoyaltyRule } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
-import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings } from '../utils/emailSettings';
+import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings as persistEmailSettings } from '../utils/emailSettings';
 
 interface SettingsViewProps {
   currency: 'USD' | 'MMK';
@@ -92,17 +92,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [testEmail, setTestEmail] = useState<string>('');
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState<string>('');
+  const [emailSettingsMessage, setEmailSettingsMessage] = useState<string>('');
 
   const updateEmailSettings = (updates: Partial<EmailSettings>) => {
-    setEmailSettings(prev => {
-      const next: EmailSettings = {
-        ...prev,
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
-      saveEmailSettings(next);
-      return next;
-    });
+    setEmailSettingsMessage('');
+    setEmailSettings(prev => ({
+      ...prev,
+      ...updates
+    }));
+  };
+
+  const handleSaveEmailSettings = () => {
+    const nextSettings: EmailSettings = {
+      ...emailSettings,
+      updatedAt: new Date().toISOString()
+    };
+    persistEmailSettings(nextSettings);
+    setEmailSettings(nextSettings);
+    setEmailSettingsMessage('Email settings saved. Refreshing...');
+    window.location.reload();
   };
 
   const saveManagerContacts = (contacts: ManagerContact[]) => {
@@ -180,7 +188,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             messageNotificationsEnabled: true,
             updatedAt: new Date().toISOString()
           };
-          saveEmailSettings(migrated);
+          persistEmailSettings(migrated);
           setEmailSettings(migrated);
         }
       } catch (error) {
@@ -203,9 +211,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setTestMessage('Email delivery is disabled. Enable it first.');
       return;
     }
-    if (!emailSettings.senderEmail || !isValidEmail(emailSettings.senderEmail)) {
+    if (!emailSettings.senderEmail?.trim()) {
       setTestStatus('error');
-      setTestMessage('Please set a valid sender email in Settings.');
+      setTestMessage('Please set a sender email in Settings.');
       return;
     }
     const recipient = normalizeEmail(testEmail);
@@ -222,7 +230,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         subject: 'DentalCloud Test Email',
         body: 'This is a test email from DentalCloud. Your Resend + Supabase Edge setup is working.',
         fromName: emailSettings.senderName || undefined,
-        fromEmail: emailSettings.senderEmail
+        fromEmail: emailSettings.senderEmail.trim()
       });
       setTestStatus('sent');
       setTestMessage('Test email sent successfully.');
@@ -593,6 +601,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e: any) => updateEmailSettings({ senderEmail: e.target.value })}
                 placeholder="no-reply@yourdomain.com"
               />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <button
+                type="button"
+                onClick={handleSaveEmailSettings}
+                className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+              >
+                Save Email Settings
+              </button>
+              {emailSettingsMessage && (
+                <p className="text-xs text-emerald-600">{emailSettingsMessage}</p>
+              )}
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
