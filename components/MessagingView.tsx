@@ -243,14 +243,26 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
 
     try {
       setSending(true);
-      await api.messages.createMessage({
+      const content = newMessage.trim();
+      const sentMessage = await api.messages.createMessage({
         conversation_id: selectedConversation.id,
         sender_id: adminId,
         sender_type: 'admin',
         recipient_id: selectedConversation.patient_id,
         recipient_type: 'patient',
-        content: newMessage.trim()
+        content
       });
+
+      try {
+        await api.messages.sendAdminReplyNotification({
+          message: sentMessage,
+          patientName: selectedConversation.patient_name,
+          adminName: selectedConversation.admin_name
+        });
+      } catch (notificationError) {
+        console.warn('Message notification email failed:', notificationError);
+      }
+
       setNewMessage('');
       await loadMessages(selectedConversation.id, false);
       await loadConversations(false);

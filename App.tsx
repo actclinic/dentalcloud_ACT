@@ -59,6 +59,7 @@ import { buildFinancialReport, renderFinancialReportMarkdown } from './utils/aiR
 import { auth } from './services/auth';
 import { supabase } from './services/supabase';
 import { resolveAllowedTabs } from './utils/permissions';
+import { loadEmailSettings } from './utils/emailSettings';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -81,7 +82,6 @@ const MessagingView = React.lazy(() => import('./components/MessagingView'));
 const PatientMessagingView = React.lazy(() => import('./components/PatientMessagingView'));
 const RecallsView = React.lazy(() => import('./components/RecallsView'));
 
-const EMAIL_SETTINGS_KEY = 'dc_email_settings';
 const ALL_BRANCHES_VALUE = '__all_branches__';
 
 type ViewState = AppTabPermission;
@@ -637,27 +637,6 @@ const App: React.FC = () => {
     await fetchAssistantData();
     if (isAdmin) {
       await fetchUsers();
-    }
-  };
-
-  const loadEmailSettings = () => {
-    const fallback = {
-      enabled: false,
-      senderName: 'DentalCloud',
-      senderEmail: ''
-    };
-
-    try {
-      const raw = localStorage.getItem(EMAIL_SETTINGS_KEY);
-      if (!raw) return fallback;
-      const parsed = JSON.parse(raw);
-      return {
-        enabled: parsed?.enabled ?? fallback.enabled,
-        senderName: parsed?.senderName ?? fallback.senderName,
-        senderEmail: parsed?.senderEmail ?? fallback.senderEmail
-      };
-    } catch (error) {
-      return fallback;
     }
   };
 

@@ -3,6 +3,7 @@ import * as tus from 'tus-js-client';
 import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask } from '../types';
 import { FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
+import { loadEmailSettings } from '../utils/emailSettings';
 
 let usersAllowedTabsSupport: boolean | null = null;
 
@@ -41,6 +42,26 @@ const mapPatient = (row: any): Patient => ({
   created_at: row?.created_at,
   has_account: Array.isArray(row?.patient_auth) ? row.patient_auth.length > 0 : !!row?.patient_auth
 });
+
+const isValidEmailAddress = (email?: string | null) => {
+  if (!email) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+};
+
+const escapeHtml = (value: string) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const truncateMessagePreview = (value: string, limit = 220) => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit - 1).trimEnd()}...`;
+};
 
 const syncRecallStatusFromAppointment = async (params: {
   appointmentId: string;
@@ -2589,6 +2610,109 @@ export const api = {
       
       return messageData;
     },
+
+    sendAdminReplyNotification: async (params: {
+      message: Message;
+      patientName?: string;
+      adminName?: string;
+    }): Promise<void> => {
+      const { message, patientName, adminName } = params;
+
+      if (message.sender_type !== 'admin' || message.recipient_type !== 'patient') {
+        return;
+      }
+
+      const emailSettings = loadEmailSettings();
+      if (!emailSettings.enabled || !emailSettings.messageNotificationsEnabled) {
+        return;
+      }
+
+      if (!emailSettings.senderEmail || !isValidEmailAddress(emailSettings.senderEmail)) {
+        console.warn('Skipping patient reply notification because the sender email is not configured.');
+        return;
+      }
+
+      const { count: unreadCount, error: unreadError } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', message.conversation_id)
+        .eq('recipient_id', message.recipient_id)
+        .eq('recipient_type', 'patient')
+        .eq('sender_type', 'admin')
+        .eq('read', false);
+
+      if (unreadError) {
+        throw new Error(unreadError.message);
+      }
+
+      if ((unreadCount || 0) !== 1) {
+        return;
+      }
+
+      const { data: patientRecord, error: patientError } = await supabase
+        .from('patients')
+        .select('name, email, location_id')
+        .eq('id', message.recipient_id)
+        .maybeSingle();
+
+      if (patientError) {
+        throw new Error(patientError.message);
+      }
+
+      const patientEmail = patientRecord?.email?.trim();
+      if (!isValidEmailAddress(patientEmail)) {
+        return;
+      }
+
+      let clinicName = 'DentalCloud';
+      if (patientRecord?.location_id) {
+        const { data: locationRecord, error: locationError } = await supabase
+          .from('locations')
+          .select('name')
+          .eq('id', patientRecord.location_id)
+          .maybeSingle();
+
+        if (locationError) {
+          console.warn('Unable to load clinic name for patient notification:', locationError.message);
+        } else if (locationRecord?.name?.trim()) {
+          clinicName = locationRecord.name.trim();
+        }
+      }
+
+      const resolvedPatientName = patientName || patientRecord?.name?.trim() || 'there';
+      const resolvedAdminName = adminName?.trim() || 'our clinic team';
+      const preview = truncateMessagePreview(message.content);
+      const safePreview = escapeHtml(preview);
+      const safePatientName = escapeHtml(resolvedPatientName);
+      const safeAdminName = escapeHtml(resolvedAdminName);
+      const safeClinicName = escapeHtml(clinicName);
+
+      await api.email.sendManagerEmail({
+        to: patientEmail!,
+        fromName: emailSettings.senderName || clinicName,
+        fromEmail: emailSettings.senderEmail,
+        subject: `New message from ${clinicName}`,
+        body: `Hi ${resolvedPatientName},\n\n${resolvedAdminName} sent you a new message in ${clinicName}.\n\n"${preview}"\n\nOpen the patient portal to read and reply.\n\nThis email is sent once per unread reply thread to avoid duplicates.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; background: #f8fafc; padding: 24px; color: #0f172a;">
+            <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+              <div style="padding: 24px; border-bottom: 1px solid #e2e8f0; background: #eef2ff;">
+                <div style="font-size: 20px; font-weight: 700;">New Message Reply</div>
+                <div style="margin-top: 6px; font-size: 13px; color: #475569;">${safeClinicName}</div>
+              </div>
+              <div style="padding: 24px;">
+                <p style="margin: 0 0 16px;">Hi ${safePatientName},</p>
+                <p style="margin: 0 0 16px;">${safeAdminName} sent you a new message in your patient chat.</p>
+                <div style="margin: 0 0 20px; padding: 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                  ${safePreview}
+                </div>
+                <p style="margin: 0; font-size: 13px; color: #475569;">Open the patient portal to read the full message and reply.</p>
+              </div>
+            </div>
+          </div>
+        `
+      });
+    },
     
     // Create new conversation
     createConversation: async (patientId: string, adminId: string): Promise<Conversation> => {
@@ -2757,6 +2881,7 @@ export const api = {
       to: string; 
       subject?: string; 
       body?: string; 
+      html?: string;
       fromName?: string; 
       fromEmail?: string;
       replyTo?: string;

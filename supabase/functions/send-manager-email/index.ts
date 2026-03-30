@@ -1,3 +1,4 @@
+/// <reference path="./index.d.ts" />
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const corsHeaders: Record<string, string> = {
@@ -18,7 +19,7 @@ type EmailRequest = {
 
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -35,7 +36,7 @@ serve(async (req) => {
   const defaultFromName = Deno.env.get("RESEND_FROM_NAME") || "DentalCloud";
 
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: "Resend API key is not configured." }), {
+    return new Response(JSON.stringify({ error: "Resend API key is not configured. Set RESEND_API_KEY in Supabase secrets or the local env file." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
@@ -72,7 +73,7 @@ serve(async (req) => {
 
   const fromEmail = (payload.fromEmail || defaultFromEmail).trim();
   if (!fromEmail || !isValidEmail(fromEmail)) {
-    return new Response(JSON.stringify({ error: "A valid sender email is required." }), {
+    return new Response(JSON.stringify({ error: "A valid sender email is required. Set RESEND_FROM_EMAIL to a verified Resend sender." }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

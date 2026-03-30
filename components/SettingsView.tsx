@@ -3,6 +3,7 @@ import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, Rota
 import { Location, LoyaltyRule } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
+import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings } from '../utils/emailSettings';
 
 interface SettingsViewProps {
   currency: 'USD' | 'MMK';
@@ -22,13 +23,6 @@ interface SettingsViewProps {
   onToggleMessaging: (enabled: boolean) => void;
   onRemoveAllMessages: () => void;
   isAdmin: boolean;
-}
-
-interface EmailSettings {
-  enabled: boolean;
-  senderName?: string;
-  senderEmail?: string;
-  updatedAt: string;
 }
 
 interface ManagerContact {
@@ -60,37 +54,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onRemoveAllMessages,
   isAdmin 
 }) => {
-  const EMAIL_SETTINGS_KEY = 'dc_email_settings';
   const MANAGER_EMAILS_KEY = 'loli_manager_emails';
 
   const normalizeEmail = (email: string) => email.trim().toLowerCase();
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const loadEmailSettings = (): EmailSettings => {
-    const fallback: EmailSettings = {
-      enabled: false,
-      senderName: 'DentalCloud',
-      senderEmail: '',
-      updatedAt: new Date().toISOString()
-    };
-    try {
-      const stored = localStorage.getItem(EMAIL_SETTINGS_KEY);
-      if (!stored) return fallback;
-      const parsed = JSON.parse(stored);
-      return {
-        enabled: parsed?.enabled ?? fallback.enabled,
-        senderName: parsed?.senderName ?? fallback.senderName,
-        senderEmail: parsed?.senderEmail ?? fallback.senderEmail,
-        updatedAt: parsed?.updatedAt || fallback.updatedAt
-      };
-    } catch (error) {
-      return fallback;
-    }
-  };
-
-  const saveEmailSettings = (settings: EmailSettings) => {
-    localStorage.setItem(EMAIL_SETTINGS_KEY, JSON.stringify(settings));
-  };
 
   const loadManagerContacts = (): ManagerContact[] => {
     try {
@@ -210,6 +177,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             enabled: parsed.mode === 'provider',
             senderName: parsed.senderName || 'DentalCloud',
             senderEmail: parsed.senderEmail || '',
+            messageNotificationsEnabled: true,
             updatedAt: new Date().toISOString()
           };
           saveEmailSettings(migrated);
@@ -625,6 +593,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e: any) => updateEmailSettings({ senderEmail: e.target.value })}
                 placeholder="no-reply@yourdomain.com"
               />
+            </div>
+
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800">Patient Message Reply Alerts</h4>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Send one email when staff posts the first unread reply in a conversation. More replies wait until the patient opens the chat again.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={emailSettings.messageNotificationsEnabled}
+                    onChange={(e) => updateEmailSettings({ messageNotificationsEnabled: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
             </div>
 
             <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
