@@ -3831,6 +3831,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   : 'Default Sender';
 
                 const preview = [
+                  `Status: Draft prepared only. No email has been sent yet.`,
                   `From: ${fromLabel}`,
                   `Delivery: Resend (server-side)`,
                   subject ? `Subject: ${subject}` : null,
@@ -4557,10 +4558,20 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             ? `${cleanedAiResponse.trim()}\n\n${actionResultText}`.trim()
             : cleanedAiResponse.trim() || aiResponse;
 
+      const safeAssistantContent = needsConfirmation
+        ? actionResultText
+        : actionIntentDetected && !hasActionAttempt
+          ? mode !== 'agent'
+            ? `${cleanedAiResponse.trim()}\n\n⚠️ I did not execute any real system action for that request, so nothing was sent or changed.\n\nPlease try again in Agent Mode, and I will only confirm completion after the system action succeeds.`.trim()
+            : `⚠️ I did not execute any real system action for that request, so nothing was sent or changed.\n\nPlease try again with the recipient, subject, body, and branch if needed.`
+          : actionIntentDetected && hasActionAttempt && !hasSuccessfulAction
+            ? `${actionResultText || '⚠️ I could not complete the requested system action.'}\n\nNo real system change was completed yet.`.trim()
+            : assistantContent;
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: assistantContent,
+        content: safeAssistantContent,
         timestamp: new Date()
       };
 
