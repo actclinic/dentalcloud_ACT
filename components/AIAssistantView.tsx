@@ -4822,7 +4822,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     <div className="flex items-start gap-2 p-3">
                       <button
                         onClick={() => switchSession(session.id)}
-                        className="flex-1 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-slate-500"
+                        className="min-w-0 flex-1 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-slate-500"
                         title={session.title}
                       >
                         <div className="truncate text-sm font-medium text-slate-100">{session.title}</div>
@@ -4830,7 +4830,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       </button>
                       <button
                         onClick={() => deleteSession(session.id)}
-                        className="rounded-lg p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400"
+                        className="shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400"
                         title="Delete conversation"
                       >
                         <Trash2 className="h-4 w-4" />
