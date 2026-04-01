@@ -9,14 +9,14 @@
   "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
+      "src": "/assets/WinterArcLogo.png",
+      "sizes": "500x500",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
+      "src": "/assets/WinterArcLogo.png",
+      "sizes": "500x500",
       "type": "image/png",
       "purpose": "any maskable"
     }
