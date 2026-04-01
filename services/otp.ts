@@ -372,14 +372,6 @@ export const otpService = {
         return { success: false, message: 'Please enter a valid email address.' };
       }
 
-      const isRegistered = await this.isEmailRegistered(normalizedEmail);
-      if (!isRegistered) {
-        return {
-          success: false,
-          message: 'No patient account was found for that email address.'
-        };
-      }
-
       const redirectUrl = `${window.location.origin}${window.location.pathname}?reset=password`;
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: redirectUrl
@@ -400,7 +392,7 @@ export const otpService = {
 
       return {
         success: true,
-        message: 'Password reset instructions have been sent to your email.'
+        message: 'If that email is registered, password reset instructions have been sent.'
       };
     } catch (error: any) {
       console.error('Password reset request failed:', error);
