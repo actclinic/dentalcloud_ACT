@@ -23,6 +23,18 @@ const isRecoveryFlowActive = (): boolean => {
   return searchParams.get('reset') === 'password' || hashParams.get('type') === 'recovery';
 };
 
+const loadPendingPatientSignup = (email: string): { username?: string; phone?: string } | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = localStorage.getItem(`pending_patient_signup_${email.toLowerCase().trim()}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    console.warn('Unable to read pending patient signup:', error);
+    return null;
+  }
+};
+
 export interface AuthSession {
   userId: string;
   username: string;
@@ -190,17 +202,48 @@ export const auth = {
           .eq('email', normalizedEmail)
           .single();
 
+        let patientId = patientAuth?.patient_id;
+
         console.log('patient_auth lookup:', { found: !!patientAuth, error: paError?.message });
 
-        if (!patientAuth?.patient_id) {
-          console.error('Supabase Auth succeeded but no patient_auth record found for:', normalizedEmail);
-          throw new Error('Account setup incomplete. Please contact support or try registering again.');
+        if (!patientId) {
+          console.warn('Supabase Auth succeeded but patient profile is missing. Attempting to complete signup for:', normalizedEmail);
+
+          const pendingSignup = loadPendingPatientSignup(normalizedEmail);
+          const metadata = authData.user.user_metadata || {};
+          const fallbackUsername =
+            pendingSignup?.username ||
+            (typeof metadata.username === 'string' ? metadata.username : undefined);
+          const fallbackPhone =
+            pendingSignup?.phone ||
+            (typeof metadata.phone === 'string' ? metadata.phone : undefined);
+
+          await api.patients.registerWithSupabase(
+            normalizedEmail,
+            '',
+            authData.user.id,
+            fallbackUsername,
+            fallbackPhone
+          );
+
+          const { data: refreshedPatientAuth, error: refreshedAuthError } = await supabase
+            .from('patient_auth')
+            .select('patient_id')
+            .eq('email', normalizedEmail)
+            .single();
+
+          if (refreshedAuthError || !refreshedPatientAuth?.patient_id) {
+            console.error('Unable to complete patient signup after Supabase login:', refreshedAuthError?.message);
+            throw new Error('Account setup incomplete. Please contact support or try registering again.');
+          }
+
+          patientId = refreshedPatientAuth.patient_id;
         }
 
         const { data: patient, error: pError } = await supabase
           .from('patients')
           .select('*')
-          .eq('id', patientAuth.patient_id)
+          .eq('id', patientId)
           .single();
 
         console.log('patients lookup:', { found: !!patient, error: pError?.message });

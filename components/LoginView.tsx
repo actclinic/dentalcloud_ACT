@@ -34,6 +34,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [confirmedEmail, setConfirmedEmail] = useState('');
 
+  const hasPendingSignup = (value: string | null | undefined) => {
+    if (!value) return false;
+
+    try {
+      return !!localStorage.getItem(`pending_patient_signup_${value.toLowerCase().trim()}`);
+    } catch (err) {
+      console.warn('Unable to read pending signup state:', err);
+      return false;
+    }
+  };
+
   // Generate new CAPTCHA
   const generateCaptcha = () => {
     const digits = Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)); // 4 random digits 0-9
@@ -56,26 +67,40 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       urlParams.has('code') ||
       urlParams.has('token_hash');
     
-    if (confirmed === 'true' && email) {
-      // User clicked the confirmation link and was redirected back
-      // Wait for Supabase to process the auth tokens from the URL hash
-      const initSession = async () => {
-        // If there are auth tokens in the hash, Supabase needs time to process them
-        if (hasAuthTokens) {
-          // Give Supabase client time to process the tokens
-          await new Promise(resolve => setTimeout(resolve, 500));
+    const initSignupConfirmation = async () => {
+      if (hasAuthTokens) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      let signupEmail = email ? decodeURIComponent(email) : '';
+
+      if (!signupEmail || confirmed === 'true' || urlParams.has('code') || urlParams.has('token_hash')) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const sessionEmail = session?.user?.email?.toLowerCase().trim() || '';
+
+        if (sessionEmail && hasPendingSignup(sessionEmail)) {
+          signupEmail = sessionEmail;
         }
-        
-        setEmailConfirmed(true);
-        setConfirmedEmail(decodeURIComponent(email));
-        setShowRegistration(true);
-        
-        // Clean up the URL AFTER Supabase has processed the tokens
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-      };
-      
-      initSession();
+      }
+
+      if (!signupEmail || !hasPendingSignup(signupEmail)) {
+        return;
+      }
+
+      setEmailConfirmed(true);
+      setConfirmedEmail(signupEmail);
+      setShowRegistration(true);
+      setShowForgotPassword(false);
+      setIsRecoveryMode(false);
+      setError('');
+      setInfoMessage('Email confirmed. Finishing your patient account setup...');
+
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    };
+
+    if (confirmed === 'true' || urlParams.has('code') || urlParams.has('token_hash')) {
+      initSignupConfirmation();
     }
 
     if (urlParams.get('reset') === 'password' || hashParams.get('type') === 'recovery') {
@@ -104,7 +129,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       initRecoverySession();
     }
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setLoginMode('patient');
         setShowForgotPassword(false);
@@ -112,6 +137,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         setIsPreparingRecovery(false);
         setError('');
         setInfoMessage('Set your new password below to finish resetting your patient account.');
+      } else if (
+        event === 'SIGNED_IN' &&
+        !isRecoveryMode &&
+        hasPendingSignup(session?.user?.email || '')
+      ) {
+        setEmailConfirmed(true);
+        setConfirmedEmail(session?.user?.email || '');
+        setShowRegistration(true);
+        setShowForgotPassword(false);
+        setError('');
+        setInfoMessage('Email confirmed. Finishing your patient account setup...');
       } else if (
         event === 'SIGNED_IN' &&
         (new URLSearchParams(window.location.search).get('reset') === 'password' ||

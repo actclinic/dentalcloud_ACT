@@ -200,7 +200,10 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
       savePendingSignup(normalizedEmail, { username: normalizedUsername, phone: normalizedPhone });
       
       // Sign up with Supabase Auth (sends confirmation email automatically)
-      const result = await otpService.signUpWithEmailConfirmation(normalizedEmail, password);
+      const result = await otpService.signUpWithEmailConfirmation(normalizedEmail, password, {
+        username: normalizedUsername,
+        phone: normalizedPhone,
+      });
       
       if (result.success) {
         setSuccess('Please check your email and click the confirmation link to verify your account.');

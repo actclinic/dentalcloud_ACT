@@ -215,7 +215,11 @@ export const otpService = {
    * Sign up with email confirmation link (not OTP code)
    * Uses Supabase's default email confirmation behavior
    */
-  async signUpWithEmailConfirmation(email: string, password: string): Promise<{ 
+  async signUpWithEmailConfirmation(
+    email: string,
+    password: string,
+    profile?: { username?: string; phone?: string }
+  ): Promise<{ 
     success: boolean; 
     userId?: string; 
     message?: string 
@@ -229,6 +233,10 @@ export const otpService = {
         password,
         options: {
           emailRedirectTo: redirectUrl,
+          data: {
+            username: profile?.username?.trim() || undefined,
+            phone: profile?.phone?.trim() || undefined,
+          },
         }
       });
 
