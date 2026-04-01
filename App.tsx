@@ -84,6 +84,14 @@ const RecallsView = React.lazy(() => import('./components/RecallsView'));
 
 const ALL_BRANCHES_VALUE = '__all_branches__';
 
+const isRecoveryFlowActive = (): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  return searchParams.get('reset') === 'password' || hashParams.get('type') === 'recovery';
+};
+
 type ViewState = AppTabPermission;
 
 const getDefaultUserFormData = (): Partial<User> => ({
@@ -1438,6 +1446,20 @@ const App: React.FC = () => {
     setPatientFiles([]);
     setUseFlatRate(false); // Reset flat rate when closing patient
   };
+
+  // Password recovery must stay on the login/reset screen even if this device
+  // still has an older local auth session saved.
+  if (isRecoveryFlowActive()) {
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
+        </div>
+      }>
+        <LoginView onLoginSuccess={handleLoginSuccess} />
+      </Suspense>
+    );
+  }
 
   // Show patient dashboard if patient is logged in
   if (isAuthenticated && auth.isPatient()) {
