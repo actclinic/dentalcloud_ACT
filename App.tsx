@@ -336,23 +336,37 @@ const App: React.FC = () => {
 
   // Check authentication on mount
   useEffect(() => {
-    const checkAuth = () => {
+    const checkAuth = async () => {
       const session = auth.getSession();
       if (session) {
         applySessionState(session);
         // Initialize default admin and fetch data
-        auth.initializeDefaultAdmin().then(() => {
+        await auth.initializeDefaultAdmin();
+        fetchInitialData();
+        fetchUsers();
+        return;
+      }
+
+      const restoredSession = await auth.restoreSupabaseSession();
+      if (restoredSession) {
+        applySessionState(restoredSession);
+
+        if (restoredSession.role !== 'patient') {
           fetchInitialData();
           fetchUsers();
-        });
-      } else {
-        resetStaffSession();
-        // Still initialize default admin for first-time setup
-        auth.initializeDefaultAdmin();
+        }
+        return;
       }
+
+      resetStaffSession();
+      // Still initialize default admin for first-time setup
+      auth.initializeDefaultAdmin();
     };
     
-    checkAuth();
+    checkAuth().catch(err => {
+      console.warn('Authentication bootstrap failed:', err);
+      resetStaffSession();
+    });
     
     // Set up periodic cleanup every 24 hours
     const cleanupInterval = setInterval(() => {

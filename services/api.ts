@@ -407,6 +407,49 @@ export const api = {
         if (error) throw new Error(error.message);
       }
     },
+
+    updatePasswordByEmail: async (
+      email: string,
+      password: string,
+      supabaseUserId?: string
+    ): Promise<void> => {
+      const normalizedEmail = email.toLowerCase().trim();
+      if (!normalizedEmail) {
+        throw new Error('Email is required to update the patient password.');
+      }
+
+      const updateData: Record<string, any> = {
+        password,
+        is_verified: true
+      };
+
+      if (supabaseUserId) {
+        updateData.supabase_user_id = supabaseUserId;
+      }
+
+      const { data: existingAuth, error: fetchError } = await supabase
+        .from('patient_auth')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (fetchError) {
+        throw new Error(fetchError.message);
+      }
+
+      if (!existingAuth?.id) {
+        throw new Error('No patient account was found for that email address.');
+      }
+
+      const { error: updateError } = await supabase
+        .from('patient_auth')
+        .update(updateData)
+        .eq('id', existingAuth.id);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+    },
     
     // Authenticate patient with email, phone, username, or name + password
     authenticate: async (identifier: string, password: string): Promise<Patient | null> => {

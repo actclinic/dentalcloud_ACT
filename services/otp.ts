@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { api } from './api';
 
 export interface OTPRecord {
   id: string;
@@ -332,6 +333,113 @@ export const otpService = {
     } catch (error) {
       console.error('Email registration check failed:', error);
       return false;
+    }
+  },
+
+  /**
+   * Send a password reset email for an existing patient account.
+   */
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const normalizedEmail = email.toLowerCase().trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        return { success: false, message: 'Please enter a valid email address.' };
+      }
+
+      const isRegistered = await this.isEmailRegistered(normalizedEmail);
+      if (!isRegistered) {
+        return {
+          success: false,
+          message: 'No patient account was found for that email address.'
+        };
+      }
+
+      const redirectUrl = `${window.location.origin}${window.location.pathname}?reset=password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: redirectUrl
+      });
+
+      if (error) {
+        console.error('Password reset request error:', error);
+
+        if (error.message.includes('rate') || error.message.includes('limit')) {
+          return {
+            success: false,
+            message: 'Please wait a few minutes before requesting another reset email.'
+          };
+        }
+
+        return { success: false, message: error.message };
+      }
+
+      return {
+        success: true,
+        message: 'Password reset instructions have been sent to your email.'
+      };
+    } catch (error: any) {
+      console.error('Password reset request failed:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to send password reset email.'
+      };
+    }
+  },
+
+  /**
+   * Complete a password reset using the active Supabase recovery session
+   * and sync the legacy patient_auth password for compatibility.
+   */
+  async completePasswordReset(newPassword: string): Promise<{ success: boolean; message: string; email?: string }> {
+    try {
+      const trimmedPassword = newPassword.trim();
+      if (trimmedPassword.length < 6) {
+        return {
+          success: false,
+          message: 'Password must be at least 6 characters long.'
+        };
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('Password reset session error:', sessionError);
+        return { success: false, message: sessionError.message };
+      }
+
+      const recoveryUser = sessionData.session?.user;
+      if (!recoveryUser?.email) {
+        return {
+          success: false,
+          message: 'Your password reset session has expired. Please request a new reset email.'
+        };
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: trimmedPassword
+      });
+
+      if (updateError) {
+        console.error('Password reset update error:', updateError);
+        return { success: false, message: updateError.message };
+      }
+
+      await api.patients.updatePasswordByEmail(
+        recoveryUser.email,
+        trimmedPassword,
+        recoveryUser.id
+      );
+
+      return {
+        success: true,
+        message: 'Your password has been reset successfully. Please log in again.',
+        email: recoveryUser.email
+      };
+    } catch (error: any) {
+      console.error('Password reset completion failed:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to reset password.'
+      };
     }
   },
 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Eye, EyeOff, RefreshCw, Lock, User, Fingerprint, Building2, Mail, Calendar, FileText } from 'lucide-react';
-import { Input } from './Shared';
+import { Shield, Eye, EyeOff, RefreshCw, Lock, User, Building2, Mail, Calendar, FileText, ArrowLeft } from 'lucide-react';
 import { auth } from '../services/auth';
+import { otpService } from '../services/otp';
+import { supabase } from '../services/supabase';
 import PatientSelfRegistration from './PatientSelfRegistration';
 
 interface LoginViewProps {
@@ -11,16 +12,21 @@ interface LoginViewProps {
 type LoginMode = 'admin' | 'patient';
 
 const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
-  const [loginMode, setLoginMode] = useState<LoginMode>('admin');
+  const [loginMode, setLoginMode] = useState<LoginMode>('patient');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [captchaDigits, setCaptchaDigits] = useState<number[]>([]);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [showRegistration, setShowRegistration] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [confirmResetPassword, setConfirmResetPassword] = useState('');
   
   // Email confirmation handling
   const [emailConfirmed, setEmailConfirmed] = useState(false);
@@ -65,11 +71,34 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       
       initSession();
     }
+
+    if (urlParams.get('reset') === 'password' || hashParams.get('type') === 'recovery') {
+      setLoginMode('patient');
+      setShowForgotPassword(false);
+      setIsRecoveryMode(true);
+      setError('');
+      setInfoMessage('Set your new password below to finish resetting your patient account.');
+    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setLoginMode('patient');
+        setShowForgotPassword(false);
+        setIsRecoveryMode(true);
+        setError('');
+        setInfoMessage('Set your new password below to finish resetting your patient account.');
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfoMessage('');
     setLoading(true);
 
     try {
@@ -105,6 +134,71 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }
   };
 
+  const resetRecoveryState = () => {
+    setIsRecoveryMode(false);
+    setResetPassword('');
+    setConfirmResetPassword('');
+    setShowPassword(false);
+    setError('');
+    setInfoMessage('');
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+  };
+
+  const handleForgotPasswordRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setInfoMessage('');
+    setLoading(true);
+
+    try {
+      const result = await otpService.requestPasswordReset(forgotPasswordEmail);
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+
+      setInfoMessage(result.message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send password reset email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordResetComplete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setInfoMessage('');
+
+    if (resetPassword !== confirmResetPassword) {
+      setError('New passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await otpService.completePasswordReset(resetPassword);
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+
+      auth.logout();
+      resetRecoveryState();
+      setLoginMode('patient');
+      setPassword('');
+      setUsername(result.email || forgotPasswordEmail || confirmedEmail || '');
+      setForgotPasswordEmail('');
+      setInfoMessage(result.message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle registration completion
   const handleRegistrationComplete = () => {
     setShowRegistration(false);
@@ -112,6 +206,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setConfirmedEmail('');
     setLoginMode('patient');
     setError('');
+    setInfoMessage('');
   };
 
   // Show registration form
@@ -237,186 +332,363 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               <img src="/assets/WinterArcLogo.png" alt="WinterArc Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-xl font-black text-gray-900 mb-2 tracking-tight">
-              {loginMode === 'admin' ? 'Welcome Back' : 'Patient Login'}
+              {isRecoveryMode ? 'Reset Patient Password' : loginMode === 'admin' ? 'Welcome Back' : 'Patient Login'}
             </h1>
             <p className="text-gray-600 font-medium text-sm">
-              {loginMode === 'admin' 
+              {isRecoveryMode
+                ? 'Create a new password for your patient portal'
+                : loginMode === 'admin' 
                 ? 'Sign in to your DentalCloud Pro account' 
                 : 'Access your patient dashboard'}
             </p>
             
             {/* Login Mode Toggle */}
-            <div className="mt-4 flex bg-gray-100 rounded-lg p-1 max-w-xs mx-auto">
-              <button
-                onClick={() => {
-                  setLoginMode('admin');
-                  setError('');
-                  generateCaptcha();
-                }}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  loginMode === 'admin' 
-                    ? 'bg-white text-indigo-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Staff
-              </button>
-              <button
-                onClick={() => {
-                  setLoginMode('patient');
-                  setError('');
-                  generateCaptcha();
-                }}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  loginMode === 'patient' 
-                    ? 'bg-white text-indigo-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Patient
-              </button>
-            </div>
+            {!isRecoveryMode && (
+              <div className="mt-4 flex bg-gray-100 rounded-lg p-1 max-w-xs mx-auto">
+                <button
+                  onClick={() => {
+                    setLoginMode('patient');
+                    setShowForgotPassword(false);
+                    setError('');
+                    setInfoMessage('');
+                    generateCaptcha();
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                    loginMode === 'patient' 
+                      ? 'bg-white text-indigo-600 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Patient
+                </button>
+                <button
+                  onClick={() => {
+                    setLoginMode('admin');
+                    setShowForgotPassword(false);
+                    setError('');
+                    setInfoMessage('');
+                    generateCaptcha();
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                    loginMode === 'admin' 
+                      ? 'bg-white text-indigo-600 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Staff
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                  {loginMode === 'admin' ? (
-                    <User className="w-3 h-3 text-gray-500" />
-                  ) : (
-                    <User className="w-3 h-3 text-gray-500" />
-                  )}
-                  {loginMode === 'admin' ? 'USERNAME' : 'EMAIL / PHONE / USERNAME'}
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder={loginMode === 'admin' 
-                      ? 'Enter your username' 
-                      : 'Enter your email, phone number, or username'}
-                    required
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
-                    autoFocus
-                  />
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+            {isRecoveryMode ? (
+              <form onSubmit={handlePasswordResetComplete} className="space-y-4">
+                <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+                  The reset link has been verified. Choose a new password to finish recovery.
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
-                  <Lock className="w-3 h-3 text-gray-500" />
-                  PASSWORD
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    className="w-full pl-9 pr-10 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
-                  />
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* CAPTCHA - Required for both staff and patient login */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  VERIFICATION
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-lg p-2 bg-gray-50">
-                    {captchaDigits.map((digit, index) => (
-                      <span key={index} className="text-lg font-bold text-gray-700 w-6 h-6 flex items-center justify-center bg-white rounded border border-gray-200">
-                        {digit}
-                      </span>
-                    ))}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <Lock className="w-3 h-3 text-gray-500" />
+                    NEW PASSWORD
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      placeholder="Enter your new password"
+                      required
+                      minLength={6}
+                      className="w-full pl-9 pr-10 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={generateCaptcha}
-                    className="p-2 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-                    title="Refresh Verification"
-                  >
-                    <RefreshCw size={14} className="text-gray-500" />
-                  </button>
                 </div>
-                <div className="mt-1.5">
-                  <input
-                    type="text"
-                    value={captchaAnswer}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
-                      setCaptchaAnswer(value);
-                    }}
-                    placeholder="Enter the 4 digits shown above"
-                    required
-                    maxLength={4}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
-                  />
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-3 h-3 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                  />
-                  <span className="text-xs text-gray-600">Remember me</span>
-                </label>
-                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <Lock className="w-3 h-3 text-gray-500" />
+                    CONFIRM PASSWORD
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmResetPassword}
+                      onChange={(e) => setConfirmResetPassword(e.target.value)}
+                      placeholder="Confirm your new password"
+                      required
+                      minLength={6}
+                      className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-xs text-red-700 font-medium flex items-start gap-1.5">
+                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
+                )}
+
+                {infoMessage && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-xs text-emerald-700 font-medium">
+                    {infoMessage}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Resetting Password...
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      Save New Password
+                    </>
+                  )}
+                </button>
+
                 <button
                   type="button"
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  onClick={() => {
+                    auth.logout();
+                    setLoginMode('patient');
+                    resetRecoveryState();
+                  }}
+                  className="w-full text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center justify-center gap-2"
                 >
-                  Forgot password?
+                  <ArrowLeft className="w-4 h-4" />
+                  Back to patient login
                 </button>
-              </div>
+              </form>
+            ) : showForgotPassword ? (
+              <form onSubmit={handleForgotPasswordRequest} className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setError('');
+                    setInfoMessage('');
+                  }}
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back to patient login
+                </button>
 
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-xs text-red-700 font-medium flex items-start gap-1.5">
-                  <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  {error}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <Mail className="w-3 h-3 text-gray-500" />
+                    PATIENT EMAIL
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={forgotPasswordEmail}
+                      onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                      placeholder="Enter your registered email address"
+                      required
+                      className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
+                      autoFocus
+                    />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  </div>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Authenticating...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    {loginMode === 'admin' ? 'Secure Sign In' : 'Patient Login'}
-                  </>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 leading-relaxed">
+                  We will send a secure reset link to your email. Open the link, choose a new password, and then sign in again.
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-xs text-red-700 font-medium flex items-start gap-1.5">
+                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
                 )}
-              </button>
-            </form>
+
+                {infoMessage && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-xs text-emerald-700 font-medium">
+                    {infoMessage}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Sending Reset Email...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4" />
+                      Send Reset Link
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <User className="w-3 h-3 text-gray-500" />
+                    {loginMode === 'admin' ? 'USERNAME' : 'EMAIL / PHONE / USERNAME'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder={loginMode === 'admin' 
+                        ? 'Enter your username' 
+                        : 'Enter your email, phone number, or username'}
+                      required
+                      className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
+                      autoFocus
+                    />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <Lock className="w-3 h-3 text-gray-500" />
+                    PASSWORD
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                      className="w-full pl-9 pr-10 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    VERIFICATION
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-lg p-2 bg-gray-50">
+                      {captchaDigits.map((digit, index) => (
+                        <span key={index} className="text-lg font-bold text-gray-700 w-6 h-6 flex items-center justify-center bg-white rounded border border-gray-200">
+                          {digit}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={generateCaptcha}
+                      className="p-2 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                      title="Refresh Verification"
+                    >
+                      <RefreshCw size={14} className="text-gray-500" />
+                    </button>
+                  </div>
+                  <div className="mt-1.5">
+                    <input
+                      type="text"
+                      value={captchaAnswer}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
+                        setCaptchaAnswer(value);
+                      }}
+                      placeholder="Enter the 4 digits shown above"
+                      required
+                      maxLength={4}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-gray-50 focus:bg-white text-sm"
+                    />
+                  </div>
+                </div>
+
+                {loginMode === 'patient' && (
+                  <div className="flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForgotPassword(true);
+                        setForgotPasswordEmail(username.includes('@') ? username : '');
+                        setError('');
+                        setInfoMessage('');
+                      }}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-xs text-red-700 font-medium flex items-start gap-1.5">
+                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
+                )}
+
+                {infoMessage && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-xs text-emerald-700 font-medium">
+                    {infoMessage}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Authenticating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="w-4 h-4" />
+                      {loginMode === 'admin' ? 'Secure Sign In' : 'Patient Login'}
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
 
             {/* Patient Registration Link */}
-            {loginMode === 'patient' && (
+            {loginMode === 'patient' && !showForgotPassword && !isRecoveryMode && (
               <div className="mt-4 pt-4 border-t border-gray-100 text-center">
                 <p className="text-sm text-gray-600 mb-3">Don't have an account?</p>
                 <button

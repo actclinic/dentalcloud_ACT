@@ -13,6 +13,7 @@ export const DEFAULT_ADMIN = {
 // Session storage keys
 const SESSION_KEY = 'dental_auth_session';
 const SESSION_USER_KEY = 'dental_auth_user';
+const SESSION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 export interface AuthSession {
   userId: string;
@@ -108,9 +109,8 @@ export const auth = {
       if (!sessionStr) return null;
       
       const session: AuthSession = JSON.parse(sessionStr);
-      // Check if session is still valid (24 hours)
-      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-      if (Date.now() - session.loginTime > maxAge) {
+      // Keep users signed in on this device for up to one year.
+      if (Date.now() - session.loginTime > SESSION_MAX_AGE_MS) {
         this.logout();
         return null;
       }

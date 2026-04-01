@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
+import { otpService } from '../services/otp';
 import { Patient, Appointment, ClinicalRecord, Doctor } from '../types';
 import { Modal, Input } from './Shared';
 import Receipt from './Receipt';
@@ -195,6 +196,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       setError('New passwords do not match');
       return;
     }
+
+    if (passwordChange.newPassword.trim().length < 6) {
+      setError('New password must be at least 6 characters long');
+      return;
+    }
     
     try {
       // First authenticate with current password
@@ -207,14 +213,35 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         setError('Current password is incorrect');
         return;
       }
-      
-      // Update the password
-      await api.patients.updateAccount(
-        patient.id,
-        patient.email || null,
-        passwordChange.newPassword,
-        patient.phone || null
-      );
+
+      const nextPassword = passwordChange.newPassword.trim();
+      const supabaseUser = await otpService.getCurrentUser();
+      const canSyncSupabase =
+        !!supabaseUser &&
+        !!supabaseUser.email &&
+        !!patient.email &&
+        supabaseUser.email.toLowerCase() === patient.email.toLowerCase();
+
+      if (canSyncSupabase) {
+        const updateResult = await otpService.updatePassword(nextPassword);
+        if (!updateResult.success) {
+          throw new Error(updateResult.message || 'Failed to update Supabase password');
+        }
+
+        await api.patients.updatePasswordByEmail(
+          supabaseUser.email!,
+          nextPassword,
+          supabaseUser.id
+        );
+      } else {
+        // Legacy-only patient accounts still rely on the local patient_auth password.
+        await api.patients.updateAccount(
+          patient.id,
+          patient.email || null,
+          nextPassword,
+          patient.phone || null
+        );
+      }
       
       // Reset password change form
       setChangingPassword(false);
