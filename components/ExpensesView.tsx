@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Plus, Edit2, Trash2, Loader2, FileText, FileDown, BarChart3 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
-import { Expense } from '../types';
+import { ClinicalRecord, Expense, MedicineSale } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportExpensesToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
 
 interface ExpensesViewProps {
   expenses: Expense[];
+  treatmentRecords: ClinicalRecord[];
+  medicineSales: MedicineSale[];
   loading: boolean;
   currency: Currency;
   onAdd: () => void;
@@ -17,6 +19,8 @@ interface ExpensesViewProps {
 
 const ExpensesView: React.FC<ExpensesViewProps> = ({
   expenses,
+  treatmentRecords,
+  medicineSales,
   loading,
   currency,
   onAdd,
@@ -62,13 +66,50 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
   const today = new Date();
   const todayKey = today.toISOString().split('T')[0];
   const monthKey = todayKey.slice(0, 7);
+  const weekStart = new Date(today);
+  weekStart.setDate(weekStart.getDate() - 6);
+  const weekStartKey = weekStart.toISOString().split('T')[0];
+
   const dailyTotal = expenses
     .filter(exp => exp.date === todayKey)
+    .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+  const weeklyTotal = expenses
+    .filter(exp => exp.date >= weekStartKey)
     .reduce((sum, exp) => sum + (exp.amount || 0), 0);
   const monthlyTotal = expenses
     .filter(exp => exp.date.startsWith(monthKey))
     .reduce((sum, exp) => sum + (exp.amount || 0), 0);
   const totalAll = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+  const dailyTreatmentRevenue = treatmentRecords
+    .filter(tr => tr.date === todayKey)
+    .reduce((sum, tr) => sum + (tr.cost || 0), 0);
+  const weeklyTreatmentRevenue = treatmentRecords
+    .filter(tr => tr.date >= weekStartKey)
+    .reduce((sum, tr) => sum + (tr.cost || 0), 0);
+  const monthlyTreatmentRevenue = treatmentRecords
+    .filter(tr => tr.date.startsWith(monthKey))
+    .reduce((sum, tr) => sum + (tr.cost || 0), 0);
+
+  const dailyMedicineRevenue = medicineSales
+    .filter(sale => sale.date === todayKey)
+    .reduce((sum, sale) => sum + (sale.total_price || 0), 0);
+  const weeklyMedicineRevenue = medicineSales
+    .filter(sale => sale.date >= weekStartKey)
+    .reduce((sum, sale) => sum + (sale.total_price || 0), 0);
+  const monthlyMedicineRevenue = medicineSales
+    .filter(sale => sale.date.startsWith(monthKey))
+    .reduce((sum, sale) => sum + (sale.total_price || 0), 0);
+
+  const dailyRevenue = dailyTreatmentRevenue + dailyMedicineRevenue;
+  const weeklyRevenue = weeklyTreatmentRevenue + weeklyMedicineRevenue;
+  const monthlyRevenue = monthlyTreatmentRevenue + monthlyMedicineRevenue;
+
+  const dailyProfit = dailyRevenue - dailyTotal;
+  const weeklyProfit = weeklyRevenue - weeklyTotal;
+  const monthlyProfit = monthlyRevenue - monthlyTotal;
+
+  const hasFinancialData = expenses.length > 0 || treatmentRecords.length > 0 || medicineSales.length > 0;
 
   const monthlyChartData = useMemo(() => {
     const now = new Date();
@@ -186,7 +227,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
         </div>
       </div>
 
-      {!loading && expenses.length > 0 && (
+      {!loading && hasFinancialData && (
         <div className="p-6 border-b border-gray-100 bg-gray-50/50">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
@@ -215,6 +256,39 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <p className="text-xs text-gray-500 uppercase tracking-widest">All Time</p>
                 <p className="text-lg font-bold text-gray-900">{formatCurrency(totalAll, currency)}</p>
               </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-widest">Monthly Revenue</p>
+              <p className="text-lg font-bold text-gray-900 mt-2">{formatCurrency(monthlyRevenue, currency)}</p>
+              <p className="text-xs text-gray-500 mt-1">Treatments + medicine sales</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-widest">Monthly Expenses</p>
+              <p className="text-lg font-bold text-gray-900 mt-2">{formatCurrency(monthlyTotal, currency)}</p>
+              <p className="text-xs text-gray-500 mt-1">Operating costs</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-widest">Monthly Profit</p>
+              <p className={`text-lg font-bold mt-2 ${monthlyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {formatCurrency(monthlyProfit, currency)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Revenue - expenses</p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-500">
+            <div className="bg-white border border-gray-100 rounded-lg px-4 py-3">
+              Today: Revenue {formatCurrency(dailyRevenue, currency)} • Expenses {formatCurrency(dailyTotal, currency)} • Profit{' '}
+              <span className={dailyProfit >= 0 ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>
+                {formatCurrency(dailyProfit, currency)}
+              </span>
+            </div>
+            <div className="bg-white border border-gray-100 rounded-lg px-4 py-3">
+              This Week: Revenue {formatCurrency(weeklyRevenue, currency)} • Expenses {formatCurrency(weeklyTotal, currency)} • Profit{' '}
+              <span className={weeklyProfit >= 0 ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>
+                {formatCurrency(weeklyProfit, currency)}
+              </span>
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">

@@ -158,6 +158,7 @@ const App: React.FC = () => {
   const [assistantMedicines, setAssistantMedicines] = useState<Medicine[]>([]);
   const [assistantExpenses, setAssistantExpenses] = useState<Expense[]>([]);
   const [assistantRecalls, setAssistantRecalls] = useState<Recall[]>([]);
+  const [assistantMedicineSales, setAssistantMedicineSales] = useState<MedicineSale[]>([]);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -166,6 +167,7 @@ const App: React.FC = () => {
   const [loyaltyRules, setLoyaltyRules] = useState<LoyaltyRule[]>([]);
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [medicineSales, setMedicineSales] = useState<MedicineSale[]>([]);
   const [recalls, setRecalls] = useState<Recall[]>([]);
   const scheduledTaskProcessorRef = React.useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
@@ -443,6 +445,7 @@ const App: React.FC = () => {
     setLoyaltyRules([]);
     setLoyaltyTransactions([]);
     setExpenses([]);
+    setMedicineSales([]);
     setRecalls([]);
     setDashboardPatients([]);
     setDashboardAppointments([]);
@@ -456,6 +459,7 @@ const App: React.FC = () => {
     setAssistantMedicines([]);
     setAssistantExpenses([]);
     setAssistantRecalls([]);
+    setAssistantMedicineSales([]);
     localStorage.removeItem('dashboardLocationId');
   };
 
@@ -538,7 +542,7 @@ const App: React.FC = () => {
     const canAccessAllLocations = isAdmin && !restrictedLocationId;
     const assistantLocationId = canAccessAllLocations ? undefined : queryLocationId;
 
-    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, recallData] = await Promise.all([
+    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, recallData, salesData] = await Promise.all([
       api.patients.getAll(assistantLocationId),
       api.appointments.getAll(assistantLocationId),
       api.doctors.getAll(assistantLocationId),
@@ -546,7 +550,8 @@ const App: React.FC = () => {
       api.treatments.getAllRecords(assistantLocationId),
       api.medicines.getAll(assistantLocationId),
       api.expenses.getAll(assistantLocationId),
-      api.recalls.getAll(assistantLocationId)
+      api.recalls.getAll(assistantLocationId),
+      api.medicines.getSales(assistantLocationId)
     ]);
 
     setAssistantPatients(patData);
@@ -557,6 +562,7 @@ const App: React.FC = () => {
     setAssistantMedicines(medData);
     setAssistantExpenses(expenseData);
     setAssistantRecalls(recallData);
+    setAssistantMedicineSales(salesData);
   };
 
   const fetchInitialData = async (overrideLocationId?: string) => {
@@ -611,7 +617,7 @@ const App: React.FC = () => {
       
       // Only fetch data if we have a valid location
       if (locId) {
-        const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData, recallData] = await Promise.all([
+        const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData, recallData, salesData] = await Promise.all([
           api.patients.getAll(locId),
           api.appointments.getAll(locId),
           api.doctors.getAll(locId),
@@ -620,7 +626,8 @@ const App: React.FC = () => {
           api.medicines.getAll(locId),
           api.loyalty.getRules(locId),
           api.expenses.getAll(locId),
-          api.recalls.getAll(locId)
+          api.recalls.getAll(locId),
+          api.medicines.getSales(locId)
         ]);
         setPatients(patData);
         setAppointments(aptData);
@@ -631,6 +638,7 @@ const App: React.FC = () => {
         setLoyaltyRules(loyaltyData);
         setExpenses(expenseData);
         setRecalls(recallData);
+        setMedicineSales(salesData);
       }
 
       await fetchDashboardData(undefined, locData);
@@ -676,17 +684,18 @@ const App: React.FC = () => {
 
   const buildDailyReportEmailBody = async (task: ScheduledTask) => {
     const locationId = task.location_id || currentLocationId || undefined;
-    const [reportTreatments, reportExpenses, reportMedicines] = await Promise.all([
+    const [reportTreatments, reportExpenses, reportMedicines, reportMedicineSales] = await Promise.all([
       api.treatments.getAllRecords(locationId),
       api.expenses.getAll(locationId),
-      api.medicines.getAll(locationId)
+      api.medicines.getAll(locationId),
+      api.medicines.getSales(locationId)
     ]);
 
     const taskCurrency = (task.payload?.currency === 'MMK' || task.payload?.currency === 'USD')
       ? task.payload.currency
       : currency;
 
-    const report = buildFinancialReport(reportTreatments, reportExpenses, reportMedicines, taskCurrency);
+    const report = buildFinancialReport(reportTreatments, reportExpenses, reportMedicines, taskCurrency, undefined, reportMedicineSales);
     const reportMarkdown = renderFinancialReportMarkdown(report, taskCurrency);
     const clinicLabel = locations.find(loc => loc.id === locationId)?.name || 'Dental Clinic';
 
@@ -745,6 +754,7 @@ const App: React.FC = () => {
     }
     if (currentView === 'expenses' && canAccessView('expenses')) {
       fetchExpenses();
+      fetchMedicineSales();
     }
     if (currentView === 'ai-assistant' && canAccessView('ai-assistant')) {
       fetchAssistantData().catch(err => {
@@ -801,6 +811,19 @@ const App: React.FC = () => {
       setExpenses(expenseData);
     } catch (err: any) {
       console.warn('Error fetching expenses:', err);
+    }
+  };
+
+  const fetchMedicineSales = async () => {
+    try {
+      if (!currentLocationId) {
+        setMedicineSales([]);
+        return;
+      }
+      const salesData = await api.medicines.getSales(currentLocationId);
+      setMedicineSales(salesData);
+    } catch (err: any) {
+      console.warn('Error fetching medicine sales:', err);
     }
   };
 
@@ -1747,7 +1770,18 @@ const App: React.FC = () => {
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={handleDeleteTreatmentType} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
-            {currentView === 'expenses' && canAccessView('expenses') && <ExpensesView expenses={expenses} loading={loading} currency={currency} onAdd={() => {setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData()); setShowExpenseModal(true);}} onEdit={(expense) => {setEditingExpense(expense); setNewExpenseData({ description: expense.description, amount: expense.amount, category: expense.category, date: expense.date }); setShowExpenseModal(true);}} onDelete={handleDeleteExpense} />}
+            {currentView === 'expenses' && canAccessView('expenses') && (
+              <ExpensesView
+                expenses={expenses}
+                treatmentRecords={globalRecords}
+                medicineSales={medicineSales}
+                loading={loading}
+                currency={currency}
+                onAdd={() => {setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData()); setShowExpenseModal(true);}}
+                onEdit={(expense) => {setEditingExpense(expense); setNewExpenseData({ description: expense.description, amount: expense.amount, category: expense.category, date: expense.date }); setShowExpenseModal(true);}}
+                onDelete={handleDeleteExpense}
+              />
+            )}
             {currentView === 'users' && canAccessView('users') && <UsersView users={users} loading={loading} isAdmin={isAdmin} onAdd={() => {setEditingUser(null); setUserFormError(null); setNewUserData(getDefaultUserFormData()); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setUserFormError(null); setNewUserData({ username: user.username, password: '', role: user.role, location_id: user.location_id, allowed_tabs: resolveAllowedTabs(user.role, user.allowed_tabs) }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
             {currentView === 'settings' && canAccessView('settings') && <SettingsView 
                 currency={currency} 
@@ -1777,6 +1811,7 @@ const App: React.FC = () => {
                 users={users}
                 medicines={assistantMedicines}
                 expenses={assistantExpenses}
+                medicineSales={assistantMedicineSales}
                 recalls={assistantRecalls}
                 locations={locations}
                 currentLocationId={currentLocationId}

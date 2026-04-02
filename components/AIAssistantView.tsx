@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall, Location } from '../types';
+import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall, Location, MedicineSale } from '../types';
 import { api } from '../services/api';
 import { Currency } from '../utils/currency';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, AIReportPayload } from '../utils/aiReport';
@@ -239,6 +239,7 @@ interface AIAssistantViewProps {
   users: UserType[];
   medicines: Medicine[];
   expenses: Expense[];
+  medicineSales: MedicineSale[];
   recalls?: Recall[];
   locations?: Location[];
   currentLocationId?: string;
@@ -257,6 +258,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   users,
   medicines,
   expenses,
+  medicineSales,
   recalls = [],
   locations = [],
   currentLocationId = '',
@@ -368,6 +370,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const activeTreatmentTypes = useMemo(() => filterByLocation(treatmentTypes), [treatmentTypes, analysisLocationId]);
   const activeMedicines = useMemo(() => filterByLocation(medicines), [medicines, analysisLocationId]);
   const activeExpenses = useMemo(() => filterByLocation(expenses), [expenses, analysisLocationId]);
+  const activeMedicineSales = useMemo(() => filterByLocation(medicineSales), [medicineSales, analysisLocationId]);
   const activeRecalls = useMemo(() => filterByLocation(recalls), [recalls, analysisLocationId]);
   const activeTreatmentRecords = useMemo(() => filterByLocation(treatmentRecords), [treatmentRecords, analysisLocationId]);
 
@@ -1646,12 +1649,21 @@ Need more detailed help?
     // Identify high outstanding balances
     const highBalances = activePatients.filter(p => (p.balance || 0) > 500000).slice(0, 5).map(p => ({ n: p.name, b: p.balance, loc: p.location_id }));
 
-    const monthlyRevenue = activeTreatmentRecords.filter(tr => {
+    const monthlyTreatmentRevenue = activeTreatmentRecords.filter(tr => {
       const recordDate = new Date(tr.date);
       const currentDate = new Date();
       return recordDate.getMonth() === currentDate.getMonth() && 
              recordDate.getFullYear() === currentDate.getFullYear();
     }).reduce((sum, tr) => sum + (tr.cost || 0), 0);
+
+    const monthlyMedicineRevenue = activeMedicineSales.filter(sale => {
+      const saleDate = new Date(sale.date);
+      const currentDate = new Date();
+      return saleDate.getMonth() === currentDate.getMonth() && 
+             saleDate.getFullYear() === currentDate.getFullYear();
+    }).reduce((sum, sale) => sum + (sale.total_price || 0), 0);
+
+    const monthlyRevenue = monthlyTreatmentRevenue + monthlyMedicineRevenue;
 
     const doctorPopularity30dMap = new Map<string, number>();
     const thirtyDaysAgo = new Date();
@@ -1785,8 +1797,12 @@ Need more detailed help?
         loc: exp.location_id
       })),
       financial_summary: {
-        daily_revenue: activeTreatmentRecords.filter(tr => tr.date === today).reduce((sum, tr) => sum + (tr.cost || 0), 0),
-        weekly_revenue: activeTreatmentRecords.filter(tr => tr.date >= sevenDaysAgoStr).reduce((sum, tr) => sum + (tr.cost || 0), 0),
+        daily_revenue:
+          activeTreatmentRecords.filter(tr => tr.date === today).reduce((sum, tr) => sum + (tr.cost || 0), 0) +
+          activeMedicineSales.filter(sale => sale.date === today).reduce((sum, sale) => sum + (sale.total_price || 0), 0),
+        weekly_revenue:
+          activeTreatmentRecords.filter(tr => tr.date >= sevenDaysAgoStr).reduce((sum, tr) => sum + (tr.cost || 0), 0) +
+          activeMedicineSales.filter(sale => sale.date >= sevenDaysAgoStr).reduce((sum, sale) => sum + (sale.total_price || 0), 0),
         monthly_revenue: monthlyRevenue,
         daily_expenses: activeExpenses.filter(exp => exp.date === today).reduce((sum, exp) => sum + (exp.amount || 0), 0),
         weekly_expenses: activeExpenses.filter(exp => exp.date >= sevenDaysAgoStr).reduce((sum, exp) => sum + (exp.amount || 0), 0),
@@ -2132,7 +2148,7 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
     
     const isReportQuery = isReportingQuery(userMessage);
     if (isReportQuery) {
-      const report = buildFinancialReport(activeTreatmentRecords, activeExpenses, activeMedicines, currency);
+      const report = buildFinancialReport(activeTreatmentRecords, activeExpenses, activeMedicines, currency, undefined, activeMedicineSales);
       const reportMarkdown = renderFinancialReportMarkdown(report, currency);
       const insights = buildInsightsNoNumbers(report);
       const insightsMarkdown = buildInsightsMarkdown(insights);
@@ -2272,6 +2288,7 @@ When users ask complex questions, think through this framework:
 - Follow-up recommendations
 - Alternative treatment options
 - Doctor popularity insights (identify most famous doctor by treatment volume in the last 30 days when asked)
+- Profit/loss updates using treatment income + medicine sales minus expenses when asked about business performance
 
 Today: ${contextData.td}
 Clinic Time Zone: ${getLocalTimeZone()}
