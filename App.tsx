@@ -147,6 +147,7 @@ const App: React.FC = () => {
   const [dashboardPatients, setDashboardPatients] = useState<Patient[]>([]);
   const [dashboardAppointments, setDashboardAppointments] = useState<Appointment[]>([]);
   const [dashboardRecords, setDashboardRecords] = useState<ClinicalRecord[]>([]);
+  const [dashboardExpenses, setDashboardExpenses] = useState<Expense[]>([]);
   const [dashboardLocationId, setDashboardLocationId] = useState<string>(() => {
     return localStorage.getItem('dashboardLocationId') || ALL_BRANCHES_VALUE;
   });
@@ -516,10 +517,11 @@ const App: React.FC = () => {
     );
     const queryLocationId = sanitizedScope === ALL_BRANCHES_VALUE ? undefined : sanitizedScope;
 
-    const [patData, aptData, recordsData] = await Promise.all([
+    const [patData, aptData, recordsData, expenseData] = await Promise.all([
       api.patients.getAll(queryLocationId),
       api.appointments.getAll(queryLocationId),
-      api.treatments.getAllRecords(queryLocationId)
+      api.treatments.getAllRecords(queryLocationId),
+      api.expenses.getAll(queryLocationId)
     ]);
 
     if (requestId !== dashboardFetchRequestRef.current) {
@@ -529,6 +531,7 @@ const App: React.FC = () => {
     setDashboardPatients(patData);
     setDashboardAppointments(aptData);
     setDashboardRecords(recordsData);
+    setDashboardExpenses(expenseData);
     setDashboardLocationId(sanitizedScope);
     localStorage.setItem('dashboardLocationId', sanitizedScope);
   };
@@ -661,6 +664,7 @@ const App: React.FC = () => {
       setDashboardPatients([]);
       setDashboardAppointments([]);
       setDashboardRecords([]);
+      setDashboardExpenses([]);
       await fetchDashboardData(locId);
     } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
@@ -1723,6 +1727,7 @@ const App: React.FC = () => {
                 patients={dashboardPatients}
                 appointments={dashboardAppointments}
                 treatmentRecords={dashboardRecords}
+                expenses={dashboardExpenses}
                 currency={currency}
                 locations={locations}
                 selectedLocationId={dashboardLocationId}

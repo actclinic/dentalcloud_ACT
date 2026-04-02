@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Loader2, FileText, FileDown, BarChart3 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, FileText, FileDown, BarChart3, Eye } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import { ClinicalRecord, Expense, MedicineSale } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportExpensesToPDF } from '../utils/pdfExport';
+import { Modal } from './Shared';
 import Pagination from './Pagination';
 
 interface ExpensesViewProps {
@@ -31,6 +32,8 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const itemsPerPage = 10;
 
   const categories = useMemo(() => {
@@ -166,6 +169,16 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const openDetailModal = (expense: Expense) => {
+    setSelectedExpense(expense);
+    setShowDetailModal(true);
+  };
+
+  const closeDetailModal = () => {
+    setShowDetailModal(false);
+    setSelectedExpense(null);
   };
 
   return (
@@ -382,6 +395,13 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
+                        onClick={() => openDetailModal(expense)}
+                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="View details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => onEdit(expense)}
                         className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                         title="Edit expense"
@@ -417,6 +437,57 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
           showAll={showAll}
           onToggleShowAll={() => setShowAll(!showAll)}
         />
+      )}
+
+      {showDetailModal && selectedExpense && (
+        <Modal title="Expense Details" onClose={closeDetailModal}>
+          <div className="space-y-4">
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-widest">Description</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{selectedExpense.description}</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Date</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{selectedExpense.date}</p>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Category</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{selectedExpense.category || 'Uncategorized'}</p>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Amount</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{formatCurrency(selectedExpense.amount || 0, currency)}</p>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Location ID</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">{selectedExpense.location_id}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Expense ID</p>
+                <p className="mt-1 text-xs font-semibold text-gray-700 break-all">{selectedExpense.id}</p>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Created At</p>
+                <p className="mt-1 text-xs font-semibold text-gray-700">{selectedExpense.created_at || 'N/A'}</p>
+              </div>
+              <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Updated At</p>
+                <p className="mt-1 text-xs font-semibold text-gray-700">{selectedExpense.updated_at || 'N/A'}</p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={closeDetailModal}
+                className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-800 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

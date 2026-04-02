@@ -1,14 +1,15 @@
 import React, { useMemo } from 'react';
-import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin } from 'lucide-react';
+import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { StatsCard } from './Shared';
-import { Patient, Appointment, ClinicalRecord, Location } from '../types';
+import { Patient, Appointment, ClinicalRecord, Location, Expense } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 
 interface DashboardViewProps {
   patients: Patient[];
   appointments: Appointment[];
   treatmentRecords: ClinicalRecord[];
+  expenses: Expense[];
   currency: Currency;
   locations: Location[];
   selectedLocationId: string;
@@ -22,6 +23,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   patients,
   appointments,
   treatmentRecords,
+  expenses,
   currency,
   locations,
   selectedLocationId,
@@ -43,6 +45,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       .reduce((sum, record) => sum + (record.cost || 0), 0);
   }, [treatmentRecords]);
 
+  const dailyExpenses = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return expenses
+      .filter(expense => expense.date === today)
+      .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  }, [expenses]);
+
   // Calculate Monthly Revenue (this month's treatments)
   const monthlyRevenue = useMemo(() => {
     const now = new Date();
@@ -52,6 +61,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       .filter(record => record.date >= startOfMonth && record.date <= endOfMonth)
       .reduce((sum, record) => sum + (record.cost || 0), 0);
   }, [treatmentRecords]);
+
+  const monthlyExpenses = useMemo(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    return expenses
+      .filter(expense => expense.date >= startOfMonth && expense.date <= endOfMonth)
+      .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  }, [expenses]);
+
+  const monthlyProfit = useMemo(() => monthlyRevenue - monthlyExpenses, [monthlyRevenue, monthlyExpenses]);
 
   // Weekly Revenue Data (last 7 days)
   const weeklyRevenueData = useMemo(() => {
@@ -74,6 +94,31 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     
     return weekData;
   }, [treatmentRecords]);
+
+  const weeklyFinancialData = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date();
+    const weekData = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const dayName = days[date.getDay()];
+
+      const revenue = treatmentRecords
+        .filter(record => record.date === dateStr)
+        .reduce((sum, record) => sum + (record.cost || 0), 0);
+
+      const totalExpense = expenses
+        .filter(expense => expense.date === dateStr)
+        .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+
+      weekData.push({ name: dayName, revenue, expenses: totalExpense, profit: revenue - totalExpense, date: dateStr });
+    }
+
+    return weekData;
+  }, [treatmentRecords, expenses]);
 
   // Appointment Revenue Performance (revenue by day over last 14 days)
   const appointmentRevenueData = useMemo(() => {
@@ -159,6 +204,38 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     return change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
   }, [monthlyRevenue, treatmentRecords]);
 
+  const monthlyExpenseTrend = useMemo(() => {
+    const now = new Date();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+
+    const lastMonthExpenses = expenses
+      .filter(expense => expense.date >= lastMonthStart && expense.date <= lastMonthEnd)
+      .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+
+    if (lastMonthExpenses === 0) return 'N/A';
+    const change = ((monthlyExpenses - lastMonthExpenses) / lastMonthExpenses) * 100;
+    return change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
+  }, [monthlyExpenses, expenses]);
+
+  const monthlyProfitTrend = useMemo(() => {
+    const now = new Date();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+
+    const lastMonthRevenue = treatmentRecords
+      .filter(record => record.date >= lastMonthStart && record.date <= lastMonthEnd)
+      .reduce((sum, record) => sum + (record.cost || 0), 0);
+    const lastMonthExpenses = expenses
+      .filter(expense => expense.date >= lastMonthStart && expense.date <= lastMonthEnd)
+      .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+    const lastMonthProfit = lastMonthRevenue - lastMonthExpenses;
+
+    if (lastMonthProfit === 0) return 'N/A';
+    const change = ((monthlyProfit - lastMonthProfit) / Math.abs(lastMonthProfit)) * 100;
+    return change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
+  }, [monthlyProfit, treatmentRecords, expenses]);
+
   // Appointment Status Distribution (today)
   const appointmentStatusData = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -204,6 +281,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         count
       }));
   }, [treatmentRecords]);
+
+  const expenseCategoryData = useMemo(() => {
+    const totals = new Map<string, number>();
+    expenses.forEach(expense => {
+      const key = expense.category?.trim() || 'Uncategorized';
+      totals.set(key, (totals.get(key) || 0) + (expense.amount || 0));
+    });
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+  }, [expenses]);
+
+  const expenseCategoryColors = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#14B8A6', '#8B5CF6', '#0EA5E9', '#F97316'];
 
   // Doctor Popularity (most treatments handled, last 30 days)
   const doctorPopularityData = useMemo(() => {
@@ -253,6 +344,31 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     return data;
   }, [patients]);
 
+  const monthlyProfitData = useMemo(() => {
+    const now = new Date();
+    const data: { label: string; profit: number; revenue: number; expenses: number }[] = [];
+
+    for (let i = 5; i >= 0; i--) {
+      const point = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = point.toISOString().slice(0, 7);
+      const label = `${point.toLocaleString('default', { month: 'short' })} ${point.getFullYear()}`;
+      const revenue = treatmentRecords
+        .filter(record => record.date.startsWith(key))
+        .reduce((sum, record) => sum + (record.cost || 0), 0);
+      const totalExpense = expenses
+        .filter(expense => expense.date.startsWith(key))
+        .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+      data.push({
+        label,
+        revenue,
+        expenses: totalExpense,
+        profit: revenue - totalExpense
+      });
+    }
+
+    return data;
+  }, [treatmentRecords, expenses]);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -296,9 +412,12 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatsCard title="Daily Revenue" value={formatCurrency(dailyRevenue, currency)} icon={<DollarSign className="text-green-600" />} trend={dailyTrend} />
         <StatsCard title="Monthly Revenue" value={formatCurrency(monthlyRevenue, currency)} icon={<Activity className="text-blue-600" />} trend={monthlyTrend} />
+        <StatsCard title="Daily Expenses" value={formatCurrency(dailyExpenses, currency)} icon={<TrendingDown className="text-red-600" />} trend="Today" />
+        <StatsCard title="Monthly Expenses" value={formatCurrency(monthlyExpenses, currency)} icon={<TrendingDown className="text-amber-600" />} trend={monthlyExpenseTrend} />
+        <StatsCard title="Monthly Profit" value={formatCurrency(monthlyProfit, currency)} icon={<DollarSign className="text-emerald-600" />} trend={monthlyProfitTrend} />
         <StatsCard title="Active Patients" value={patients.length.toString()} icon={<Users className="text-indigo-600" />} trend="Stable" />
         <StatsCard title="Appointments Today" value={appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length.toString()} icon={<CalendarIcon className="text-orange-600" />} trend="Busy" />
       </div>
@@ -321,6 +440,40 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 formatter={(value: number) => [formatCurrency(value, currency), 'Revenue']}
               />
               <Area type="monotone" dataKey="value" stroke="#4F46E5" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">Weekly Revenue vs Expenses</h3>
+        <p className="text-xs text-gray-500 mb-4">Treatment revenue compared to operating expenses</p>
+        <div className="h-[280px] w-full min-h-[280px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={weeklyFinancialData}>
+              <defs>
+                <linearGradient id="colorWeeklyRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#4F46E5" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorWeeklyExpense" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#EF4444" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
+              <Tooltip
+                formatter={(value: number, name: string) => {
+                  if (name === 'revenue') return [formatCurrency(value, currency), 'Revenue'];
+                  if (name === 'expenses') return [formatCurrency(value, currency), 'Expenses'];
+                  return [formatCurrency(value, currency), 'Profit'];
+                }}
+              />
+              <Legend />
+              <Area type="monotone" dataKey="revenue" stroke="#4F46E5" strokeWidth={2} fill="url(#colorWeeklyRevenue)" />
+              <Area type="monotone" dataKey="expenses" stroke="#EF4444" strokeWidth={2} fill="url(#colorWeeklyExpense)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -448,6 +601,61 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 </BarChart>
               </ResponsiveContainer>
             )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Expense Breakdown</h3>
+          <p className="text-xs text-gray-500 mb-4">Category distribution</p>
+          <div className="h-[260px] w-full min-h-[260px] flex items-center justify-center">
+            {expenseCategoryData.length === 0 ? (
+              <p className="text-sm text-gray-400 italic">No expense data available.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={expenseCategoryData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={95}
+                    paddingAngle={3}
+                  >
+                    {expenseCategoryData.map((entry, index) => (
+                      <Cell key={`expense-cell-${index}`} fill={expenseCategoryColors[index % expenseCategoryColors.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number, name: string) => [formatCurrency(value, currency), name]} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Net Profit (Last 6 Months)</h3>
+          <p className="text-xs text-gray-500 mb-4">Revenue minus expenses</p>
+          <div className="h-[260px] w-full min-h-[260px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyProfitData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
+                <Tooltip
+                  formatter={(value: number, name: string) => {
+                    if (name === 'profit') return [formatCurrency(value, currency), 'Net Profit'];
+                    if (name === 'revenue') return [formatCurrency(value, currency), 'Revenue'];
+                    return [formatCurrency(value, currency), 'Expenses'];
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="profit" fill="#10B981" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="expenses" fill="#EF4444" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
