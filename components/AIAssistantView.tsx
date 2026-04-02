@@ -1033,6 +1033,7 @@ How can I assist you today?`,
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const memoryDirtyRef = useRef<boolean>(false);
+  const lastSpeechTranscriptRef = useRef<string>('');
   
   // Enhanced speech recognition with SpeechGrammarList for better accuracy
   const recognition = useRef<any>(null);
@@ -1111,6 +1112,7 @@ How can I assist you today?`,
         
         // Only update if we have meaningful content
         if (transcript.length > 0) {
+          lastSpeechTranscriptRef.current = transcript;
           // Update the input field
           setInputMessage(transcript);
           
@@ -1130,6 +1132,7 @@ How can I assist you today?`,
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
         setIsProcessing(false);
+        lastSpeechTranscriptRef.current = '';
         
         // Provide user-friendly error messages
         let errorMessage = 'Speech recognition failed. ';
@@ -1163,7 +1166,7 @@ How can I assist you today?`,
       
       recognition.current.onend = () => {
         // Recognition ended - check if we have valid input
-        const currentInput = inputMessage.trim();
+        const currentInput = lastSpeechTranscriptRef.current.trim();
         
         if (currentInput.length > 0) {
           // Valid speech captured - show processing state
@@ -1173,11 +1176,12 @@ How can I assist you today?`,
           setTimeout(() => {
             setIsListening(false);
             setIsProcessing(false);
-            
+            lastSpeechTranscriptRef.current = '';
+
             // Auto-send the message if it's a reasonable length
             if (currentInput.length > 1) {
               console.log('Auto-sending recognized speech:', currentInput);
-              handleSendMessage();
+              handleSendMessage(currentInput);
             }
           }, 500);
         } else {
@@ -2885,11 +2889,12 @@ I can provide guidance on:
     });
   };
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+  const handleSendMessage = async (messageOverride?: string) => {
+    const messageText = (messageOverride ?? inputMessage).trim();
+    if (!messageText || isLoading) return;
 
     // Check if this is a confirmation response for a pending action
-    const lowerInput = inputMessage.toLowerCase().trim();
+    const lowerInput = messageText.toLowerCase();
     const isConfirmation = 
       lowerInput.includes('yes') || 
       lowerInput.includes('confirm') || 
@@ -2907,7 +2912,7 @@ I can provide guidance on:
         const userMessage: Message = {
           id: Date.now().toString(),
           role: 'user',
-          content: inputMessage.trim(),
+          content: messageText,
           timestamp: new Date()
         };
         
@@ -3303,7 +3308,7 @@ I can provide guidance on:
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputMessage.trim(),
+      content: messageText,
       timestamp: new Date()
     };
 
@@ -4645,7 +4650,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       // If currently listening, stop speech recognition instead of sending
       if (isListening && recognition.current) {
         recognition.current.stop();
-        setIsListening(false);
       } else {
         handleSendMessage();
       }
@@ -5096,7 +5100,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                           if (recognition.current) {
                             if (isListening) {
                               recognition.current.stop();
-                              setIsListening(false);
                             } else {
                               // Restore context if there's a pending action or ongoing workflow
                               if ((pendingAction || conversationContext.currentWorkflow) && conversationContext.lastUserMessage) {
@@ -5122,6 +5125,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                   }
                                 });
                               }
+                              lastSpeechTranscriptRef.current = '';
                               recognition.current.start();
                               setIsListening(true);
                             }
