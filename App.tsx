@@ -22,7 +22,8 @@ import {
   MessageCircle,
   Monitor,
   AlertTriangle,
-  BellRing
+  BellRing,
+  DollarSign
 } from 'lucide-react';
 
 import { Modal, Input, NavItem, Toast } from './components/Shared';
@@ -81,6 +82,7 @@ const AIAssistantView = React.lazy(() => import('./components/AIAssistantView'))
 const MessagingView = React.lazy(() => import('./components/MessagingView'));
 const PatientMessagingView = React.lazy(() => import('./components/PatientMessagingView'));
 const RecallsView = React.lazy(() => import('./components/RecallsView'));
+const ExpensesView = React.lazy(() => import('./components/ExpensesView'));
 
 const ALL_BRANCHES_VALUE = '__all_branches__';
 
@@ -100,6 +102,13 @@ const getDefaultUserFormData = (): Partial<User> => ({
   role: 'normal',
   location_id: null,
   allowed_tabs: [...DEFAULT_NORMAL_TAB_PERMISSIONS]
+});
+
+const getDefaultExpenseFormData = (): Partial<Expense> => ({
+  description: '',
+  amount: 0,
+  category: '',
+  date: new Date().toISOString().split('T')[0]
 });
 
 const App: React.FC = () => {
@@ -174,6 +183,7 @@ const App: React.FC = () => {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   
   // -- Modals State --
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -186,6 +196,7 @@ const App: React.FC = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [showMedicineModal, setShowMedicineModal] = useState(false);
   const [showMedicineSelectionModal, setShowMedicineSelectionModal] = useState(false);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; show: boolean }>({ message: '', type: 'success', show: false });
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
@@ -248,6 +259,7 @@ const App: React.FC = () => {
   const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });
+  const [newExpenseData, setNewExpenseData] = useState<Partial<Expense>>(getDefaultExpenseFormData());
 
   const applySessionState = (session: ReturnType<typeof auth.getSession>) => {
     if (!session) {
@@ -731,6 +743,9 @@ const App: React.FC = () => {
     if (currentView === 'inventory' && canAccessView('inventory')) {
       fetchMedicines();
     }
+    if (currentView === 'expenses' && canAccessView('expenses')) {
+      fetchExpenses();
+    }
     if (currentView === 'ai-assistant' && canAccessView('ai-assistant')) {
       fetchAssistantData().catch(err => {
         console.warn('Error fetching AI assistant data:', err);
@@ -773,6 +788,19 @@ const App: React.FC = () => {
       setTopSellingMedicines(topSellingData);
     } catch (err: any) {
       console.warn('Error fetching medicines:', err);
+    }
+  };
+
+  const fetchExpenses = async () => {
+    try {
+      if (!currentLocationId) {
+        setExpenses([]);
+        return;
+      }
+      const expenseData = await api.expenses.getAll(currentLocationId);
+      setExpenses(expenseData);
+    } catch (err: any) {
+      console.warn('Error fetching expenses:', err);
     }
   };
 
@@ -1089,6 +1117,39 @@ const App: React.FC = () => {
     try {
       await api.medicines.delete(id);
       fetchMedicines();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleCreateExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      if (!currentLocationId) {
+        throw new Error('Please select a clinic location before logging expenses.');
+      }
+      if (editingExpense) {
+        await api.expenses.update(editingExpense.id, newExpenseData);
+      } else {
+        await api.expenses.create({ ...newExpenseData, location_id: currentLocationId });
+      }
+      setShowExpenseModal(false);
+      setEditingExpense(null);
+      setNewExpenseData(getDefaultExpenseFormData());
+      fetchExpenses();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    try {
+      await api.expenses.delete(id);
+      fetchExpenses();
     } catch (err: any) {
       alert(err.message);
     }
@@ -1581,6 +1642,9 @@ const App: React.FC = () => {
                <NavItem icon={<ClipboardList size={18} />} label="Audit Log" active={currentView === 'records'} onClick={() => { setCurrentView('records'); setIsMobileMenuOpen(false); }} />
              )}
              {canAccessView('finance') && <NavItem icon={<CreditCard size={18} />} label="Clinical Focus" active={currentView === 'finance'} onClick={() => { setCurrentView('finance'); setIsMobileMenuOpen(false); }} />}
+             {canAccessView('expenses') && (
+               <NavItem icon={<DollarSign size={18} />} label="Expenses" active={currentView === 'expenses'} onClick={() => { setCurrentView('expenses'); setIsMobileMenuOpen(false); }} />
+             )}
              {canAccessView('inventory') && (
                <NavItem icon={<Package size={18} />} label="Inventory" active={currentView === 'inventory'} onClick={() => { setCurrentView('inventory'); setIsMobileMenuOpen(false); }} />
              )}
@@ -1683,6 +1747,7 @@ const App: React.FC = () => {
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={handleDeleteTreatmentType} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'expenses' && canAccessView('expenses') && <ExpensesView expenses={expenses} loading={loading} currency={currency} onAdd={() => {setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData()); setShowExpenseModal(true);}} onEdit={(expense) => {setEditingExpense(expense); setNewExpenseData({ description: expense.description, amount: expense.amount, category: expense.category, date: expense.date }); setShowExpenseModal(true);}} onDelete={handleDeleteExpense} />}
             {currentView === 'users' && canAccessView('users') && <UsersView users={users} loading={loading} isAdmin={isAdmin} onAdd={() => {setEditingUser(null); setUserFormError(null); setNewUserData(getDefaultUserFormData()); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setUserFormError(null); setNewUserData({ username: user.username, password: '', role: user.role, location_id: user.location_id, allowed_tabs: resolveAllowedTabs(user.role, user.allowed_tabs) }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
             {currentView === 'settings' && canAccessView('settings') && <SettingsView 
                 currency={currency} 
@@ -2222,6 +2287,48 @@ const App: React.FC = () => {
             </div>
             <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20">
               {editingMedicine ? 'Update Medicine' : 'Create Medicine'}
+            </button>
+          </form>
+        </Modal>
+      )}
+
+      {showExpenseModal && (
+        <Modal title={editingExpense ? "Edit Expense" : "New Expense"} onClose={() => {setShowExpenseModal(false); setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData());}}>
+          <form onSubmit={handleCreateExpense} className="space-y-5">
+            <Input
+              label="Description"
+              required
+              value={newExpenseData.description || ''}
+              onChange={(e: any) => setNewExpenseData({ ...newExpenseData, description: e.target.value })}
+              placeholder="e.g., Supplies, Utilities, Rent"
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Category"
+                required
+                value={newExpenseData.category || ''}
+                onChange={(e: any) => setNewExpenseData({ ...newExpenseData, category: e.target.value })}
+                placeholder="e.g., Operations"
+              />
+              <Input
+                label={`Amount (${getCurrencySymbol(currency)})`}
+                type="number"
+                required
+                min="0"
+                step="0.01"
+                value={newExpenseData.amount || 0}
+                onChange={(e: any) => setNewExpenseData({ ...newExpenseData, amount: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <Input
+              label="Date"
+              type="date"
+              required
+              value={newExpenseData.date || ''}
+              onChange={(e: any) => setNewExpenseData({ ...newExpenseData, date: e.target.value })}
+            />
+            <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20">
+              {editingExpense ? 'Update Expense' : 'Create Expense'}
             </button>
           </form>
         </Modal>

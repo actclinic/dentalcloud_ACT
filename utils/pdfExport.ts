@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Patient, Appointment, ClinicalRecord, Doctor, Medicine } from '../types';
+import { Patient, Appointment, ClinicalRecord, Doctor, Medicine, Expense } from '../types';
 import { formatCurrency, Currency } from './currency';
 
 // Add type declaration for jsPDF with autoTable
@@ -293,4 +293,49 @@ export const exportInventoryToPDF = (medicines: Medicine[], currency: Currency) 
   }
   
   doc.save(`inventory-report-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+export const exportExpensesToPDF = (expenses: Expense[], currency: Currency) => {
+  const exportExpenses = expenses;
+  const doc = new jsPDF();
+
+  doc.setFontSize(18);
+  doc.setTextColor(40, 40, 40);
+  doc.text('Expense Report', 14, 20);
+
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+  doc.text(`Total Expenses: ${expenses.length}`, 14, 34);
+
+  const total = exportExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+  doc.text(`Total Amount: ${formatCurrency(total, currency)}`, 14, 40);
+
+  autoTable(doc, {
+    startY: 46,
+    head: [['Date', 'Description', 'Category', 'Amount']],
+    body: exportExpenses.map(expense => [
+      expense.date,
+      expense.description,
+      expense.category,
+      formatCurrency(expense.amount || 0, currency)
+    ]),
+    theme: 'grid',
+    headStyles: { fillColor: [79, 70, 229], fontSize: 9, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 8 },
+    alternateRowStyles: { fillColor: [245, 247, 250] },
+    columnStyles: {
+      3: { halign: 'right', fontStyle: 'bold' }
+    }
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
+  }
+
+  doc.save(`expense-report-${new Date().toISOString().split('T')[0]}.pdf`);
 };

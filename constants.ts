@@ -54,6 +54,11 @@ export const FLEXIBLE_STAFF_TABS = [
     description: 'Clinical records and audit trail review.'
   },
   {
+    key: 'expenses',
+    label: 'Expenses',
+    description: 'Operating expenses and cost tracking.'
+  },
+  {
     key: 'inventory',
     label: 'Inventory',
     description: 'Medicine stock and inventory operations.'
