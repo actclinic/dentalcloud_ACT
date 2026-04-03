@@ -1476,7 +1476,7 @@ const App: React.FC = () => {
   };
 
   const handleUploadFilesWithProgress = async (
-    files: File[], 
+    files: File[],
     onProgress: (progress: { fileName: string; bytesUploaded: number; bytesTotal: number; percentage: number }) => void
   ): Promise<void> => {
     if (!selectedPatient) return;
@@ -1484,8 +1484,17 @@ const App: React.FC = () => {
 
     setUploading(true);
     try {
+      // Log smart upload configuration
+      console.log(`[Upload Handler] Uploading ${files.length} file(s) with smart chunking`);
+      
       // Upload files sequentially to show proper progress for each
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+        const chunkSizeMB = (api.files.calculateOptimalChunkSize(file.size) / 1024 / 1024).toFixed(2);
+        
+        console.log(`[Upload Handler] File ${i + 1}/${files.length}: ${file.name} (${fileSizeMB}MB, chunks: ${chunkSizeMB}MB)`);
+        
         await api.files.uploadWithTus(
           selectedPatient.id,
           file,
@@ -1497,14 +1506,23 @@ const App: React.FC = () => {
               bytesTotal,
               percentage
             });
+          },
+          (chunkSize, bytesAccepted, bytesTotal) => {
+            // Log chunk completion for debugging
+            console.log(`[Upload Handler] Chunk uploaded: ${(chunkSize / 1024 / 1024).toFixed(2)}MB`);
           }
         );
+        
+        console.log(`[Upload Handler] Completed file ${i + 1}/${files.length}: ${file.name}`);
       }
-      
+
       // Refresh the file list after upload
       const updatedFiles = await api.files.list(selectedPatient.id);
       setPatientFiles(updatedFiles);
+      
+      console.log(`[Upload Handler] All ${files.length} file(s) uploaded successfully`);
     } catch (err: any) {
+      console.error('[Upload Handler] Upload failed:', err);
       alert(err.message || 'Upload failed');
       throw err;
     } finally {

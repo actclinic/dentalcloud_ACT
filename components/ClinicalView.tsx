@@ -666,25 +666,32 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           >
             <Upload className="w-8 h-8 text-indigo-500 mx-auto mb-2" />
             <p className="text-sm font-medium text-gray-800">Drag & drop X-rays, documents, videos, or ZIP files</p>
-            <p className="text-xs text-gray-500 mb-3">Accepted: images, PDF, videos, ZIP. Max 10 files at once.</p>
+            <p className="text-xs text-gray-500 mb-3">Accepted: images, PDF, videos, ZIP. Smart chunked upload enabled.</p>
             
             {/* Upload Progress Bar */}
             {isUploadingWithProgress && uploadProgress && (
-              <div className="mb-3 mx-auto max-w-xs">
+              <div className="mb-3 mx-auto max-w-md">
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-600 truncate max-w-[200px]">{uploadProgress.fileName}</span>
-                  <span className="font-semibold text-indigo-600">{uploadProgress.percentage}%</span>
+                  <span className="text-gray-600 truncate max-w-[200px] font-medium">{uploadProgress.fileName}</span>
+                  <span className="font-bold text-indigo-600">{uploadProgress.percentage}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2.5 rounded-full transition-all duration-300 relative"
                     style={{ width: `${uploadProgress.percentage}%` }}
-                  />
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatBytes(uploadProgress.bytesUploaded)} / {formatBytes(uploadProgress.bytesTotal)}
-                </p>
-                <p className="text-xs text-indigo-600 font-medium mt-1">Chunked upload in progress...</p>
+                <div className="flex justify-between items-center mt-1.5">
+                  <p className="text-xs text-gray-500">
+                    {formatBytes(uploadProgress.bytesUploaded)} / {formatBytes(uploadProgress.bytesTotal)}
+                  </p>
+                  <p className="text-xs text-indigo-600 font-semibold flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 bg-indigo-600 rounded-full animate-pulse"></span>
+                    Smart chunked upload
+                  </p>
+                </div>
               </div>
             )}
             

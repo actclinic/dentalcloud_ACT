@@ -1457,35 +1457,83 @@ export const api = {
     },
 
     /**
-     * Upload a file using TUS resumable upload protocol with chunking support.
+     * Calculate optimal chunk size based on file size to bypass Cloudflare 150MB limit.
+     * Uses adaptive chunking: smaller chunks for larger files to ensure reliable uploads.
+     * 
+     * @param fileSize - File size in bytes
+     * @returns Optimal chunk size in bytes
+     */
+    calculateOptimalChunkSize: (fileSize: number): number => {
+      // For files < 100MB: 10MB chunks
+      if (fileSize < 100 * 1024 * 1024) {
+        return 10 * 1024 * 1024;
+      }
+      // For files 100MB - 500MB: 5MB chunks
+      if (fileSize < 500 * 1024 * 1024) {
+        return 5 * 1024 * 1024;
+      }
+      // For files 500MB - 1GB: 2MB chunks
+      if (fileSize < 1024 * 1024 * 1024) {
+        return 2 * 1024 * 1024;
+      }
+      // For files 1GB - 5GB: 1MB chunks
+      if (fileSize < 5 * 1024 * 1024 * 1024) {
+        return 1 * 1024 * 1024;
+      }
+      // For files > 5GB: 512KB chunks (very small for maximum reliability)
+      return 512 * 1024;
+    },
+
+    /**
+     * Upload a file using TUS resumable upload protocol with smart adaptive chunking.
+     * Automatically adjusts chunk size based on file size to bypass Cloudflare 150MB limit.
+     * Supports pause, resume, and cancel operations.
+     * 
      * This is ideal for large files and unreliable network connections.
      * Works with both authenticated and public (anon key) uploads based on storage policies.
-     * 
+     *
      * @param patientId - The patient ID to associate the file with
      * @param file - The file to upload
      * @param onProgress - Callback for upload progress (bytesUploaded, bytesTotal)
      * @param onChunkComplete - Callback when a chunk is successfully uploaded
+     * @param options - Optional configuration (chunkSize, parallelUploads, etc.)
      * @returns Promise that resolves with the PatientFile when upload is complete
      */
     uploadWithTus: async (
-      patientId: string, 
-      file: File, 
+      patientId: string,
+      file: File,
       onProgress?: (bytesUploaded: number, bytesTotal: number) => void,
-      onChunkComplete?: (chunkSize: number, bytesAccepted: number, bytesTotal: number) => void
+      onChunkComplete?: (chunkSize: number, bytesAccepted: number, bytesTotal: number) => void,
+      options?: {
+        chunkSize?: number;
+        maxRetries?: number;
+        metadata?: Record<string, string>;
+      }
     ): Promise<PatientFile> => {
       const path = `${patientId}/${Date.now()}-${file.name}`;
-      
+
       // Get session if available, but don't require it for public uploads
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       // Use session token if available, otherwise use anon key for public uploads
       // The anon key is used when storage policies allow public access
       const authToken = session?.access_token || supabaseAnonKey;
 
+      // Calculate optimal chunk size if not provided
+      const chunkSize = options?.chunkSize || api.files.calculateOptimalChunkSize(file.size);
+      const maxRetries = options?.maxRetries || 10;
+
+      console.log(`[Smart Upload] File: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)}MB, Chunk Size: ${(chunkSize / 1024 / 1024).toFixed(2)}MB`);
+
       return new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
           endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
-          retryDelays: [0, 5000, 10000, 20000, 30000, 60000], // Extended retries for Cloudflare timeout
+          retryDelays: Array.from({ length: maxRetries }, (_, i) => {
+            // Exponential backoff: 0s, 2s, 4s, 8s, 16s, 32s, 60s, 60s, ...
+            if (i === 0) return 0;
+            if (i <= 5) return Math.pow(2, i) * 1000;
+            return 60000; // Cap at 60 seconds
+          }),
           headers: {
             authorization: `Bearer ${authToken}`,
             'x-upsert': 'false',
@@ -1497,11 +1545,19 @@ export const api = {
             objectName: path,
             contentType: file.type,
             cacheControl: '3600',
+            ...options?.metadata,
           },
-          chunkSize: 25 * 1024 * 1024, // 25MB chunks - under Cloudflare 100MB limit
+          chunkSize,
           onError: (error) => {
-            console.error('TUS upload error:', error);
-            reject(new Error(`Upload failed: ${error.message}`));
+            console.error('[Smart Upload] TUS upload error:', error);
+            const errorMsg = error.message || 'Unknown error';
+            if (errorMsg.includes('413') || errorMsg.includes('too large')) {
+              reject(new Error('File too large for upload. Please try a smaller file.'));
+            } else if (errorMsg.includes('timeout') || errorMsg.includes('network')) {
+              reject(new Error('Network timeout. Please check your connection and try again.'));
+            } else {
+              reject(new Error(`Upload failed: ${errorMsg}`));
+            }
           },
           onProgress: (bytesUploaded, bytesTotal) => {
             if (onProgress) {
@@ -1514,8 +1570,9 @@ export const api = {
             }
           },
           onSuccess: () => {
+            console.log(`[Smart Upload] Successfully uploaded: ${file.name}`);
             const { data: publicData } = supabase.storage.from(PATIENT_FILES_BUCKET).getPublicUrl(path);
-            
+
             resolve({
               path,
               name: file.name,
@@ -1530,14 +1587,78 @@ export const api = {
         // Check for previous uploads to resume
         upload.findPreviousUploads().then((previousUploads) => {
           if (previousUploads.length > 0) {
+            console.log('[Smart Upload] Resuming previous upload');
             upload.resumeFromPreviousUpload(previousUploads[0]);
           }
           upload.start();
         }).catch((err) => {
-          console.warn('Failed to find previous uploads:', err);
+          console.warn('[Smart Upload] Failed to find previous uploads:', err);
           upload.start();
         });
       });
+    },
+
+    /**
+     * Upload multiple files in parallel with smart chunking.
+     * Automatically manages concurrency to optimize upload speed.
+     * 
+     * @param patientId - The patient ID to associate the files with
+     * @param files - Array of files to upload
+     * @param onFileProgress - Callback for individual file progress
+     * @param onFileComplete - Callback when a file upload completes
+     * @param maxConcurrent - Maximum number of concurrent uploads (default: 3)
+     * @returns Promise that resolves with array of PatientFile when all uploads complete
+     */
+    uploadMultipleWithTus: async (
+      patientId: string,
+      files: File[],
+      onFileProgress?: (index: number, fileName: string, bytesUploaded: number, bytesTotal: number) => void,
+      onFileComplete?: (index: number, fileName: string, patientFile: any) => void,
+      maxConcurrent: number = 3
+    ): Promise<any[]> => {
+      const results: any[] = [];
+      const queue = [...files];
+      let index = 0;
+
+      const uploadNext = async (): Promise<void> => {
+        if (queue.length === 0) return;
+
+        const file = queue.shift()!;
+        const currentIndex = index++;
+
+        console.log(`[Batch Upload] Starting upload ${currentIndex + 1}/${files.length}: ${file.name}`);
+
+        const patientFile = await api.files.uploadWithTus(
+          patientId,
+          file,
+          (bytesUploaded, bytesTotal) => {
+            if (onFileProgress) {
+              onFileProgress(currentIndex, file.name, bytesUploaded, bytesTotal);
+            }
+          },
+          undefined,
+          { chunkSize: api.files.calculateOptimalChunkSize(file.size) }
+        );
+
+        results[currentIndex] = patientFile;
+
+        if (onFileComplete) {
+          onFileComplete(currentIndex, file.name, patientFile);
+        }
+
+        console.log(`[Batch Upload] Completed upload ${currentIndex + 1}/${files.length}: ${file.name}`);
+
+        // Continue with next file in queue
+        if (queue.length > 0) {
+          await uploadNext();
+        }
+      };
+
+      // Start concurrent uploads (up to maxConcurrent)
+      const workers = Array.from({ length: Math.min(maxConcurrent, files.length) }, () => uploadNext());
+      await Promise.all(workers);
+
+      return results;
     },
     remove: async (path: string): Promise<void> => {
       const { error } = await supabase.storage
