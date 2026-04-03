@@ -174,7 +174,20 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           setUploadProgress(progress);
         });
       } catch (err: any) {
-        alert(err.message || 'Upload failed');
+        // Show detailed error message
+        const errorMessage = err.message || 'Upload failed';
+        console.error('[ClinicalView] Upload error:', err);
+        
+        // Check for specific error types
+        if (errorMessage.includes('413') || errorMessage.includes('too large')) {
+          alert(`File "${filtered[0]?.name}" is too large for the storage bucket.\n\nPlease contact support to increase the file size limit, or try a smaller file.`);
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
+          alert(`Upload timed out for "${filtered[0]?.name}".\n\nThis could be due to:\n- Slow or unstable network connection\n- Server timeout settings\n\nPlease try again with a smaller file or check your network connection.`);
+        } else if (errorMessage.includes('403') || errorMessage.includes('permission')) {
+          alert(`Permission denied for "${filtered[0]?.name}".\n\nPlease check your storage bucket permissions.`);
+        } else {
+          alert(`Upload failed for "${filtered[0]?.name}":\n\n${errorMessage}\n\nPlease try again or contact support if the issue persists.`);
+        }
       } finally {
         setIsUploadingWithProgress(false);
         setUploadProgress(null);

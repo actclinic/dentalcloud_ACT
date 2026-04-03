@@ -1488,6 +1488,7 @@ export const api = {
      * Upload a file using TUS resumable upload protocol with smart adaptive chunking.
      * Automatically adjusts chunk size based on file size to bypass Cloudflare 150MB limit.
      * Supports pause, resume, and cancel operations.
+     * Includes automatic retry with smaller chunks if upload fails.
      * 
      * This is ideal for large files and unreliable network connections.
      * Works with both authenticated and public (anon key) uploads based on storage policies.
@@ -1508,6 +1509,7 @@ export const api = {
         chunkSize?: number;
         maxRetries?: number;
         metadata?: Record<string, string>;
+        attempt?: number;
       }
     ): Promise<PatientFile> => {
       const path = `${patientId}/${Date.now()}-${file.name}`;
@@ -1520,10 +1522,12 @@ export const api = {
       const authToken = session?.access_token || supabaseAnonKey;
 
       // Calculate optimal chunk size if not provided
-      const chunkSize = options?.chunkSize || api.files.calculateOptimalChunkSize(file.size);
+      const calculatedChunkSize = api.files.calculateOptimalChunkSize(file.size);
+      const chunkSize = options?.chunkSize || calculatedChunkSize;
       const maxRetries = options?.maxRetries || 10;
+      const attempt = options?.attempt || 1;
 
-      console.log(`[Smart Upload] File: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)}MB, Chunk Size: ${(chunkSize / 1024 / 1024).toFixed(2)}MB`);
+      console.log(`[Smart Upload] File: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)}MB, Chunk Size: ${(chunkSize / 1024 / 1024).toFixed(2)}MB, Attempt: ${attempt}`);
 
       return new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
@@ -1548,13 +1552,41 @@ export const api = {
             ...options?.metadata,
           },
           chunkSize,
-          onError: (error) => {
-            console.error('[Smart Upload] TUS upload error:', error);
+          onError: async (error) => {
+            console.error(`[Smart Upload] TUS upload error (attempt ${attempt}):`, error);
             const errorMsg = error.message || 'Unknown error';
+            
+            // If this is not the first attempt and chunk size is still large, retry with smaller chunks
+            if (attempt < 3 && chunkSize > 1 * 1024 * 1024) {
+              const smallerChunkSize = Math.max(Math.floor(chunkSize / 2), 512 * 1024);
+              console.log(`[Smart Upload] Retrying with smaller chunk size: ${(smallerChunkSize / 1024 / 1024).toFixed(2)}MB`);
+              
+              try {
+                const result = await api.files.uploadWithTus(
+                  patientId,
+                  file,
+                  onProgress,
+                  onChunkComplete,
+                  {
+                    ...options,
+                    chunkSize: smallerChunkSize,
+                    attempt: attempt + 1
+                  }
+                );
+                resolve(result);
+                return;
+              } catch (retryError) {
+                console.error('[Smart Upload] Retry failed:', retryError);
+              }
+            }
+            
+            // Handle specific error types
             if (errorMsg.includes('413') || errorMsg.includes('too large')) {
-              reject(new Error('File too large for upload. Please try a smaller file.'));
+              reject(new Error('File too large for upload. Please try a smaller file or contact support to increase the limit.'));
             } else if (errorMsg.includes('timeout') || errorMsg.includes('network')) {
               reject(new Error('Network timeout. Please check your connection and try again.'));
+            } else if (errorMsg.includes('403') || errorMsg.includes('permission')) {
+              reject(new Error('Permission denied. Please check storage bucket permissions.'));
             } else {
               reject(new Error(`Upload failed: ${errorMsg}`));
             }
