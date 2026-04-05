@@ -1,11 +1,13 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings } from '../types';
 import { FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { loadEmailSettings } from '../utils/emailSettings';
+import { buildS3FileUrl, deleteS3Object, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
 
 let usersAllowedTabsSupport: boolean | null = null;
+let storageConfigVersion = 0;
 
 const isMissingColumnError = (error: any, columnName: string): boolean => {
   return typeof error?.message === 'string' && error.message.toLowerCase().includes(columnName.toLowerCase());
@@ -150,6 +152,52 @@ const syncRecallStatusFromAppointment = async (params: {
 
 // Storage bucket for patient uploads
 const PATIENT_FILES_BUCKET = 'patient_files';
+const APP_SETTINGS_SINGLETON_ID = 1;
+let cachedS3Settings: S3Settings | null = null;
+
+const isMissingTableError = (error: any, tableName: string): boolean => {
+  return typeof error?.message === 'string' && error.message.toLowerCase().includes(tableName.toLowerCase());
+};
+
+const normalizeS3SettingsRow = (row: any): S3Settings => ({
+  url: row?.s3_url || '',
+  accessKey: row?.s3_access_key || '',
+  secretKey: row?.s3_secret_key || '',
+  region: row?.s3_region || '',
+  updated_at: row?.updated_at
+});
+
+const fetchS3Settings = async (): Promise<S3Settings | null> => {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('s3_url, s3_access_key, s3_secret_key, s3_region, updated_at')
+    .eq('id', APP_SETTINGS_SINGLETON_ID)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error, 'app_settings')) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+
+  if (!data) return null;
+  return normalizeS3SettingsRow(data);
+};
+
+const resolveActiveS3Settings = async (): Promise<S3Settings | null> => {
+  if (cachedS3Settings && isS3SettingsReady(cachedS3Settings)) {
+    return cachedS3Settings;
+  }
+
+  const settings = await fetchS3Settings();
+  if (!settings || !isS3SettingsReady(settings)) {
+    return null;
+  }
+
+  cachedS3Settings = settings;
+  return settings;
+};
 
 export const api = {
   locations: {
@@ -1410,8 +1458,68 @@ export const api = {
     }
   },
 
+  appSettings: {
+    getS3Settings: async (): Promise<S3Settings> => {
+      try {
+        const settings = await fetchS3Settings();
+        return settings ?? { url: '', accessKey: '', secretKey: '', region: '' };
+      } catch (error: any) {
+        console.warn('Failed to load S3 settings:', error?.message || error);
+        return { url: '', accessKey: '', secretKey: '', region: '' };
+      }
+    },
+    saveS3Settings: async (settings: S3Settings): Promise<void> => {
+      const payload = {
+        id: APP_SETTINGS_SINGLETON_ID,
+        s3_url: settings.url?.trim() || null,
+        s3_access_key: settings.accessKey?.trim() || null,
+        s3_secret_key: settings.secretKey?.trim() || null,
+        s3_region: settings.region?.trim() || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(payload);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      cachedS3Settings = normalizeS3SettingsRow({
+        s3_url: payload.s3_url,
+        s3_access_key: payload.s3_access_key,
+        s3_secret_key: payload.s3_secret_key,
+        s3_region: payload.s3_region,
+        updated_at: payload.updated_at
+      });
+      storageConfigVersion += 1;
+    }
+  },
+
   files: {
     list: async (patientId: string): Promise<PatientFile[]> => {
+      const s3Settings = await resolveActiveS3Settings();
+      if (s3Settings) {
+        const prefix = `${patientId}/`;
+        const objects = await listS3Objects(s3Settings, prefix);
+        const baseUrl = normalizeS3BaseUrl(s3Settings.url);
+        return objects
+          .filter(item => item.key.startsWith(prefix))
+          .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''))
+          .map((item) => {
+            const name = item.key.split('/').pop() || item.key;
+            return {
+              path: item.key,
+              name,
+              size: item.size || 0,
+              type: '',
+              uploaded_at: item.lastModified,
+              url: buildS3FileUrl(baseUrl, item.key)
+            };
+          });
+      }
+
       const { data, error } = await supabase.storage
         .from(PATIENT_FILES_BUCKET)
         .list(patientId, { limit: 100, offset: 0, sortBy: { column: 'created_at', order: 'desc' } });
@@ -1433,6 +1541,28 @@ export const api = {
     },
     upload: async (patientId: string, file: File): Promise<PatientFile> => {
       const path = `${patientId}/${Date.now()}-${file.name}`;
+      const startVersion = storageConfigVersion;
+
+      const s3Settings = await resolveActiveS3Settings();
+      if (s3Settings) {
+        await uploadS3Object(
+          s3Settings,
+          path,
+          file,
+          undefined,
+          undefined,
+          () => storageConfigVersion !== startVersion
+        );
+        const baseUrl = normalizeS3BaseUrl(s3Settings.url);
+        return {
+          path,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          uploaded_at: new Date().toISOString(),
+          url: buildS3FileUrl(baseUrl, path)
+        };
+      }
 
       const { error: uploadError } = await supabase.storage
         .from(PATIENT_FILES_BUCKET)
@@ -1443,6 +1573,10 @@ export const api = {
         });
 
       if (uploadError) throw new Error(uploadError.message);
+      if (storageConfigVersion !== startVersion) {
+        await supabase.storage.from(PATIENT_FILES_BUCKET).remove([path]);
+        throw new Error('Storage settings changed during upload. Please retry.');
+      }
 
       const { data: publicData } = supabase.storage.from(PATIENT_FILES_BUCKET).getPublicUrl(path);
 
@@ -1513,6 +1647,27 @@ export const api = {
       }
     ): Promise<PatientFile> => {
       const path = `${patientId}/${Date.now()}-${file.name}`;
+      const startVersion = storageConfigVersion;
+      const s3Settings = await resolveActiveS3Settings();
+      if (s3Settings) {
+        await uploadS3Object(
+          s3Settings,
+          path,
+          file,
+          onProgress,
+          onChunkComplete,
+          () => storageConfigVersion !== startVersion
+        );
+        const baseUrl = normalizeS3BaseUrl(s3Settings.url);
+        return {
+          path,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          uploaded_at: new Date().toISOString(),
+          url: buildS3FileUrl(baseUrl, path)
+        };
+      }
 
       // Get session if available, but don't require it for public uploads
       const { data: { session } } = await supabase.auth.getSession();
@@ -1530,6 +1685,7 @@ export const api = {
       console.log(`[Smart Upload] File: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)}MB, Chunk Size: ${(chunkSize / 1024 / 1024).toFixed(2)}MB, Attempt: ${attempt}`);
 
       return new Promise((resolve, reject) => {
+        let aborted = false;
         const upload = new tus.Upload(file, {
           endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
           retryDelays: Array.from({ length: maxRetries }, (_, i) => {
@@ -1553,11 +1709,12 @@ export const api = {
           },
           chunkSize,
           onError: async (error) => {
+            if (aborted) return;
             console.error(`[Smart Upload] TUS upload error (attempt ${attempt}):`, error);
             const errorMsg = error.message || 'Unknown error';
             
             // If this is not the first attempt and chunk size is still large, retry with smaller chunks
-            if (attempt < 3 && chunkSize > 1 * 1024 * 1024) {
+            if (attempt < 3 && chunkSize > 1 * 1024 * 1024 && storageConfigVersion === startVersion) {
               const smallerChunkSize = Math.max(Math.floor(chunkSize / 2), 512 * 1024);
               console.log(`[Smart Upload] Retrying with smaller chunk size: ${(smallerChunkSize / 1024 / 1024).toFixed(2)}MB`);
               
@@ -1592,16 +1749,38 @@ export const api = {
             }
           },
           onProgress: (bytesUploaded, bytesTotal) => {
+            if (storageConfigVersion !== startVersion && !aborted) {
+              aborted = true;
+              upload.abort(true).then(() => {
+                reject(new Error('Storage settings changed during upload. Please retry.'));
+              }).catch(() => {
+                reject(new Error('Storage settings changed during upload. Please retry.'));
+              });
+              return;
+            }
             if (onProgress) {
               onProgress(bytesUploaded, bytesTotal);
             }
           },
           onChunkComplete: (chunkSize, bytesAccepted, bytesTotal) => {
+            if (storageConfigVersion !== startVersion && !aborted) {
+              aborted = true;
+              upload.abort(true).then(() => {
+                reject(new Error('Storage settings changed during upload. Please retry.'));
+              }).catch(() => {
+                reject(new Error('Storage settings changed during upload. Please retry.'));
+              });
+              return;
+            }
             if (onChunkComplete) {
               onChunkComplete(chunkSize, bytesAccepted, bytesTotal);
             }
           },
           onSuccess: () => {
+            if (storageConfigVersion !== startVersion) {
+              reject(new Error('Storage settings changed during upload. Please retry.'));
+              return;
+            }
             console.log(`[Smart Upload] Successfully uploaded: ${file.name}`);
             const { data: publicData } = supabase.storage.from(PATIENT_FILES_BUCKET).getPublicUrl(path);
 
@@ -1693,6 +1872,12 @@ export const api = {
       return results;
     },
     remove: async (path: string): Promise<void> => {
+      const s3Settings = await resolveActiveS3Settings();
+      if (s3Settings) {
+        await deleteS3Object(s3Settings, path);
+        return;
+      }
+
       const { error } = await supabase.storage
         .from(PATIENT_FILES_BUCKET)
         .remove([path]);

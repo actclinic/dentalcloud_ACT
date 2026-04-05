@@ -158,6 +158,14 @@ export interface ClinicSettings {
   loyalty_enabled: boolean;
 }
 
+export interface S3Settings {
+  url: string;
+  accessKey: string;
+  secretKey: string;
+  region: string;
+  updated_at?: string;
+}
+
 export interface LoyaltyRule {
   id: string;
   location_id: string;

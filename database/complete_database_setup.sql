@@ -35,6 +35,7 @@ DROP TABLE IF EXISTS loyalty_rules CASCADE;
 DROP TABLE IF EXISTS expenses CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS locations CASCADE;
+DROP TABLE IF EXISTS app_settings CASCADE;
 
 -- ============================================================================
 -- 3. CORE TABLES
@@ -47,6 +48,17 @@ CREATE TABLE locations (
   address TEXT,
   phone VARCHAR(50),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Global App Settings (singleton row)
+CREATE TABLE app_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  s3_url TEXT,
+  s3_access_key TEXT,
+  s3_secret_key TEXT,
+  s3_region TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Users (Staff/Admin accounts)
@@ -369,6 +381,11 @@ CREATE TRIGGER update_scheduled_tasks_updated_at
     BEFORE UPDATE ON scheduled_tasks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Trigger: Update app_settings.updated_at
+CREATE TRIGGER update_app_settings_updated_at
+    BEFORE UPDATE ON app_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Function: Update conversation timestamp when new message is added
 CREATE OR REPLACE FUNCTION update_conversation_timestamp()
 RETURNS TRIGGER AS $$
@@ -411,6 +428,11 @@ $$ LANGUAGE plpgsql;
 -- Default location
 INSERT INTO locations (id, name, address, phone)
 VALUES ('fffda6dc-a75d-450c-bc96-94602c5d1194', 'Main Clinic', '123 Dental St, Yangon', '09-123456789');
+
+-- Default app settings row
+INSERT INTO app_settings (id)
+VALUES (1)
+ON CONFLICT (id) DO NOTHING;
 
 -- Default admin user
 INSERT INTO users (username, password, role, location_id)
