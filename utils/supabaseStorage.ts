@@ -139,12 +139,20 @@ export const listSupabaseStorageFiles = async (
 
 /**
  * Upload a file to the self-hosted Supabase Storage using TUS resumable
- * chunked uploads.  Every chunk is kept well below 90 MB so it passes
- * through Cloudflare without triggering the 100 MB per-request limit.
+ * chunked uploads.  Every chunk is kept well below 90 MB so it safely
+ * passes through Cloudflare (100 MB per-request hard limit).
  *
- * Features:
- *  - Adaptive chunk size (12 MB – 72 MB depending on file size)
- *  - Automatic resume if the browser tab reloads mid-upload
+ * IMPORTANT: uploadDataDuringCreation must be FALSE.
+ *   With it set to true the self-hosted Supabase treats the initial POST
+ *   (which carries the first chunk) as a *completed* upload, so any file
+ *   larger than one chunk (6 MB) silently stops after the first piece.
+ *   With it set to false, the POST only registers the upload slot and ALL
+ *   data — including the first chunk — flows through PATCH requests, which
+ *   is the correct standard TUS flow.
+ *
+ * Other features:
+ *  - 6 MB chunk size (smallest valid Supabase TUS chunk)
+ *  - Auto-resume if the browser tab reloads mid-upload
  *  - Exponential-backoff retry on transient network errors
  *  - Abort on storage-settings change via `shouldAbort`
  *  - Progress reporting via `onProgress`
@@ -189,7 +197,8 @@ export const uploadSupabaseStorageFile = async (
         Authorization: `Bearer ${settings.anonKey}`,
         'x-upsert': 'true'
       },
-      uploadDataDuringCreation: true,
+      // Must be false — see the JSDoc above for a full explanation.
+      uploadDataDuringCreation: false,
       removeFingerprintOnSuccess: true,
       metadata: {
         bucketName: bucket,
