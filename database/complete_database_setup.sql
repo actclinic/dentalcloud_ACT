@@ -53,10 +53,19 @@ CREATE TABLE locations (
 -- Global App Settings (singleton row)
 CREATE TABLE app_settings (
   id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  
+  -- S3-compatible storage settings (for AWS S3, MinIO, R2, etc.)
   s3_url TEXT,
   s3_access_key TEXT,
   s3_secret_key TEXT,
   s3_region TEXT,
+  
+  -- Supabase Storage REST API settings (recommended)
+  storage_url TEXT,
+  storage_anon_key TEXT,
+  storage_service_key TEXT,
+  storage_bucket TEXT,
+  
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
