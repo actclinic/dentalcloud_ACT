@@ -208,6 +208,14 @@ const resolveActiveSupabaseStorage = async (): Promise<import('../types').Supaba
       .eq('id', APP_SETTINGS_SINGLETON_ID)
       .maybeSingle();
 
+    console.log('[resolveActiveSupabaseStorage] DB response:', {
+      hasData: !!data,
+      error: error?.message,
+      storage_url: data?.storage_url?.substring(0, 30) + '...',
+      storage_anon_key: data?.storage_anon_key ? 'SET' : 'NULL',
+      storage_bucket: data?.storage_bucket
+    });
+
     if (error || !data) return null;
 
     const settings: import('../types').SupabaseStorageSettings = {
@@ -217,8 +225,12 @@ const resolveActiveSupabaseStorage = async (): Promise<import('../types').Supaba
       bucket: data.storage_bucket || ''
     };
 
-    return isSupabaseStorageReady(settings) ? settings : null;
-  } catch {
+    const isReady = isSupabaseStorageReady(settings);
+    console.log('[resolveActiveSupabaseStorage] Settings ready?', isReady, settings);
+    
+    return isReady ? settings : null;
+  } catch (err: any) {
+    console.error('[resolveActiveSupabaseStorage] Error:', err?.message);
     return null;
   }
 };
@@ -1774,9 +1786,17 @@ export const api = {
       const path = `${patientId}/${Date.now()}-${file.name}`;
       const startVersion = storageConfigVersion;
 
+      console.log('[uploadWithTus] Checking storage settings...');
+
       // Check Supabase Storage first
       const supabaseStorage = await resolveActiveSupabaseStorage();
+      console.log('[uploadWithTus] Supabase Storage resolved:', supabaseStorage ? {
+        bucket: supabaseStorage.bucket,
+        url: supabaseStorage.storageUrl
+      } : 'NOT FOUND');
+      
       if (supabaseStorage) {
+        console.log('[uploadWithTus] Using Supabase Storage REST API');
         // Use simple upload for Supabase Storage REST API (no TUS support yet)
         await uploadSupabaseStorageFile(
           supabaseStorage,
@@ -1786,6 +1806,7 @@ export const api = {
           onChunkComplete,
           () => storageConfigVersion !== startVersion
         );
+        console.log('[uploadWithTus] Supabase Storage upload successful!');
         return {
           path,
           name: file.name,
@@ -1797,8 +1818,11 @@ export const api = {
       }
 
       // Check S3 settings second
+      console.log('[uploadWithTus] Checking S3 settings...');
       const s3Settings = await resolveActiveS3Settings();
+      console.log('[uploadWithTus] S3 Settings resolved:', s3Settings ? 'Found' : 'Not found');
       if (s3Settings) {
+        console.log('[uploadWithTus] Using S3-Compatible API');
         await uploadS3Object(
           s3Settings,
           path,
