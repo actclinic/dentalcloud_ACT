@@ -138,6 +138,58 @@ export const isS3SettingsReady = (settings?: S3Settings | null): settings is S3S
     && !!settings.region?.trim();
 };
 
+/**
+ * Check if the S3 URL is a Supabase S3-compatible endpoint.
+ * Supabase S3 URLs end with /storage/v1/s3
+ */
+export const isSupabaseS3Endpoint = (url: string): boolean => {
+  const normalized = normalizeS3BaseUrl(url).toLowerCase();
+  return normalized.includes('/storage/v1/s3');
+};
+
+/**
+ * Extract bucket name from Supabase S3 URL path.
+ * Supabase S3 uses path-style URLs: /storage/v1/s3/{bucket}/{key}
+ */
+export const extractBucketFromSupabaseS3Url = (url: string): string => {
+  const normalized = normalizeS3BaseUrl(url);
+  // URL format: http://host/storage/v1/s3 or http://host/storage/v1/s3/bucket-name
+  const match = normalized.match(/\/storage\/v1\/s3(?:\/([^/]+))?/i);
+  return match?.[1] || '';
+};
+
+/**
+ * Build the correct Supabase S3 API URL.
+ * Supabase S3 expects: http://host/storage/v1/s3/{bucket}/{key}
+ */
+export const buildSupabaseS3Url = (baseUrl: string, key: string): string => {
+  const normalized = normalizeS3BaseUrl(baseUrl);
+  
+  // If URL already has bucket path, use it as base
+  if (normalized.includes('/storage/v1/s3/')) {
+    return `${normalized}/${key}`;
+  }
+  
+  // Otherwise, we need to extract or infer bucket from the key
+  // Key format: patientId/filename
+  // Supabase S3 path: /storage/v1/s3/patient_files/{patientId}/{filename}
+  const bucket = extractBucketFromSupabaseS3Url(baseUrl) || 'patient_files';
+  return `${normalized}/${bucket}/${key}`;
+};
+
+/**
+ * Build Supabase S3 public URL for file access.
+ * Format: http://host/storage/v1/object/public/{bucket}/{key}
+ */
+export const buildSupabaseS3PublicUrl = (baseUrl: string, key: string): string => {
+  const normalized = normalizeS3BaseUrl(baseUrl);
+  const bucket = extractBucketFromSupabaseS3Url(baseUrl) || 'patient_files';
+  
+  // Convert base URL to public object URL
+  const objectUrl = normalized.replace(/\/storage\/v1\/s3/i, '/storage/v1/object/public');
+  return `${objectUrl}/${bucket}/${key}`;
+};
+
 export const normalizeS3BaseUrl = (rawUrl: string) => rawUrl.trim().replace(/\/+$/, '');
 
 export const buildS3FileUrl = (baseUrl: string, key: string) => {
@@ -148,8 +200,23 @@ export const buildS3FileUrl = (baseUrl: string, key: string) => {
 export const listS3Objects = async (settings: S3Settings, prefix: string) => {
   const baseUrl = normalizeS3BaseUrl(settings.url);
   const url = new URL(baseUrl);
-  url.searchParams.set('list-type', '2');
-  url.searchParams.set('prefix', prefix);
+  
+  // For Supabase S3, we need to use the correct path structure
+  // Supabase S3: /storage/v1/s3?list-type=2&prefix=bucket/prefix
+  if (isSupabaseS3Endpoint(baseUrl)) {
+    // Supabase S3-compatible endpoint
+    // The prefix should include the bucket name if needed
+    url.searchParams.set('list-type', '2');
+    if (prefix) {
+      url.searchParams.set('prefix', prefix);
+    }
+  } else {
+    // Standard S3 endpoint
+    url.searchParams.set('list-type', '2');
+    if (prefix) {
+      url.searchParams.set('prefix', prefix);
+    }
+  }
 
   const { headers } = await signS3Request({
     method: 'GET',
@@ -159,7 +226,8 @@ export const listS3Objects = async (settings: S3Settings, prefix: string) => {
 
   const response = await fetch(url.toString(), { method: 'GET', headers });
   if (!response.ok) {
-    throw new Error(`S3 list failed (${response.status})`);
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`S3 list failed (${response.status}): ${errorText.substring(0, 200)}`);
   }
 
   const xmlText = await response.text();
@@ -176,7 +244,13 @@ export const listS3Objects = async (settings: S3Settings, prefix: string) => {
 
 export const deleteS3Object = async (settings: S3Settings, key: string) => {
   const baseUrl = normalizeS3BaseUrl(settings.url);
-  const url = new URL(buildS3FileUrl(baseUrl, key));
+  
+  // Build correct URL based on S3 endpoint type
+  const url = new URL(
+    isSupabaseS3Endpoint(baseUrl) 
+      ? buildSupabaseS3Url(baseUrl, key)
+      : buildS3FileUrl(baseUrl, key)
+  );
 
   const { headers } = await signS3Request({
     method: 'DELETE',
@@ -186,7 +260,8 @@ export const deleteS3Object = async (settings: S3Settings, key: string) => {
 
   const response = await fetch(url.toString(), { method: 'DELETE', headers });
   if (!response.ok) {
-    throw new Error(`S3 delete failed (${response.status})`);
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`S3 delete failed (${response.status}): ${errorText.substring(0, 200)}`);
   }
 };
 
@@ -199,7 +274,13 @@ export const uploadS3Object = async (
   shouldAbort?: () => boolean
 ) => {
   const baseUrl = normalizeS3BaseUrl(settings.url);
-  const url = new URL(buildS3FileUrl(baseUrl, key));
+  
+  // Build correct URL based on S3 endpoint type
+  const url = new URL(
+    isSupabaseS3Endpoint(baseUrl) 
+      ? buildSupabaseS3Url(baseUrl, key)
+      : buildS3FileUrl(baseUrl, key)
+  );
 
   const { headers } = await signS3Request({
     method: 'PUT',

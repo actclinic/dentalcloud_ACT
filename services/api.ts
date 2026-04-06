@@ -4,7 +4,7 @@ import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Docto
 import { FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { loadEmailSettings } from '../utils/emailSettings';
-import { buildS3FileUrl, deleteS3Object, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
+import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let storageConfigVersion = 0;
@@ -1509,13 +1509,17 @@ export const api = {
           .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''))
           .map((item) => {
             const name = item.key.split('/').pop() || item.key;
+            // Use appropriate URL builder based on S3 endpoint type
+            const url = isSupabaseS3Endpoint(baseUrl)
+              ? buildSupabaseS3PublicUrl(baseUrl, item.key)
+              : buildS3FileUrl(baseUrl, item.key);
             return {
               path: item.key,
               name,
               size: item.size || 0,
               type: '',
               uploaded_at: item.lastModified,
-              url: buildS3FileUrl(baseUrl, item.key)
+              url
             };
           });
       }
@@ -1554,13 +1558,17 @@ export const api = {
           () => storageConfigVersion !== startVersion
         );
         const baseUrl = normalizeS3BaseUrl(s3Settings.url);
+        // Use appropriate URL builder based on S3 endpoint type
+        const url = isSupabaseS3Endpoint(baseUrl)
+          ? buildSupabaseS3PublicUrl(baseUrl, path)
+          : buildS3FileUrl(baseUrl, path);
         return {
           path,
           name: file.name,
           size: file.size,
           type: file.type,
           uploaded_at: new Date().toISOString(),
-          url: buildS3FileUrl(baseUrl, path)
+          url
         };
       }
 
