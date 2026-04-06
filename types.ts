@@ -166,6 +166,18 @@ export interface S3Settings {
   updated_at?: string;
 }
 
+/**
+ * Supabase Storage settings (alternative to S3-compatible API)
+ * Uses Supabase REST Storage API directly (no signing required)
+ */
+export interface SupabaseStorageSettings {
+  storageUrl: string;    // e.g., https://your-supabase.supabase.co
+  anonKey: string;       // Supabase anon/publishable key
+  serviceKey: string;    // Supabase service role key (for server operations)
+  bucket: string;        // e.g., patient_files
+  updated_at?: string;
+}
+
 export interface LoyaltyRule {
   id: string;
   location_id: string;

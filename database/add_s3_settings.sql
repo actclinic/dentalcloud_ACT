@@ -11,28 +11,35 @@
 -- ============================================================================
 -- 1. CREATE app_settings TABLE (IF NOT EXISTS)
 -- ============================================================================
--- This table stores global application settings including S3 bucket configuration.
+-- This table stores global application settings including S3/Storage configuration.
 -- It uses a singleton pattern (only one row with id = 1).
 
 CREATE TABLE IF NOT EXISTS app_settings (
   id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  
+  -- S3-compatible settings (for AWS S3, MinIO, R2, etc.)
   s3_url TEXT,
   s3_access_key TEXT,
   s3_secret_key TEXT,
   s3_region TEXT,
+  
+  -- Supabase Storage REST API settings (recommended for Supabase users)
+  storage_url TEXT,
+  storage_anon_key TEXT,
+  storage_service_key TEXT,
+  storage_bucket TEXT,
+  
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- ============================================================================
--- 2. ADD S3 COLUMNS (IF THEY DON'T EXIST - FOR EXISTING DATABASES)
+-- 2. ADD COLUMNS (IF THEY DON'T EXIST - FOR EXISTING DATABASES)
 -- ============================================================================
--- If the table already exists from previous setup, ensure S3 columns are present.
--- These ALTER statements will only succeed if the columns don't exist yet.
 
 DO $$
 BEGIN
-  -- Add s3_url column if missing
+  -- S3-compatible columns
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'app_settings' AND column_name = 's3_url'
@@ -40,7 +47,6 @@ BEGIN
     ALTER TABLE app_settings ADD COLUMN s3_url TEXT;
   END IF;
 
-  -- Add s3_access_key column if missing
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'app_settings' AND column_name = 's3_access_key'
@@ -48,7 +54,6 @@ BEGIN
     ALTER TABLE app_settings ADD COLUMN s3_access_key TEXT;
   END IF;
 
-  -- Add s3_secret_key column if missing
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'app_settings' AND column_name = 's3_secret_key'
@@ -56,7 +61,6 @@ BEGIN
     ALTER TABLE app_settings ADD COLUMN s3_secret_key TEXT;
   END IF;
 
-  -- Add s3_region column if missing
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'app_settings' AND column_name = 's3_region'
@@ -64,7 +68,36 @@ BEGIN
     ALTER TABLE app_settings ADD COLUMN s3_region TEXT;
   END IF;
 
-  -- Add created_at column if missing
+  -- Supabase Storage columns (NEW)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'app_settings' AND column_name = 'storage_url'
+  ) THEN
+    ALTER TABLE app_settings ADD COLUMN storage_url TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'app_settings' AND column_name = 'storage_anon_key'
+  ) THEN
+    ALTER TABLE app_settings ADD COLUMN storage_anon_key TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'app_settings' AND column_name = 'storage_service_key'
+  ) THEN
+    ALTER TABLE app_settings ADD COLUMN storage_service_key TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'app_settings' AND column_name = 'storage_bucket'
+  ) THEN
+    ALTER TABLE app_settings ADD COLUMN storage_bucket TEXT;
+  END IF;
+
+  -- Timestamp columns
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'app_settings' AND column_name = 'created_at'
@@ -72,7 +105,6 @@ BEGIN
     ALTER TABLE app_settings ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
   END IF;
 
-  -- Add updated_at column if missing
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
     WHERE table_name = 'app_settings' AND column_name = 'updated_at'
@@ -158,6 +190,30 @@ SELECT 's3_region column',
        CASE WHEN EXISTS (
          SELECT 1 FROM information_schema.columns 
          WHERE table_name = 'app_settings' AND column_name = 's3_region'
+       ) THEN '✅ YES' ELSE '❌ NO' END
+UNION ALL
+SELECT 'storage_url column',
+       CASE WHEN EXISTS (
+         SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'app_settings' AND column_name = 'storage_url'
+       ) THEN '✅ YES' ELSE '❌ NO' END
+UNION ALL
+SELECT 'storage_anon_key column',
+       CASE WHEN EXISTS (
+         SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'app_settings' AND column_name = 'storage_anon_key'
+       ) THEN '✅ YES' ELSE '❌ NO' END
+UNION ALL
+SELECT 'storage_service_key column',
+       CASE WHEN EXISTS (
+         SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'app_settings' AND column_name = 'storage_service_key'
+       ) THEN '✅ YES' ELSE '❌ NO' END
+UNION ALL
+SELECT 'storage_bucket column',
+       CASE WHEN EXISTS (
+         SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'app_settings' AND column_name = 'storage_bucket'
        ) THEN '✅ YES' ELSE '❌ NO' END;
 
 -- Check if default row exists
