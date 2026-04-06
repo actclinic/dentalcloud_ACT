@@ -236,12 +236,19 @@ export const listS3Objects = async (settings: S3Settings, prefix: string) => {
   const response = await fetch(url.toString(), { method: 'GET', headers });
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    console.error('[S3 Debug] List failed:', {
-      status: response.status,
-      url: url.toString(),
-      error: errorText
-    });
-    throw new Error(`S3 list failed (${response.status}): ${errorText.substring(0, 200)}`);
+    
+    // More detailed debugging
+    if (isSupabaseS3Endpoint(baseUrl)) {
+      console.error('========== S3 LIST REQUEST FAILED ==========');
+      console.error('URL:', url.toString());
+      console.error('Status:', response.status);
+      console.error('Status Text:', response.statusText);
+      console.error('Response Headers:', Object.fromEntries(response.headers.entries()));
+      console.error('Response Body (first 500 chars):', errorText.substring(0, 500));
+      console.error('=============================================');
+    }
+    
+    throw new Error(`S3 list failed (${response.status} ${response.statusText}): ${errorText.substring(0, 300)}`);
   }
 
   const xmlText = await response.text();
