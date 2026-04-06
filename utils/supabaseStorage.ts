@@ -87,11 +87,22 @@ export const listSupabaseStorageFiles = async (
 
   const files = await response.json();
 
-  return (files || []).map((file: any) => ({
-    key: file.name,
+  // Supabase Storage returns array of file objects
+  // file.name is the full path within the bucket (e.g., "patientId/123-filename.pdf")
+  const result = (files || []).map((file: any) => ({
+    key: file.name,  // Already includes full path within bucket
     size: file.metadata?.size || 0,
     lastModified: file.updated_at || file.created_at || ''
   }));
+
+  console.log('[Supabase Storage] List response:', {
+    prefix,
+    bucket,
+    fileCount: result.length,
+    files: result.map(f => f.key)
+  });
+
+  return result;
 };
 
 /**
@@ -117,7 +128,8 @@ export const uploadSupabaseStorageFile = async (
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
 
-    xhr.open('POST', uploadUrl, true);
+    // Supabase Storage requires PUT for uploads (not POST)
+    xhr.open('PUT', uploadUrl, true);
     xhr.setRequestHeader('apikey', settings.anonKey);
     xhr.setRequestHeader('Authorization', `Bearer ${settings.anonKey}`);
     xhr.setRequestHeader('x-upsert', 'true');
