@@ -205,11 +205,10 @@ export const buildS3FileUrl = (baseUrl: string, key: string) => {
 export const listS3Objects = async (settings: S3Settings, prefix: string) => {
   const baseUrl = normalizeS3BaseUrl(settings.url);
   
-  // For Supabase S3, the URL must include the bucket name in the path
-  // Format: /storage/v1/s3/{bucket}?list-type=2&prefix={prefix}
+  // For Supabase S3, build URL with bucket in path
   const url = new URL(
     isSupabaseS3Endpoint(baseUrl)
-      ? buildSupabaseS3Url(baseUrl, '')  // Empty key = list bucket root
+      ? buildSupabaseS3Url(baseUrl, '')  // Returns .../s3/patient_files
       : baseUrl
   );
   
@@ -224,9 +223,24 @@ export const listS3Objects = async (settings: S3Settings, prefix: string) => {
     settings
   });
 
+  // DEBUG: Log what we're sending
+  if (isSupabaseS3Endpoint(baseUrl)) {
+    console.log('[S3 Debug] List request:', {
+      url: url.toString(),
+      path: url.pathname,
+      query: url.search,
+      headers: Object.keys(headers)
+    });
+  }
+
   const response = await fetch(url.toString(), { method: 'GET', headers });
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
+    console.error('[S3 Debug] List failed:', {
+      status: response.status,
+      url: url.toString(),
+      error: errorText
+    });
     throw new Error(`S3 list failed (${response.status}): ${errorText.substring(0, 200)}`);
   }
 
