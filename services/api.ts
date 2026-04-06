@@ -1728,31 +1728,27 @@ export const api = {
     },
 
     /**
-     * Calculate optimal chunk size based on file size to bypass Cloudflare 150MB limit.
-     * Uses adaptive chunking: smaller chunks for larger files to ensure reliable uploads.
-     * 
+     * Calculate optimal chunk size for the primary (cloud) Supabase TUS endpoint.
+     * Chunks are kept well below 90 MB so they pass any upstream proxy limit.
+     * Supabase TUS requires chunk sizes that are multiples of 6 MB, so we use
+     * multiples of 6 MB throughout.
+     *
+     * NOTE: The self-hosted Supabase path uses its own chunk-size logic inside
+     * utils/supabaseStorage.ts → chooseTusChunkSize().
+     *
      * @param fileSize - File size in bytes
      * @returns Optimal chunk size in bytes
      */
     calculateOptimalChunkSize: (fileSize: number): number => {
-      // For files < 100MB: 10MB chunks
-      if (fileSize < 100 * 1024 * 1024) {
-        return 10 * 1024 * 1024;
-      }
-      // For files 100MB - 500MB: 5MB chunks
-      if (fileSize < 500 * 1024 * 1024) {
-        return 5 * 1024 * 1024;
-      }
-      // For files 500MB - 1GB: 2MB chunks
-      if (fileSize < 1024 * 1024 * 1024) {
-        return 2 * 1024 * 1024;
-      }
-      // For files 1GB - 5GB: 1MB chunks
-      if (fileSize < 5 * 1024 * 1024 * 1024) {
-        return 1 * 1024 * 1024;
-      }
-      // For files > 5GB: 512KB chunks (very small for maximum reliability)
-      return 512 * 1024;
+      const MB = 1024 * 1024;
+      // < 100 MB  → 12 MB chunks
+      if (fileSize < 100 * MB) return 12 * MB;
+      // 100 – 500 MB → 48 MB chunks
+      if (fileSize < 500 * MB) return 48 * MB;
+      // 500 MB – 2 GB → 60 MB chunks
+      if (fileSize < 2 * 1024 * MB) return 60 * MB;
+      // > 2 GB → 72 MB chunks (still safely under 90 MB)
+      return 72 * MB;
     },
 
     /**
