@@ -55,6 +55,20 @@ export const listSupabaseStorageFiles = async (
   // Use Supabase Storage list API
   const listUrl = `${storageUrl}/storage/v1/object/list/${bucket}`;
 
+  const requestBody = {
+    prefix: prefix || '',
+    limit: 1000,
+    offset: 0,
+    sortBy: { column: 'name', order: 'asc' }
+  };
+
+  console.log('[Supabase Storage] List request:', {
+    url: listUrl,
+    bucket,
+    prefix,
+    body: requestBody
+  });
+
   const response = await fetch(listUrl, {
     method: 'POST',
     headers: {
@@ -62,12 +76,7 @@ export const listSupabaseStorageFiles = async (
       apikey: settings.anonKey,
       Authorization: `Bearer ${settings.anonKey}`
     },
-    body: JSON.stringify({
-      prefix: prefix || '',
-      limit: 1000,
-      offset: 0,
-      sortBy: { column: 'name', order: 'asc' }
-    })
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -86,6 +95,11 @@ export const listSupabaseStorageFiles = async (
   }
 
   const files = await response.json();
+
+  console.log('[Supabase Storage] Raw list response:', {
+    fileCount: files?.length || 0,
+    files: files?.map((f: any) => ({ name: f.name, id: f.id })) || []
+  });
 
   // Supabase Storage returns array of file objects
   // file.name is the full path within the bucket (e.g., "patientId/123-filename.pdf")
@@ -158,8 +172,20 @@ export const uploadSupabaseStorageFile = async (
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        console.log('[Supabase Storage] Upload success:', {
+          key: key,
+          bucket: bucket,
+          status: xhr.status,
+          response: xhr.responseText
+        });
         resolve();
       } else {
+        console.error('[Supabase Storage] Upload failed:', {
+          key: key,
+          bucket: bucket,
+          status: xhr.status,
+          response: xhr.responseText
+        });
         reject(new Error(`Supabase Storage upload failed (${xhr.status})`));
       }
     };

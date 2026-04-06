@@ -1567,13 +1567,20 @@ export const api = {
 
   files: {
     list: async (patientId: string): Promise<PatientFile[]> => {
+      console.log('[Files] Listing files for patient:', patientId);
+      
       // Check Supabase Storage first
       const supabaseStorage = await resolveActiveSupabaseStorage();
       if (supabaseStorage) {
+        console.log('[Files] Using Supabase Storage:', supabaseStorage.bucket);
         const prefix = `${patientId}/`;
         const objects = await listSupabaseStorageFiles(supabaseStorage, prefix);
-        return objects
-          .filter(item => item.key.startsWith(prefix))
+        console.log('[Files] Raw objects from storage:', objects);
+        
+        const filtered = objects.filter(item => item.key.startsWith(prefix));
+        console.log('[Files] Filtered objects:', filtered);
+        
+        return filtered
           .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''))
           .map((item) => {
             const name = item.key.split('/').pop() || item.key;
