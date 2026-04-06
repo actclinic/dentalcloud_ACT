@@ -101,10 +101,10 @@ export const listSupabaseStorageFiles = async (
     files: files?.map((f: any) => ({ name: f.name, id: f.id })) || []
   });
 
-  // Supabase Storage returns array of file objects
-  // file.name is the full path within the bucket (e.g., "patientId/123-filename.pdf")
+  // Supabase Storage list API strips the prefix from returned file names!
+  // We need to prepend it to get the full key that matches what was uploaded
   const result = (files || []).map((file: any) => ({
-    key: file.name,  // Already includes full path within bucket
+    key: prefix ? `${prefix}${file.name}` : file.name,  // Reconstruct full path
     size: file.metadata?.size || 0,
     lastModified: file.updated_at || file.created_at || ''
   }));
