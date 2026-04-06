@@ -5,6 +5,7 @@ import { FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { loadEmailSettings } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
+import { buildSupabasePublicUrl, deleteSupabaseStorageFile, isSupabaseStorageReady, listSupabaseStorageFiles, normalizeSupabaseStorageUrl, uploadSupabaseStorageFile } from '../utils/supabaseStorage';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let storageConfigVersion = 0;
@@ -197,6 +198,29 @@ const resolveActiveS3Settings = async (): Promise<S3Settings | null> => {
 
   cachedS3Settings = settings;
   return settings;
+};
+
+const resolveActiveSupabaseStorage = async (): Promise<import('../types').SupabaseStorageSettings | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('storage_url, storage_anon_key, storage_service_key, storage_bucket')
+      .eq('id', APP_SETTINGS_SINGLETON_ID)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    const settings: import('../types').SupabaseStorageSettings = {
+      storageUrl: data.storage_url || '',
+      anonKey: data.storage_anon_key || '',
+      serviceKey: data.storage_service_key || '',
+      bucket: data.storage_bucket || ''
+    };
+
+    return isSupabaseStorageReady(settings) ? settings : null;
+  } catch {
+    return null;
+  }
 };
 
 export const api = {
@@ -1494,11 +1518,77 @@ export const api = {
         updated_at: payload.updated_at
       });
       storageConfigVersion += 1;
+    },
+    getSupabaseStorage: async (): Promise<import('../types').SupabaseStorageSettings> => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('storage_url, storage_anon_key, storage_service_key, storage_bucket, updated_at')
+          .eq('id', APP_SETTINGS_SINGLETON_ID)
+          .maybeSingle();
+
+        if (error || !data) {
+          return { storageUrl: '', anonKey: '', serviceKey: '', bucket: '' };
+        }
+
+        return {
+          storageUrl: data.storage_url || '',
+          anonKey: data.storage_anon_key || '',
+          serviceKey: data.storage_service_key || '',
+          bucket: data.storage_bucket || '',
+          updated_at: data.updated_at
+        };
+      } catch (error: any) {
+        console.warn('Failed to load Supabase Storage settings:', error?.message || error);
+        return { storageUrl: '', anonKey: '', serviceKey: '', bucket: '' };
+      }
+    },
+    saveSupabaseStorage: async (settings: import('../types').SupabaseStorageSettings): Promise<void> => {
+      const payload = {
+        id: APP_SETTINGS_SINGLETON_ID,
+        storage_url: settings.storageUrl?.trim() || null,
+        storage_anon_key: settings.anonKey?.trim() || null,
+        storage_service_key: settings.serviceKey?.trim() || null,
+        storage_bucket: settings.bucket?.trim() || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(payload);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      storageConfigVersion += 1;
     }
   },
 
   files: {
     list: async (patientId: string): Promise<PatientFile[]> => {
+      // Check Supabase Storage first
+      const supabaseStorage = await resolveActiveSupabaseStorage();
+      if (supabaseStorage) {
+        const prefix = `${patientId}/`;
+        const objects = await listSupabaseStorageFiles(supabaseStorage, prefix);
+        return objects
+          .filter(item => item.key.startsWith(prefix))
+          .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''))
+          .map((item) => {
+            const name = item.key.split('/').pop() || item.key;
+            return {
+              path: item.key,
+              name,
+              size: item.size || 0,
+              type: '',
+              uploaded_at: item.lastModified,
+              url: buildSupabasePublicUrl(supabaseStorage.storageUrl, supabaseStorage.bucket, item.key)
+            };
+          });
+      }
+
+      // Check S3 settings second
       const s3Settings = await resolveActiveS3Settings();
       if (s3Settings) {
         const prefix = `${patientId}/`;
@@ -1509,7 +1599,6 @@ export const api = {
           .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''))
           .map((item) => {
             const name = item.key.split('/').pop() || item.key;
-            // Use appropriate URL builder based on S3 endpoint type
             const url = isSupabaseS3Endpoint(baseUrl)
               ? buildSupabaseS3PublicUrl(baseUrl, item.key)
               : buildS3FileUrl(baseUrl, item.key);
@@ -1547,6 +1636,28 @@ export const api = {
       const path = `${patientId}/${Date.now()}-${file.name}`;
       const startVersion = storageConfigVersion;
 
+      // Check Supabase Storage first
+      const supabaseStorage = await resolveActiveSupabaseStorage();
+      if (supabaseStorage) {
+        await uploadSupabaseStorageFile(
+          supabaseStorage,
+          path,
+          file,
+          undefined,
+          undefined,
+          () => storageConfigVersion !== startVersion
+        );
+        return {
+          path,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          uploaded_at: new Date().toISOString(),
+          url: buildSupabasePublicUrl(supabaseStorage.storageUrl, supabaseStorage.bucket, path)
+        };
+      }
+
+      // Check S3 settings second
       const s3Settings = await resolveActiveS3Settings();
       if (s3Settings) {
         await uploadS3Object(
@@ -1558,7 +1669,6 @@ export const api = {
           () => storageConfigVersion !== startVersion
         );
         const baseUrl = normalizeS3BaseUrl(s3Settings.url);
-        // Use appropriate URL builder based on S3 endpoint type
         const url = isSupabaseS3Endpoint(baseUrl)
           ? buildSupabaseS3PublicUrl(baseUrl, path)
           : buildS3FileUrl(baseUrl, path);
@@ -1880,12 +1990,21 @@ export const api = {
       return results;
     },
     remove: async (path: string): Promise<void> => {
+      // Check Supabase Storage first
+      const supabaseStorage = await resolveActiveSupabaseStorage();
+      if (supabaseStorage) {
+        await deleteSupabaseStorageFile(supabaseStorage, path);
+        return;
+      }
+
+      // Check S3 settings second
       const s3Settings = await resolveActiveS3Settings();
       if (s3Settings) {
         await deleteS3Object(s3Settings, path);
         return;
       }
 
+      // Fallback to default Supabase Storage
       const { error } = await supabase.storage
         .from(PATIENT_FILES_BUCKET)
         .remove([path]);

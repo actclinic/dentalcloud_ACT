@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw } from 'lucide-react';
-import { Location, LoyaltyRule, S3Settings } from '../types';
+import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
 import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings as persistEmailSettings } from '../utils/emailSettings';
@@ -100,6 +100,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     region: ''
   });
   const [s3SettingsMessage, setS3SettingsMessage] = useState<string>('');
+  const [supabaseStorage, setSupabaseStorage] = useState<SupabaseStorageSettings>({
+    storageUrl: '',
+    anonKey: '',
+    serviceKey: '',
+    bucket: ''
+  });
+  const [supabaseStorageMessage, setSupabaseStorageMessage] = useState<string>('');
 
   const updateEmailSettings = (updates: Partial<EmailSettings>) => {
     setEmailSettingsMessage('');
@@ -126,6 +133,32 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       ...prev,
       ...updates
     }));
+  };
+
+  const updateSupabaseStorage = (updates: Partial<SupabaseStorageSettings>) => {
+    setSupabaseStorageMessage('');
+    setSupabaseStorage(prev => ({
+      ...prev,
+      ...updates
+    }));
+  };
+
+  const handleSaveSupabaseStorage = async () => {
+    try {
+      const nextSettings: SupabaseStorageSettings = {
+        ...supabaseStorage,
+        storageUrl: supabaseStorage.storageUrl.trim(),
+        anonKey: supabaseStorage.anonKey.trim(),
+        serviceKey: supabaseStorage.serviceKey.trim(),
+        bucket: supabaseStorage.bucket.trim()
+      };
+      await api.appSettings.saveSupabaseStorage(nextSettings);
+      setSupabaseStorage(nextSettings);
+      setSupabaseStorageMessage('Supabase Storage settings saved. Uploads will use the new bucket immediately.');
+    } catch (error: any) {
+      console.error('Failed to save Supabase Storage settings:', error);
+      setSupabaseStorageMessage(error?.message || 'Failed to save Supabase Storage settings.');
+    }
   };
 
   const handleSaveS3Settings = async () => {
@@ -232,6 +265,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   useEffect(() => {
     let isMounted = true;
+    
+    // Load S3 settings
     api.appSettings.getS3Settings()
       .then((settings) => {
         if (isMounted) {
@@ -241,6 +276,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       .catch((error) => {
         console.warn('Failed to load S3 settings:', error);
       });
+    
+    // Load Supabase Storage settings
+    api.appSettings.getSupabaseStorage()
+      .then((settings) => {
+        if (isMounted) {
+          setSupabaseStorage(settings);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load Supabase Storage settings:', error);
+      });
+      
     return () => {
       isMounted = false;
     };
@@ -807,69 +854,137 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* S3 Setting */}
+        {/* Storage Settings */}
         {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" />
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-800">S3 Setting</h3>
-            </div>
+          <>
+            {/* Supabase Storage (Recommended) */}
+            <div className="border border-emerald-200 rounded-xl p-6 bg-emerald-50/30">
+              <div className="flex items-center gap-3 mb-4">
+                <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                <h3 className="text-lg font-semibold text-emerald-800">Supabase Storage (Recommended)</h3>
+                <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">Easy Setup</span>
+              </div>
 
-            <p className="text-sm text-gray-600 mb-4">
-              Configure a custom S3 bucket for clinical file uploads. This overrides the default storage immediately after saving.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="URL"
-                value={s3Settings.url}
-                onChange={(e: any) => updateS3Settings({ url: e.target.value })}
-                placeholder="https://your-bucket.s3.ap-southeast-1.amazonaws.com"
-              />
-              <Input
-                label="Region"
-                value={s3Settings.region}
-                onChange={(e: any) => updateS3Settings({ region: e.target.value })}
-                placeholder="ap-southeast-1"
-              />
-              <Input
-                label="Access Key"
-                value={s3Settings.accessKey}
-                onChange={(e: any) => updateS3Settings({ accessKey: e.target.value })}
-                placeholder="AKIA..."
-              />
-              <Input
-                label="Secret Key"
-                type="password"
-                value={s3Settings.secretKey}
-                onChange={(e: any) => updateS3Settings({ secretKey: e.target.value })}
-                placeholder="********"
-              />
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <button
-                type="button"
-                onClick={handleSaveS3Settings}
-                className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-              >
-                Save S3 Settings
-              </button>
-              {s3SettingsMessage && (
-                <p className={`text-xs ${s3SettingsMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {s3SettingsMessage}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
-              <p className="text-xs text-amber-700">
-                <strong>Note:</strong> The bucket must allow direct browser uploads and public reads (or provide signed access) for file previews.
+              <p className="text-sm text-emerald-700 mb-4">
+                Use Supabase Storage REST API directly. No signature calculation needed - more reliable and easier to configure.
               </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Storage URL"
+                  value={supabaseStorage.storageUrl}
+                  onChange={(e: any) => updateSupabaseStorage({ storageUrl: e.target.value })}
+                  placeholder="https://your-project.supabase.co"
+                />
+                <Input
+                  label="Bucket Name"
+                  value={supabaseStorage.bucket}
+                  onChange={(e: any) => updateSupabaseStorage({ bucket: e.target.value })}
+                  placeholder="patient_files"
+                />
+                <Input
+                  label="Anon/Publishable Key"
+                  value={supabaseStorage.anonKey}
+                  onChange={(e: any) => updateSupabaseStorage({ anonKey: e.target.value })}
+                  placeholder="sb_publishable_..."
+                />
+                <Input
+                  label="Service Role Key"
+                  type="password"
+                  value={supabaseStorage.serviceKey}
+                  onChange={(e: any) => updateSupabaseStorage({ serviceKey: e.target.value })}
+                  placeholder="sb_secret_..."
+                />
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <button
+                  type="button"
+                  onClick={handleSaveSupabaseStorage}
+                  className="w-full md:w-auto rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
+                >
+                  Save Supabase Storage Settings
+                </button>
+                {supabaseStorageMessage && (
+                  <p className={`text-xs ${supabaseStorageMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {supabaseStorageMessage}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 p-3 bg-emerald-100/50 rounded-lg border border-emerald-200">
+                <p className="text-xs text-emerald-700">
+                  <strong>Note:</strong> This method uses the Supabase REST API directly - no AWS Signature V4 required. Make sure the <code className="bg-white px-1 rounded">patient_files</code> bucket exists in your Supabase Storage dashboard.
+                </p>
+              </div>
             </div>
-          </div>
+
+            {/* S3 Setting (Advanced) */}
+            <div className="border border-gray-200 rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" />
+                </svg>
+                <h3 className="text-lg font-semibold text-gray-800">S3-Compatible Storage (Advanced)</h3>
+                <span className="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">AWS Signature V4</span>
+              </div>
+
+              <p className="text-sm text-gray-600 mb-4">
+                Configure an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, etc.). Uses AWS Signature V4 signing.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="S3 URL"
+                  value={s3Settings.url}
+                  onChange={(e: any) => updateS3Settings({ url: e.target.value })}
+                  placeholder="https://your-bucket.s3.ap-southeast-1.amazonaws.com"
+                />
+                <Input
+                  label="Region"
+                  value={s3Settings.region}
+                  onChange={(e: any) => updateS3Settings({ region: e.target.value })}
+                  placeholder="ap-southeast-1"
+                />
+                <Input
+                  label="Access Key"
+                  value={s3Settings.accessKey}
+                  onChange={(e: any) => updateS3Settings({ accessKey: e.target.value })}
+                  placeholder="AKIA..."
+                />
+                <Input
+                  label="Secret Key"
+                  type="password"
+                  value={s3Settings.secretKey}
+                  onChange={(e: any) => updateS3Settings({ secretKey: e.target.value })}
+                  placeholder="********"
+                />
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <button
+                  type="button"
+                  onClick={handleSaveS3Settings}
+                  className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+                >
+                  Save S3 Settings
+                </button>
+                {s3SettingsMessage && (
+                  <p className={`text-xs ${s3SettingsMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {s3SettingsMessage}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+                <p className="text-xs text-amber-700">
+                  <strong>Advanced:</strong> Requires proper AWS Signature V4 implementation. May not work with all S3-compatible services (e.g., Supabase S3 API).
+                </p>
+              </div>
+            </div>
+          </>
         )}
 
         {/* System Operations */}

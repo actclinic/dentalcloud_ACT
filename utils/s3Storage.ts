@@ -33,19 +33,15 @@ const formatAmzDate = (date: Date) => {
 };
 
 const encodePath = (path: string) => {
+  // For AWS Signature V4, we need to URI-encode the path
+  // But Supabase S3 expects the raw path without double-encoding
+  // Just ensure slashes are preserved
   if (!path) return '/';
+  
+  // Don't over-encode - just use the path as-is with proper URI encoding
   return path
     .split('/')
-    .map(segment => {
-      const decoded = (() => {
-        try {
-          return decodeURIComponent(segment);
-        } catch (error) {
-          return segment;
-        }
-      })();
-      return encodeURIComponent(decoded);
-    })
+    .map(segment => encodeURIComponent(segment))
     .join('/')
     .replace(/%2F/g, '/');
 };
