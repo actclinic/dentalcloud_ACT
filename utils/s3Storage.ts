@@ -161,20 +161,25 @@ export const extractBucketFromSupabaseS3Url = (url: string): string => {
 /**
  * Build the correct Supabase S3 API URL.
  * Supabase S3 expects: http://host/storage/v1/s3/{bucket}/{key}
+ * 
+ * If the base URL already contains the bucket, just append the key.
+ * If not, we assume 'patient_files' as the default bucket.
  */
 export const buildSupabaseS3Url = (baseUrl: string, key: string): string => {
   const normalized = normalizeS3BaseUrl(baseUrl);
   
-  // If URL already has bucket path, use it as base
-  if (normalized.includes('/storage/v1/s3/')) {
-    return `${normalized}/${key}`;
+  // If URL already has bucket path (e.g., .../s3/patient_files), just append key
+  if (normalized.match(/\/storage\/v1\/s3\/[^/]+$/i)) {
+    return key ? `${normalized}/${key}` : normalized;
   }
   
-  // Otherwise, we need to extract or infer bucket from the key
-  // Key format: patientId/filename
-  // Supabase S3 path: /storage/v1/s3/patient_files/{patientId}/{filename}
+  // If URL is just /storage/v1/s3, add default bucket
   const bucket = extractBucketFromSupabaseS3Url(baseUrl) || 'patient_files';
-  return `${normalized}/${bucket}/${key}`;
+  
+  if (key) {
+    return `${normalized}/${bucket}/${key}`;
+  }
+  return `${normalized}/${bucket}`;
 };
 
 /**
@@ -199,23 +204,18 @@ export const buildS3FileUrl = (baseUrl: string, key: string) => {
 
 export const listS3Objects = async (settings: S3Settings, prefix: string) => {
   const baseUrl = normalizeS3BaseUrl(settings.url);
-  const url = new URL(baseUrl);
   
-  // For Supabase S3, we need to use the correct path structure
-  // Supabase S3: /storage/v1/s3?list-type=2&prefix=bucket/prefix
-  if (isSupabaseS3Endpoint(baseUrl)) {
-    // Supabase S3-compatible endpoint
-    // The prefix should include the bucket name if needed
-    url.searchParams.set('list-type', '2');
-    if (prefix) {
-      url.searchParams.set('prefix', prefix);
-    }
-  } else {
-    // Standard S3 endpoint
-    url.searchParams.set('list-type', '2');
-    if (prefix) {
-      url.searchParams.set('prefix', prefix);
-    }
+  // For Supabase S3, the URL must include the bucket name in the path
+  // Format: /storage/v1/s3/{bucket}?list-type=2&prefix={prefix}
+  const url = new URL(
+    isSupabaseS3Endpoint(baseUrl)
+      ? buildSupabaseS3Url(baseUrl, '')  // Empty key = list bucket root
+      : baseUrl
+  );
+  
+  url.searchParams.set('list-type', '2');
+  if (prefix) {
+    url.searchParams.set('prefix', prefix);
   }
 
   const { headers } = await signS3Request({

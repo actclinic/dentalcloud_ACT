@@ -37,16 +37,17 @@ Secret Key: [delete everything]
 **Only use these if you MUST configure S3:**
 
 ```
-URL:        http://127.0.0.1:54321/storage/v1/s3
+URL:        https://s3api.nationalcancercenter.click/storage/v1/s3/patient_files
 Region:     local
 Access Key: 625729a08b95bf1b7ff351a663f3a23c
 Secret Key: 850181e4652dd023b7a98c58ae0d2d34bd487ee0cc3254aed6eda37307425907
 ```
 
-⚠️ **Warning:** 
-- No trailing slash in URL
-- Region must be exactly `local`
-- Copy keys exactly (no modifications)
+⚠️ **Important:** 
+- ✅ URL MUST include `/patient_files` at the end
+- ✅ No trailing slash after patient_files
+- ✅ Region must be exactly `local`
+- ✅ Copy keys exactly (no modifications)
 
 ---
 
