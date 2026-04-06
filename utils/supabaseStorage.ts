@@ -44,19 +44,18 @@ export const buildSupabasePublicUrl = (
 /**
  * Choose an appropriate TUS chunk size based on the file size.
  * All chunks must be < 90 MB to safely pass through Cloudflare.
- * Supabase also requires chunk sizes that are multiples of 6 MB
- * when using the TUS resumable endpoint, so we use multiples of 6 MB.
+ * Supabase TUS requires chunk sizes that are multiples of 6 MB.
+ *
+ * Optimised for UNSTABLE internet connections — small chunks so each
+ * request finishes quickly and failed chunks can be retried cheaply.
  */
 const chooseTusChunkSize = (fileSize: number): number => {
   const MB = 1024 * 1024;
-  // < 100 MB  → 12 MB chunks (fast, safe)
-  if (fileSize < 100 * MB) return 12 * MB;
-  // 100 MB – 500 MB → 48 MB chunks
-  if (fileSize < 500 * MB) return 48 * MB;
-  // 500 MB – 2 GB  → 60 MB chunks
-  if (fileSize < 2 * 1024 * MB) return 60 * MB;
-  // > 2 GB         → 72 MB chunks (still < 90 MB Cloudflare cap)
-  return 72 * MB;
+  // All files use 6 MB chunks — the smallest valid TUS chunk size.
+  // This keeps each HTTP request short and retryable on flaky connections.
+  // A 2 GB file = ~341 chunks, each finishing in seconds even on slow links.
+  void fileSize; // kept for future tuning if network improves
+  return 6 * MB;
 };
 
 /**

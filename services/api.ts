@@ -1729,26 +1729,20 @@ export const api = {
 
     /**
      * Calculate optimal chunk size for the primary (cloud) Supabase TUS endpoint.
-     * Chunks are kept well below 90 MB so they pass any upstream proxy limit.
-     * Supabase TUS requires chunk sizes that are multiples of 6 MB, so we use
-     * multiples of 6 MB throughout.
+     * Supabase TUS requires chunk sizes that are multiples of 6 MB.
+     *
+     * Optimised for UNSTABLE internet — uses the smallest valid chunk (6 MB)
+     * so each request completes quickly and retries are cheap.
      *
      * NOTE: The self-hosted Supabase path uses its own chunk-size logic inside
      * utils/supabaseStorage.ts → chooseTusChunkSize().
      *
      * @param fileSize - File size in bytes
-     * @returns Optimal chunk size in bytes
+     * @returns Optimal chunk size in bytes (6 MB)
      */
     calculateOptimalChunkSize: (fileSize: number): number => {
-      const MB = 1024 * 1024;
-      // < 100 MB  → 12 MB chunks
-      if (fileSize < 100 * MB) return 12 * MB;
-      // 100 – 500 MB → 48 MB chunks
-      if (fileSize < 500 * MB) return 48 * MB;
-      // 500 MB – 2 GB → 60 MB chunks
-      if (fileSize < 2 * 1024 * MB) return 60 * MB;
-      // > 2 GB → 72 MB chunks (still safely under 90 MB)
-      return 72 * MB;
+      void fileSize; // kept for future tuning
+      return 6 * 1024 * 1024; // 6 MB — smallest valid TUS chunk
     },
 
     /**
