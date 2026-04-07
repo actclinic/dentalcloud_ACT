@@ -777,17 +777,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                             <div 
                               className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
                               onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
                             >
                               {/* View Option */}
-                              <a
-                                href={file.url}
-                                target="_blank"
-                                rel="noreferrer"
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setTimeout(() => setOpenMenuId(null), 100);
+                                  window.open(file.url, '_blank');
+                                  setOpenMenuId(null);
                                 }}
-                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors w-full text-left"
                               >
                                 <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                   <Eye size={16} className="text-indigo-600" />
@@ -796,17 +795,22 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                                   <p className="font-medium">View</p>
                                   <p className="text-xs text-gray-500">Open in new tab</p>
                                 </div>
-                              </a>
+                              </button>
 
                               {/* Download Option */}
-                              <a
-                                href={file.url}
-                                download={file.name}
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setTimeout(() => setOpenMenuId(null), 100);
+                                  const link = document.createElement('a');
+                                  link.href = file.url;
+                                  link.download = file.name;
+                                  link.target = '_blank';
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                  setOpenMenuId(null);
                                 }}
-                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors w-full text-left"
                               >
                                 <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                   <Download size={16} className="text-green-600" />
@@ -815,7 +819,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                                   <p className="font-medium">Download</p>
                                   <p className="text-xs text-gray-500">Save to device</p>
                                 </div>
-                              </a>
+                              </button>
 
                               {/* Divider */}
                               <div className="my-2 border-t border-gray-100"></div>
@@ -824,8 +828,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onDeleteFile(file.path);
-                                  setTimeout(() => setOpenMenuId(null), 100);
+                                  if (window.confirm(`Delete "${file.name}" permanently?`)) {
+                                    onDeleteFile(file.path);
+                                    setOpenMenuId(null);
+                                  }
                                 }}
                                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
                               >
