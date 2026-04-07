@@ -760,107 +760,109 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             />
           </div>
 
-          <div className="mt-5 space-y-3">
-            {patientFiles.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500 font-medium">No files uploaded for this patient</p>
-                <p className="text-xs text-gray-400 mt-1">Upload documents using the area above</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {patientFiles.map((file) => (
-                  <div key={file.path} className="group relative border border-gray-100 rounded-xl p-4 hover:border-indigo-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/30 transition-all duration-200">
-                    <div className="flex items-start gap-3">
-                      {/* File Icon */}
-                      <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-indigo-600" />
-                      </div>
+          <div className="mt-5">
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 scrollbar-thumb-rounded-full hover:scrollbar-thumb-gray-400">
+              {patientFiles.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500 font-medium">No files uploaded for this patient</p>
+                  <p className="text-xs text-gray-400 mt-1">Upload documents using the area above</p>
+                </div>
+              ) : (
+                <>
+                  {patientFiles.map((file) => (
+                    <div key={file.path} className="group relative border border-gray-100 rounded-xl p-4 hover:border-indigo-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/30 transition-all duration-200">
+                      <div className="flex items-start gap-3">
+                        {/* File Icon */}
+                        <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg flex items-center justify-center">
+                          <FileText className="w-5 h-5 text-indigo-600" />
+                        </div>
 
-                      {/* File Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-800 truncate mb-0.5">{file.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {file.type?.split('/')[1]?.toUpperCase() || 'File'} · {formatBytes(file.size)}
-                        </p>
-                      </div>
+                        {/* File Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate mb-0.5">{file.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {file.type?.split('/')[1]?.toUpperCase() || 'File'} · {formatBytes(file.size)}
+                          </p>
+                        </div>
 
-                      {/* Three-Dot Menu Button */}
-                      <div className="flex-shrink-0" ref={menuRef}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleMenu(file.path);
-                          }}
-                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200"
-                          title="More options"
-                        >
-                          <MoreVertical size={18} />
-                        </button>
+                        {/* Three-Dot Menu Button */}
+                        <div className="flex-shrink-0" ref={menuRef}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleMenu(file.path);
+                            }}
+                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200"
+                            title="More options"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
 
-                        {/* Dropdown Menu */}
-                        {openMenuId === file.path && (
-                          <div className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                            {/* View Option */}
-                            <a
-                              href={file.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={() => setOpenMenuId(null)}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                            >
-                              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <Eye size={16} className="text-indigo-600" />
-                              </div>
-                              <div>
-                                <p className="font-medium">View</p>
-                                <p className="text-xs text-gray-500">Open in new tab</p>
-                              </div>
-                            </a>
+                          {/* Dropdown Menu */}
+                          {openMenuId === file.path && (
+                            <div className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                              {/* View Option */}
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={() => setOpenMenuId(null)}
+                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                              >
+                                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <Eye size={16} className="text-indigo-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium">View</p>
+                                  <p className="text-xs text-gray-500">Open in new tab</p>
+                                </div>
+                              </a>
 
-                            {/* Download Option */}
-                            <a
-                              href={file.url}
-                              download={file.name}
-                              onClick={() => setOpenMenuId(null)}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
-                            >
-                              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <Download size={16} className="text-green-600" />
-                              </div>
-                              <div>
-                                <p className="font-medium">Download</p>
-                                <p className="text-xs text-gray-500">Save to device</p>
-                              </div>
-                            </a>
+                              {/* Download Option */}
+                              <a
+                                href={file.url}
+                                download={file.name}
+                                onClick={() => setOpenMenuId(null)}
+                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                              >
+                                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <Download size={16} className="text-green-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium">Download</p>
+                                  <p className="text-xs text-gray-500">Save to device</p>
+                                </div>
+                              </a>
 
-                            {/* Divider */}
-                            <div className="my-2 border-t border-gray-100"></div>
+                              {/* Divider */}
+                              <div className="my-2 border-t border-gray-100"></div>
 
-                            {/* Delete Option */}
-                            <button
-                              onClick={() => {
-                                onDeleteFile(file.path);
-                                setOpenMenuId(null);
-                              }}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
-                            >
-                              <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <Trash2 size={16} className="text-red-600" />
-                              </div>
-                              <div className="text-left">
-                                <p className="font-medium">Remove</p>
-                                <p className="text-xs text-gray-500">Delete permanently</p>
-                              </div>
-                            </button>
-                          </div>
-                        )}
+                              {/* Delete Option */}
+                              <button
+                                onClick={() => {
+                                  onDeleteFile(file.path);
+                                  setOpenMenuId(null);
+                                }}
+                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
+                              >
+                                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <Trash2 size={16} className="text-red-600" />
+                                </div>
+                                <div className="text-left">
+                                  <p className="font-medium">Remove</p>
+                                  <p className="text-xs text-gray-500">Delete permanently</p>
+                                </div>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
