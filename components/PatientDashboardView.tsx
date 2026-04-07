@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info } from 'lucide-react';
+import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info, FolderOpen } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
 import { otpService } from '../services/otp';
-import { Patient, Appointment, ClinicalRecord, Doctor } from '../types';
+import { Patient, Appointment, ClinicalRecord, Doctor, PatientFile } from '../types';
 import { Modal, Input } from './Shared';
 import Receipt from './Receipt';
 import PatientMessagingView from './PatientMessagingView';
@@ -18,8 +18,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [treatmentRecords, setTreatmentRecords] = useState<ClinicalRecord[]>([]);
+  const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for document viewer
+  const [showDocumentViewer, setShowDocumentViewer] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<PatientFile | null>(null);
   
   // State for appointment management
   const [showCreateAppointment, setShowCreateAppointment] = useState(false);
@@ -110,7 +115,17 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       // Fetch treatment records
       const records = await api.treatments.getHistory(patientId);
       setTreatmentRecords(records);
-      
+
+      // Fetch patient files
+      try {
+        const files = await api.files.list(patientId);
+        setPatientFiles(files);
+      } catch (fileErr) {
+        console.error('Failed to fetch patient files:', fileErr);
+        // Don't fail the entire fetch if files fail
+        setPatientFiles([]);
+      }
+
       // Fetch doctors
       const allDoctors = await api.doctors.getAll(patientData.location_id);
       setDoctors(allDoctors);
@@ -358,6 +373,32 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
           (1000 * 60 * 60 * 24)
       )
     : null;
+
+  // Helper function to format bytes
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Handle document view
+  const handleViewDocument = (file: PatientFile) => {
+    setSelectedDocument(file);
+    setShowDocumentViewer(true);
+  };
+
+  // Handle document download
+  const handleDownloadDocument = (file: PatientFile) => {
+    const link = document.createElement('a');
+    link.href = file.url;
+    link.download = file.name;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
@@ -670,7 +711,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         )}
 
         {activeTab === 'profile' && (
-          <div className="px-4">
+          <div className="px-4 space-y-4">
+            {/* Profile Information Card */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900 text-sm">My Profile</h2>
@@ -691,36 +733,36 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                     <p className="text-xs text-gray-600">Patient ID: {patient.id.substring(0, 8)}...</p>
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <div className="p-3 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-500 mb-1">Email</p>
                     <p className="font-medium text-gray-900 text-sm">{patient.email}</p>
                   </div>
-                  
+
                   <div className="p-3 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-500 mb-1">Phone</p>
                     <p className="font-medium text-gray-900 text-sm">{patient.phone || 'Not provided'}</p>
                   </div>
-                  
+
                   <div className="p-3 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-500 mb-1">Debt</p>
                     <p className="font-medium text-gray-900 text-sm">{patient.balance.toLocaleString()} MMK</p>
                   </div>
-                  
+
                   <div className="p-3 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-500 mb-1">Loyalty Points</p>
                     <p className="font-medium text-gray-900 text-sm">{patient.loyalty_points} points</p>
                   </div>
                 </div>
-                
+
                 {patient.medicalHistory && (
                   <div className="p-3 bg-gray-50 rounded-xl">
                     <p className="text-xs text-gray-500 mb-1">Medical History</p>
                     <p className="text-gray-900 text-sm">{patient.medicalHistory}</p>
                   </div>
                 )}
-                
+
                 <div className="pt-4 border-t border-gray-100">
                   <button
                     onClick={() => setChangingPassword(true)}
@@ -729,6 +771,58 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                     Change Password
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Patient Documents Card */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+              <div className="p-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-5 h-5 text-indigo-600" />
+                  <h2 className="font-semibold text-gray-900 text-sm">My Documents</h2>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">View and download your medical documents</p>
+              </div>
+              <div className="p-4">
+                {patientFiles.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FolderOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <h3 className="text-sm font-medium text-gray-900 mb-2">No Documents Available</h3>
+                    <p className="text-gray-500 text-sm">You don't have any documents yet. Your doctor will upload them during your visits.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {patientFiles.map((file) => (
+                      <div key={file.path} className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:border-indigo-200 hover:bg-indigo-50/30 transition-all">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <FileText className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{file.name}</p>
+                            <p className="text-xs text-gray-500">{file.type || 'File'} · {formatBytes(file.size)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleViewDocument(file)}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                            title="View document"
+                          >
+                            <Eye size={14} />
+                            View
+                          </button>
+                          <button
+                            onClick={() => handleDownloadDocument(file)}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+                            title="Download document"
+                          >
+                            <Download size={14} />
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1141,12 +1235,105 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       
       {/* Receipt Modal */}
       {showReceipt && selectedTreatment && (
-        <Receipt 
+        <Receipt
           patient={patient}
           treatments={[selectedTreatment]}
           currency={'MMK'}
           onClose={() => setShowReceipt(false)}
         />
+      )}
+
+      {/* Document Viewer Modal */}
+      {showDocumentViewer && selectedDocument && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowDocumentViewer(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-indigo-50 to-purple-50">
+              <div className="flex items-center gap-3">
+                <FileText className="w-6 h-6 text-indigo-600" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">{selectedDocument.name}</h3>
+                  <p className="text-xs text-gray-500">{selectedDocument.type || 'File'} · {formatBytes(selectedDocument.size)}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDocumentViewer(false)}
+                className="p-2 text-gray-500 hover:bg-white rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Document Preview */}
+            <div className="p-6 overflow-auto" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+              {/* Image Preview */}
+              {(selectedDocument.type?.startsWith('image/') || selectedDocument.name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) && (
+                <div className="flex items-center justify-center bg-gray-50 rounded-xl p-4">
+                  <img
+                    src={selectedDocument.url}
+                    alt={selectedDocument.name}
+                    className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-sm"
+                  />
+                </div>
+              )}
+
+              {/* PDF Preview */}
+              {(selectedDocument.type === 'application/pdf' || selectedDocument.name.endsWith('.pdf')) && (
+                <div className="rounded-xl overflow-hidden border border-gray-200">
+                  <iframe
+                    src={selectedDocument.url}
+                    title={selectedDocument.name}
+                    className="w-full"
+                    style={{ height: '60vh' }}
+                  />
+                </div>
+              )}
+
+              {/* Video Preview */}
+              {(selectedDocument.type?.startsWith('video/') || selectedDocument.name.match(/\.(mp4|webm|ogg|mov)$/i)) && (
+                <div className="flex items-center justify-center bg-gray-50 rounded-xl p-4">
+                  <video
+                    src={selectedDocument.url}
+                    controls
+                    className="max-w-full max-h-[60vh] rounded-lg"
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              )}
+
+              {/* Unsupported File Type */}
+              {!selectedDocument.type?.startsWith('image/') && 
+               !selectedDocument.type?.startsWith('video/') && 
+               selectedDocument.type !== 'application/pdf' &&
+               !selectedDocument.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|pdf|mp4|webm|ogg|mov)$/i) && (
+                <div className="text-center py-12">
+                  <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Preview Not Available</h3>
+                  <p className="text-gray-500 text-sm mb-6">This file type cannot be previewed. Please download to view.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+              <button
+                onClick={() => setShowDocumentViewer(false)}
+                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                Close
+              </button>
+              <a
+                href={selectedDocument.url}
+                download={selectedDocument.name}
+                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+              >
+                <Download size={16} />
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
@@ -739,28 +739,41 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
               <div className="text-xs text-gray-400 text-center italic">No files uploaded for this patient.</div>
             ) : (
               patientFiles.map((file) => (
-                <div key={file.path} className="flex items-center justify-between px-3 py-2 border border-gray-100 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-indigo-500" />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">{file.name}</p>
+                <div key={file.path} className="flex items-center justify-between px-4 py-3 border border-gray-100 rounded-lg hover:border-indigo-200 hover:bg-indigo-50/30 transition-all">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <FileText className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{file.name}</p>
                       <p className="text-xs text-gray-500">{file.type || 'File'} · {formatBytes(file.size)}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <a
                       href={file.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-indigo-600 font-bold hover:text-indigo-800"
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                      title="View in new tab"
                     >
+                      <Eye size={14} />
                       View
+                    </a>
+                    <a
+                      href={file.url}
+                      download={file.name}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+                      title="Download file"
+                    >
+                      <Download size={14} />
+                      Download
                     </a>
                     <button
                       onClick={() => onDeleteFile(file.path)}
-                      className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1"
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                      title="Remove file"
                     >
-                      <Trash2 size={14} /> Remove
+                      <Trash2 size={14} />
+                      Remove
                     </button>
                   </div>
                 </div>
