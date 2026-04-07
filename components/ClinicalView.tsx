@@ -774,13 +774,19 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
 
                           {/* Dropdown Menu */}
                           {openMenuId === file.path && (
-                            <div className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div 
+                              className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               {/* View Option */}
                               <a
                                 href={file.url}
                                 target="_blank"
                                 rel="noreferrer"
-                                onClick={() => setOpenMenuId(null)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTimeout(() => setOpenMenuId(null), 100);
+                                }}
                                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
                               >
                                 <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -796,7 +802,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                               <a
                                 href={file.url}
                                 download={file.name}
-                                onClick={() => setOpenMenuId(null)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTimeout(() => setOpenMenuId(null), 100);
+                                }}
                                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                               >
                                 <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -813,9 +822,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
 
                               {/* Delete Option */}
                               <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   onDeleteFile(file.path);
-                                  setOpenMenuId(null);
+                                  setTimeout(() => setOpenMenuId(null), 100);
                                 }}
                                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
                               >
