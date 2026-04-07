@@ -1,5 +1,5 @@
-import React from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
@@ -88,8 +88,29 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null);
   const [isUploadingWithProgress, setIsUploadingWithProgress] = React.useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
+
+  // Close dropdown menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    
+    if (openMenuId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openMenuId]);
+
+  // Toggle menu for a specific file
+  const toggleMenu = (fileId: string) => {
+    setOpenMenuId(openMenuId === fileId ? null : fileId);
+  };
 
   const handleRedeemSubmit = () => {
     if (!selectedPatient || !onRedeemPoints) return;
@@ -749,13 +770,13 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             ) : (
               <div className="space-y-2">
                 {patientFiles.map((file) => (
-                  <div key={file.path} className="group border border-gray-100 rounded-xl p-4 hover:border-indigo-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/30 transition-all duration-200">
+                  <div key={file.path} className="group relative border border-gray-100 rounded-xl p-4 hover:border-indigo-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/30 transition-all duration-200">
                     <div className="flex items-start gap-3">
                       {/* File Icon */}
                       <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg flex items-center justify-center">
                         <FileText className="w-5 h-5 text-indigo-600" />
                       </div>
-                      
+
                       {/* File Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-gray-800 truncate mb-0.5">{file.name}</p>
@@ -763,36 +784,77 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                           {file.type?.split('/')[1]?.toUpperCase() || 'File'} · {formatBytes(file.size)}
                         </p>
                       </div>
-                      
-                      {/* Action Buttons */}
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <a
-                          href={file.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-all duration-200 hover:shadow-sm"
-                          title="View in new tab"
-                        >
-                          <Eye size={14} />
-                          <span className="hidden sm:inline">View</span>
-                        </a>
-                        <a
-                          href={file.url}
-                          download={file.name}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-all duration-200 hover:shadow-sm"
-                          title="Download file"
-                        >
-                          <Download size={14} />
-                          <span className="hidden sm:inline">Download</span>
-                        </a>
+
+                      {/* Three-Dot Menu Button */}
+                      <div className="flex-shrink-0" ref={menuRef}>
                         <button
-                          onClick={() => onDeleteFile(file.path)}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-all duration-200 hover:shadow-sm"
-                          title="Remove file"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMenu(file.path);
+                          }}
+                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200"
+                          title="More options"
                         >
-                          <Trash2 size={14} />
-                          <span className="hidden sm:inline">Remove</span>
+                          <MoreVertical size={18} />
                         </button>
+
+                        {/* Dropdown Menu */}
+                        {openMenuId === file.path && (
+                          <div className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            {/* View Option */}
+                            <a
+                              href={file.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={() => setOpenMenuId(null)}
+                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                            >
+                              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <Eye size={16} className="text-indigo-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium">View</p>
+                                <p className="text-xs text-gray-500">Open in new tab</p>
+                              </div>
+                            </a>
+
+                            {/* Download Option */}
+                            <a
+                              href={file.url}
+                              download={file.name}
+                              onClick={() => setOpenMenuId(null)}
+                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                            >
+                              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <Download size={16} className="text-green-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium">Download</p>
+                                <p className="text-xs text-gray-500">Save to device</p>
+                              </div>
+                            </a>
+
+                            {/* Divider */}
+                            <div className="my-2 border-t border-gray-100"></div>
+
+                            {/* Delete Option */}
+                            <button
+                              onClick={() => {
+                                onDeleteFile(file.path);
+                                setOpenMenuId(null);
+                              }}
+                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
+                            >
+                              <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <Trash2 size={16} className="text-red-600" />
+                              </div>
+                              <div className="text-left">
+                                <p className="font-medium">Remove</p>
+                                <p className="text-xs text-gray-500">Delete permanently</p>
+                              </div>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
