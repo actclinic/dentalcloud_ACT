@@ -260,6 +260,10 @@ const App: React.FC = () => {
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
   const doctorDropdownRef = useRef<HTMLDivElement>(null);
   
+  // Service deletion confirmation state
+  const [deleteServiceConfirmOpen, setDeleteServiceConfirmOpen] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState<{id: string, name: string} | null>(null);
+
   // Filter doctors based on search query
   const filteredDoctors = doctors.filter(doctor => {
     if (!doctorSearchQuery.trim()) return true;
@@ -1435,10 +1439,11 @@ const App: React.FC = () => {
   };
 
   const handleDeleteTreatmentType = async (id: string) => {
-    if(!confirm("Are you sure you want to delete this service? History will be preserved.")) return;
     try {
       await api.treatments.deleteType(id);
       setTreatmentTypes(treatmentTypes.filter(t => t.id !== id));
+      setServiceToDelete(null);
+      setDeleteServiceConfirmOpen(false);
     } catch (err: any) {
       alert(err.message);
     }
@@ -1891,7 +1896,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView appointments={appointments} loading={loading} onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' }); setAvailableTimes([]); setShowAppointmentModal(true)}} onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || 'Checkup', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); if (apt.doctor_id && apt.date) fetchAvailableTimes(apt.doctor_id, apt.date); setShowAppointmentModal(true)}} onDeleteAppointment={handleDeleteAppointment} onUpdateStatus={handleUpdateAppointmentStatus} />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
-            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={handleDeleteTreatmentType} />}
+            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
@@ -2602,6 +2607,25 @@ const App: React.FC = () => {
           />
         </Suspense>
       )}
+
+      {/* Service Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteServiceConfirmOpen}
+        title="Delete Service"
+        message={`Are you sure you want to delete "${serviceToDelete?.name}"? Treatment history will be preserved, but this service will no longer be available for new appointments.`}
+        confirmText="Delete Service"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={() => {
+          if (serviceToDelete) {
+            handleDeleteTreatmentType(serviceToDelete.id);
+          }
+        }}
+        onCancel={() => {
+          setServiceToDelete(null);
+          setDeleteServiceConfirmOpen(false);
+        }}
+      />
     </div>
   );
 };

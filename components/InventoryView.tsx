@@ -5,6 +5,7 @@ import { Medicine } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportInventoryToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
+import { ConfirmDialog } from './Shared';
 
 interface TopSellingItem {
   medicine_id: string;
@@ -35,6 +36,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [medicineToDelete, setMedicineToDelete] = useState<{id: string, name: string} | null>(null);
   const itemsPerPage = 10;
 
   // Filtered data based on search term
@@ -320,9 +323,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm(`Are you sure you want to delete "${medicine.name}"?`)) {
-                              onDelete(medicine.id);
-                            }
+                            setMedicineToDelete({ id: medicine.id, name: medicine.name });
+                            setDeleteConfirmOpen(true);
                           }}
                           className="text-gray-400 hover:text-red-600 transition-colors p-1"
                           title="Delete medicine"
@@ -392,6 +394,27 @@ const InventoryView: React.FC<InventoryViewProps> = ({
           onToggleShowAll={() => setShowAll(!showAll)}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Delete Medicine"
+        message={`Are you sure you want to delete "${medicineToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete Medicine"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={() => {
+          if (medicineToDelete) {
+            onDelete(medicineToDelete.id);
+            setMedicineToDelete(null);
+          }
+          setDeleteConfirmOpen(false);
+        }}
+        onCancel={() => {
+          setMedicineToDelete(null);
+          setDeleteConfirmOpen(false);
+        }}
+      />
     </div>
   );
 };
