@@ -90,6 +90,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null);
   const [isUploadingWithProgress, setIsUploadingWithProgress] = React.useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = React.useState(false);
+  const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
@@ -613,6 +615,57 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                  </Modal>
                )}
 
+               {deleteModal && fileToDelete && (
+                 <Modal
+                   title="Delete Patient Document"
+                   onClose={() => {
+                     setDeleteModal(false);
+                     setFileToDelete(null);
+                   }}
+                 >
+                   <div className="space-y-5">
+                     <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-4">
+                       <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                         <Trash2 className="text-red-600" size={24} />
+                       </div>
+                       <div className="flex-1">
+                         <p className="text-sm font-semibold text-red-900 mb-1">Warning: This action cannot be undone</p>
+                         <p className="text-sm text-red-700">You are about to permanently delete:</p>
+                         <p className="text-base font-bold text-red-900 mt-2 p-2 bg-white rounded-lg border border-red-200">
+                           {fileToDelete.name}
+                         </p>
+                       </div>
+                     </div>
+
+                     <div className="flex gap-3">
+                       <button
+                         onClick={() => {
+                           setDeleteModal(false);
+                           setFileToDelete(null);
+                         }}
+                         className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-all border border-gray-200"
+                       >
+                         Cancel
+                       </button>
+                       <button
+                         onClick={() => {
+                           if (fileToDelete) {
+                             onDeleteFile(fileToDelete.path);
+                             setDeleteModal(false);
+                             setFileToDelete(null);
+                             setOpenMenuId(null);
+                           }
+                         }}
+                         className="flex-1 bg-red-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+                       >
+                         <Trash2 size={18} />
+                         Delete Permanently
+                       </button>
+                     </div>
+                   </div>
+                 </Modal>
+               )}
+
                <button 
                 className="w-full bg-gray-900 text-white py-3 rounded-xl font-bold text-sm mt-2 hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
                 onClick={onClosePatient}
@@ -828,10 +881,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (window.confirm(`Delete "${file.name}" permanently?`)) {
-                                    onDeleteFile(file.path);
-                                    setOpenMenuId(null);
-                                  }
+                                  setFileToDelete({ name: file.name, path: file.path });
+                                  setDeleteModal(true);
                                 }}
                                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
                               >
