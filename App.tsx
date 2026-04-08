@@ -26,7 +26,7 @@ import {
   DollarSign
 } from 'lucide-react';
 
-import { Modal, Input, NavItem, Toast } from './components/Shared';
+import { Modal, Input, NavItem, Toast, ConfirmDialog } from './components/Shared';
 import { 
   Patient, 
   Appointment, 
