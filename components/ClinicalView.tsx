@@ -93,8 +93,21 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const [deleteModal, setDeleteModal] = React.useState(false);
   const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const FILES_PER_PAGE = 3;
+  const totalPages = Math.ceil(patientFiles.length / FILES_PER_PAGE);
+  const paginatedFiles = patientFiles.slice(
+    (currentPage - 1) * FILES_PER_PAGE,
+    currentPage * FILES_PER_PAGE
+  );
+
+  // Reset to page 1 when files change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [patientFiles.length]);
 
   const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
 
@@ -805,7 +818,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           </div>
 
           <div className="mt-5">
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 scrollbar-thumb-rounded-full hover:scrollbar-thumb-gray-400">
+            <div className="space-y-2">
               {patientFiles.length === 0 ? (
                 <div className="text-center py-8">
                   <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -814,7 +827,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 </div>
               ) : (
                 <>
-                  {patientFiles.map((file) => (
+                  {paginatedFiles.map((file) => (
                     <div key={file.path} className="group relative border border-gray-100 rounded-xl p-4 hover:border-indigo-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/30 transition-all duration-200">
                       <div className="flex items-start gap-3">
                         {/* File Icon */}
@@ -927,6 +940,25 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 </>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-4">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${
+                      currentPage === page
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-700'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
