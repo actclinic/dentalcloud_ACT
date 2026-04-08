@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor } from '../types';
@@ -90,9 +90,11 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null);
   const [isUploadingWithProgress, setIsUploadingWithProgress] = React.useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const [deleteModal, setDeleteModal] = React.useState(false);
   const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
 
@@ -101,19 +103,35 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpenMenuId(null);
+        setMenuPosition(null);
       }
     };
-    
+
     if (openMenuId) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
     }
   }, [openMenuId]);
 
   // Toggle menu for a specific file
-  const toggleMenu = (fileId: string) => {
-    setOpenMenuId(openMenuId === fileId ? null : fileId);
-  };
+  const toggleMenu = useCallback((fileId: string, event?: React.MouseEvent) => {
+    if (openMenuId === fileId) {
+      setOpenMenuId(null);
+      setMenuPosition(null);
+    } else {
+      setOpenMenuId(fileId);
+      // Calculate position based on button element
+      if (event?.currentTarget) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setMenuPosition({
+          top: rect.bottom + 4,
+          right: window.innerWidth - rect.right
+        });
+      }
+    }
+  }, [openMenuId]);
 
   const handleRedeemSubmit = () => {
     if (!selectedPatient || !onRedeemPoints) return;
@@ -813,11 +831,12 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                         </div>
 
                         {/* Three-Dot Menu Button */}
-                        <div className="flex-shrink-0" ref={menuRef}>
+                        <div className="flex-shrink-0">
                           <button
+                            ref={(el) => { buttonRefs.current[file.path] = el }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleMenu(file.path);
+                              toggleMenu(file.path, e);
                             }}
                             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200"
                             title="More options"
@@ -826,9 +845,14 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                           </button>
 
                           {/* Dropdown Menu */}
-                          {openMenuId === file.path && (
-                            <div 
-                              className="absolute right-4 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+                          {openMenuId === file.path && menuPosition && (
+                            <div
+                              ref={menuRef}
+                              className="fixed w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-[9999] animate-in fade-in slide-in-from-top-2 duration-200"
+                              style={{
+                                top: `${menuPosition.top}px`,
+                                right: `${menuPosition.right}px`
+                              }}
                               onClick={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
