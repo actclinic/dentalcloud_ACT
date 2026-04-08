@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Clock, Loader2, User, FileDown } from 'lucide-reac
 import { Doctor, DoctorSchedule } from '../types';
 import { exportDoctorsToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
+import { ConfirmDialog } from './Shared';
 
 interface DoctorsViewProps {
   doctors: Doctor[];
@@ -22,6 +23,8 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [doctorToDelete, setDoctorToDelete] = useState<string | null>(null);
   const itemsPerPage = 10;
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -145,9 +148,8 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Are you sure you want to delete Dr. ${doctor.name}?`)) {
-                          onDelete(doctor.id);
-                        }
+                        setDoctorToDelete(doctor.id);
+                        setDeleteConfirmOpen(true);
                       }}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete doctor"
@@ -198,6 +200,27 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
           onToggleShowAll={() => setShowAll(!showAll)}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Delete Doctor"
+        message={`Are you sure you want to delete this doctor? This action cannot be undone.`}
+        confirmText="Delete Doctor"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={() => {
+          if (doctorToDelete) {
+            onDelete(doctorToDelete);
+            setDoctorToDelete(null);
+          }
+          setDeleteConfirmOpen(false);
+        }}
+        onCancel={() => {
+          setDoctorToDelete(null);
+          setDeleteConfirmOpen(false);
+        }}
+      />
     </div>
   );
 };

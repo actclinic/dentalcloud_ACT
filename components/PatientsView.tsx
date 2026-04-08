@@ -4,7 +4,7 @@ import { Patient, LoyaltyRule } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
-import { Modal, Input } from './Shared';
+import { Modal, Input, ConfirmDialog } from './Shared';
 
 interface PatientsViewProps {
   patients: Patient[];
@@ -44,6 +44,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const itemsPerPage = 10;
 
   // Filtered data based on search term
@@ -457,31 +458,40 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           {onDeletePatient && (
             <button
               type="button"
-              disabled={isDeleting}
-              onClick={async () => {
-                if (!editModal.patient || !onDeletePatient) return;
-                const confirmed = window.confirm(
-                  `Delete ${editModal.patient.name}? This will permanently remove the patient and all related records.`
-                );
-                if (!confirmed) return;
-                setIsDeleting(true);
-                try {
-                  await onDeletePatient(editModal.patient.id);
-                  setEditModal({ open: false, patient: null });
-                } catch (err: any) {
-                  alert(err?.message || 'Failed to delete patient');
-                } finally {
-                  setIsDeleting(false);
-                }
-              }}
-              className="w-full bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700 transition-all mt-2"
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="w-full bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all mt-2"
             >
-              {isDeleting ? 'Deleting...' : 'Delete Patient'}
+              Delete Patient
             </button>
           )}
         </form>
       </Modal>
     )}
+
+    {/* Delete Confirmation Dialog */}
+    <ConfirmDialog
+      isOpen={deleteConfirmOpen}
+      title="Delete Patient"
+      message={`Are you sure you want to delete ${editModal.patient?.name}? This will permanently remove the patient and all related records. This action cannot be undone.`}
+      confirmText="Delete Patient"
+      cancelText="Cancel"
+      type="danger"
+      isLoading={isDeleting}
+      onConfirm={async () => {
+        if (!editModal.patient || !onDeletePatient) return;
+        setIsDeleting(true);
+        try {
+          await onDeletePatient(editModal.patient.id);
+          setEditModal({ open: false, patient: null });
+          setDeleteConfirmOpen(false);
+        } catch (err: any) {
+          alert(err?.message || 'Failed to delete patient');
+        } finally {
+          setIsDeleting(false);
+        }
+      }}
+      onCancel={() => setDeleteConfirmOpen(false)}
+    />
 
     {redeemModal.open && redeemModal.patient && (
       <Modal

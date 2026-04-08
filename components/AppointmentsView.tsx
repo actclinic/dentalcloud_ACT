@@ -3,6 +3,7 @@ import { Calendar, Plus, Loader2, Edit2, Trash2, Clock, User, FileText, FileDown
 import { Appointment } from '../types';
 import { exportAppointmentsToPDF } from '../utils/pdfExport';
 import Pagination from './Pagination';
+import { ConfirmDialog } from './Shared';
 
 interface AppointmentsViewProps {
   appointments: Appointment[];
@@ -29,6 +30,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null);
   const itemsPerPage = 10;
 
   const formatDate = (dateString: string) => {
@@ -324,9 +327,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (confirm(`Are you sure you want to delete this appointment?`)) {
-                                  onDeleteAppointment(appointment.id);
-                                }
+                                setAppointmentToDelete(appointment.id);
+                                setDeleteConfirmOpen(true);
                               }}
                               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete appointment"
@@ -422,9 +424,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm(`Are you sure you want to delete this appointment?`)) {
-                                onDeleteAppointment(appointment.id);
-                              }
+                              setAppointmentToDelete(appointment.id);
+                              setDeleteConfirmOpen(true);
                             }}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Delete appointment"
@@ -556,9 +557,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm('Are you sure you want to delete this appointment?')) {
-                                onDeleteAppointment(appointment.id);
-                              }
+                              setAppointmentToDelete(appointment.id);
+                              setDeleteConfirmOpen(true);
                             }}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
                           >
@@ -574,6 +574,27 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           )}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Delete Appointment"
+        message="Are you sure you want to delete this appointment? This action cannot be undone."
+        confirmText="Delete Appointment"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={() => {
+          if (appointmentToDelete) {
+            onDeleteAppointment(appointmentToDelete);
+            setAppointmentToDelete(null);
+          }
+          setDeleteConfirmOpen(false);
+        }}
+        onCancel={() => {
+          setAppointmentToDelete(null);
+          setDeleteConfirmOpen(false);
+        }}
+      />
     </div>
   );
 };

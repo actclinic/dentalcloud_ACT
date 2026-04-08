@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 
 export const Modal = ({ title, children, onClose }: { title: string, children?: React.ReactNode, onClose: () => void }) => (
   <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-fade-in">
@@ -16,6 +16,109 @@ export const Modal = ({ title, children, onClose }: { title: string, children?: 
     </div>
   </div>
 );
+
+// Confirmation Dialog Component
+interface ConfirmDialogProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  type?: 'danger' | 'warning' | 'info';
+  onConfirm: () => void;
+  onCancel: () => void;
+  isLoading?: boolean;
+}
+
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  isOpen,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  type = 'danger',
+  onConfirm,
+  onCancel,
+  isLoading = false
+}) => {
+  if (!isOpen) return null;
+
+  const typeConfig = {
+    danger: {
+      icon: <AlertTriangle className="w-6 h-6 text-red-600" />,
+      iconBg: 'bg-red-100',
+      confirmBg: 'bg-red-600 hover:bg-red-700',
+      confirmShadow: 'shadow-red-600/20'
+    },
+    warning: {
+      icon: <AlertTriangle className="w-6 h-6 text-amber-600" />,
+      iconBg: 'bg-amber-100',
+      confirmBg: 'bg-amber-600 hover:bg-amber-700',
+      confirmShadow: 'shadow-amber-600/20'
+    },
+    info: {
+      icon: <Info className="w-6 h-6 text-blue-600" />,
+      iconBg: 'bg-blue-100',
+      confirmBg: 'bg-blue-600 hover:bg-blue-700',
+      confirmShadow: 'shadow-blue-600/20'
+    }
+  };
+
+  const config = typeConfig[type];
+
+  return (
+    <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-fade-in">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full relative animate-scale-up">
+        <button 
+          onClick={onCancel} 
+          className="absolute top-6 right-6 text-gray-300 hover:text-gray-600 transition-colors"
+          disabled={isLoading}
+        >
+          <X size={20} />
+        </button>
+        
+        <div className="p-8">
+          <div className="flex items-start gap-4 mb-6">
+            <div className={`flex-shrink-0 w-12 h-12 rounded-2xl ${config.iconBg} flex items-center justify-center`}>
+              {config.icon}
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-black text-gray-900 mb-2">{title}</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">{message}</p>
+            </div>
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={onCancel}
+              disabled={isLoading}
+              className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={isLoading}
+              className={`flex-1 px-6 py-3 rounded-xl font-bold text-white ${config.confirmBg} ${config.confirmShadow} shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Processing...
+                </>
+              ) : (
+                confirmText
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const Input = ({ label, ...props }: any) => (
   <div>
