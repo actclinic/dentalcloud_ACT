@@ -181,8 +181,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                         tickFormatter={(value) => value.length > 12 ? value.substring(0, 12) + '...' : value}
                       />
                       <Tooltip 
-                        formatter={(value: number, name: string, props: any) => [
-                          `${value} units sold`,
+                        formatter={(value: number | undefined, name: string | undefined, props: any) => [
+                          `${value ?? 0} units sold`,
                           props.payload.medicine_name
                         ]}
                         labelFormatter={() => ''}
@@ -232,7 +232,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                         width={75}
                       />
                       <Tooltip 
-                        formatter={(value: number, name: string, props: any) => {
+                        formatter={(value: number | undefined, name: string | undefined, props: any) => {
                           const item = props.payload;
                           return [`${item.stock} / ${item.minStock} units (${item.percentage}%)`, 'Stock Level'];
                         }}
