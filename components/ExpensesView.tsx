@@ -284,7 +284,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
                 <span className="text-xs font-semibold text-blue-600 bg-white px-2.5 py-1 rounded-full">Today</span>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(dailyTotal, currency)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(dailyTotal, currency)}</p>
               <p className="text-xs text-gray-600 mt-1">Daily expenses</p>
             </div>
 
@@ -295,7 +295,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
                 <span className="text-xs font-semibold text-purple-600 bg-white px-2.5 py-1 rounded-full">This Month</span>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyTotal, currency)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(monthlyTotal, currency)}</p>
               <p className="text-xs text-gray-600 mt-1">Monthly expenses</p>
             </div>
 
@@ -306,7 +306,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
                 <span className="text-xs font-semibold text-orange-600 bg-white px-2.5 py-1 rounded-full">All Time</span>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalAll, currency)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(totalAll, currency)}</p>
               <p className="text-xs text-gray-600 mt-1">Total expenses</p>
             </div>
 
@@ -317,7 +317,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
                 <span className="text-xs font-semibold text-gray-600 bg-white px-2.5 py-1 rounded-full">Count</span>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{expenses.length}</p>
+              <p className="text-lg font-bold text-gray-900">{expenses.length}</p>
               <p className="text-xs text-gray-600 mt-1">Total records</p>
             </div>
           </div>
@@ -329,7 +329,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <TrendingUp className="w-4 h-4 text-emerald-600" />
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Monthly Revenue</p>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyRevenue, currency)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(monthlyRevenue, currency)}</p>
               <p className="text-xs text-gray-500 mt-1">Treatments + medicine</p>
             </div>
 
@@ -338,7 +338,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <TrendingDown className="w-4 h-4 text-red-600" />
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Monthly Expenses</p>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyTotal, currency)}</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(monthlyTotal, currency)}</p>
               <p className="text-xs text-gray-500 mt-1">Operating costs</p>
             </div>
 
@@ -347,7 +347,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                 <DollarSign className={`w-4 h-4 ${monthlyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`} />
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Net Profit</p>
               </div>
-              <p className={`text-2xl font-bold ${monthlyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+              <p className={`text-lg font-bold ${monthlyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                 {formatCurrency(monthlyProfit, currency)}
               </p>
               <p className="text-xs text-gray-500 mt-1">Revenue minus expenses</p>
@@ -504,7 +504,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <p className="text-base font-bold text-gray-900">{formatCurrency(expense.amount, currency)}</p>
+                          <p className="text-sm font-bold text-gray-900">{formatCurrency(expense.amount, currency)}</p>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-1.5">
@@ -589,7 +589,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                   <DollarSign className="w-4 h-4 text-gray-500" />
                   <p className="text-xs font-semibold text-gray-600 uppercase">Amount</p>
                 </div>
-                <p className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(selectedExpense.amount || 0, currency)}</p>
+                <p className="text-base font-bold text-gray-900 mt-1">{formatCurrency(selectedExpense.amount || 0, currency)}</p>
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">

@@ -151,7 +151,7 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
               <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-700">Total Medicine Cost:</span>
-                  <span className="text-xl font-black text-indigo-600">{formatCurrency(totalPrice, currency)}</span>
+                  <span className="text-lg font-black text-indigo-600">{formatCurrency(totalPrice, currency)}</span>
                 </div>
                 <p className="text-xs text-gray-500">
                   {Array.from(selectedMedicines.entries())

@@ -373,7 +373,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               <span>{item.label}</span>
               {item.icon}
             </div>
-            <div className="mt-3 text-2xl font-bold text-gray-900">{item.value}</div>
+            <div className="mt-3 text-lg font-bold text-gray-900">{item.value}</div>
             <div className="mt-1 text-xs text-gray-500">{item.note}</div>
           </div>
         ))}

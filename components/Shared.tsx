@@ -152,7 +152,7 @@ export const StatsCard = ({ title, value, icon, trend }: { title: string, value:
         </span>
       </div>
       <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">{title}</p>
-      <h3 className="text-3xl font-black text-gray-900 tracking-tight">{value}</h3>
+      <h3 className="text-xl font-black text-gray-900 tracking-tight">{value}</h3>
     </div>
   );
 };

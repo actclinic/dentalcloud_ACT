@@ -145,7 +145,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
           <div>
             <p className="text-sm text-gray-600">Total Selected:</p>
-            <p className="text-2xl font-bold text-gray-900">
+            <p className="text-lg font-bold text-gray-900">
               {formatCurrency(totalSelected, currency)}
             </p>
           </div>

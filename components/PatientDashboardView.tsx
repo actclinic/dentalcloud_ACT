@@ -477,8 +477,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                   <>
                     <p className="text-white/90 text-sm">Next appointment in</p>
                     <div className="flex items-end gap-2 mt-1">
-                      <span className="text-4xl font-black text-white leading-none">{daysLeft}</span>
-                      <span className="text-lg font-bold text-indigo-100 pb-1">{daysLeft === 1 ? 'day left' : 'days left'}</span>
+                      <span className="text-2xl font-black text-white leading-none">{daysLeft}</span>
+                      <span className="text-base font-bold text-indigo-100 pb-1">{daysLeft === 1 ? 'day left' : 'days left'}</span>
                     </div>
                     <p className="text-xs text-indigo-100 mt-3">
                       {nextScheduledAppointment.date} at {nextScheduledAppointment.time} • {nextScheduledAppointment.type}
@@ -487,7 +487,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 ) : (
                   <>
                     <p className="text-white/90 text-sm">No upcoming appointment</p>
-                    <p className="text-xl font-bold text-white mt-1">Book your next check-up</p>
+                    <p className="text-base font-bold text-white mt-1">Book your next check-up</p>
                     <button
                       onClick={() => setShowCreateAppointment(true)}
                       className="mt-4 px-4 py-2 rounded-xl bg-white text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors"
@@ -502,11 +502,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             {/* Quick Stats - Mobile optimized */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="text-xl font-bold text-indigo-600">{appointments.length}</div>
+                <div className="text-base font-bold text-indigo-600">{appointments.length}</div>
                 <div className="text-xs text-gray-600 mt-1">Appointments</div>
               </div>
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="text-xl font-bold text-green-600">{treatmentRecords.length}</div>
+                <div className="text-base font-bold text-green-600">{treatmentRecords.length}</div>
                 <div className="text-xs text-gray-600 mt-1">Treatments</div>
               </div>
             </div>

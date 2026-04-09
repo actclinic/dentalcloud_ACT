@@ -400,11 +400,11 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Outstanding Balance</p>
                  <div className="flex justify-between items-baseline">
-                    <p className={`text-3xl font-black ${selectedPatient.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    <p className={`text-xl font-black ${selectedPatient.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                       {formatCurrency(selectedPatient.balance || 0, currency)}
                     </p>
                     {selectedPatient.balance > 0 && (
-                      <button 
+                      <button
                         onClick={() => onPaymentRequest(selectedPatient.balance)}
                         className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm"
                       >
@@ -421,11 +421,11 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                      <Award size={14} className="text-amber-600" />
                    </div>
                    <div className="flex justify-between items-baseline">
-                      <p className="text-3xl font-black text-amber-700">
+                      <p className="text-xl font-black text-amber-700">
                         {selectedPatient.loyalty_points || 0} <span className="text-sm font-bold">Points</span>
                       </p>
                       {onRedeemPoints && canRedeem && (
-                        <button 
+                        <button
                           onClick={() => {
                             const availablePoints = selectedPatient.loyalty_points || 0;
                             setRedeemPointsInput(Math.min(availablePoints, 1000).toString());

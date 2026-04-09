@@ -142,19 +142,19 @@ const RecallsView: React.FC<RecallsViewProps> = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-gray-100">
           <p className="text-xs text-gray-500 uppercase font-bold">Pending</p>
-          <p className="text-2xl font-black text-indigo-600">{summary.pending}</p>
+          <p className="text-lg font-black text-indigo-600">{summary.pending}</p>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-gray-100">
           <p className="text-xs text-gray-500 uppercase font-bold">Due Today</p>
-          <p className="text-2xl font-black text-amber-600">{summary.dueToday}</p>
+          <p className="text-lg font-black text-amber-600">{summary.dueToday}</p>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-gray-100">
           <p className="text-xs text-gray-500 uppercase font-bold">Overdue</p>
-          <p className="text-2xl font-black text-red-600">{summary.overdue}</p>
+          <p className="text-lg font-black text-red-600">{summary.overdue}</p>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-gray-100">
           <p className="text-xs text-gray-500 uppercase font-bold">Completed</p>
-          <p className="text-2xl font-black text-green-600">{summary.completed}</p>
+          <p className="text-lg font-black text-green-600">{summary.completed}</p>
         </div>
       </div>
 
