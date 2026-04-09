@@ -1748,7 +1748,7 @@ const App: React.FC = () => {
     );
   }
 
-  const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging' || currentView === 'patients';
+  const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging' || currentView === 'patients' || currentView === 'appointments';
   const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs) as ViewState[];
 
   return (

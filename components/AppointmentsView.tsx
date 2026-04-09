@@ -182,7 +182,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const todayISO = toISODate(new Date());
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
+    <div className="flex flex-col h-full bg-white overflow-hidden">
     <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white sticky top-0 z-10">
       <div>
         <h2 className="text-xl font-bold text-gray-800">Appointment Schedule</h2>
@@ -249,11 +249,11 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     </div>
 
       {loading ? (
-        <div className="p-12 flex justify-center">
-          <Loader2 className="animate-spin text-indigo-600" />
+        <div className="flex-1 flex items-center justify-center p-12">
+          <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
         </div>
       ) : (
-        <div className="p-6">
+        <div className="flex-1 overflow-y-auto min-h-0 p-6">
           {viewMode === 'current' ? (
             <>
               {/* Upcoming Appointments */}
@@ -342,14 +342,16 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                   </div>
                 )}
                 {upcomingAppointments.length > 0 && (
-                  <Pagination
-                    totalItems={upcomingAppointments.length}
-                    itemsPerPage={itemsPerPage}
-                    currentPage={upcomingPage}
-                    onPageChange={setUpcomingPage}
-                    showAll={showAllUpcoming}
-                    onToggleShowAll={() => setShowAllUpcoming(!showAllUpcoming)}
-                  />
+                  <div className="sticky bottom-0 bg-white pt-3 border-t border-gray-100">
+                    <Pagination
+                      totalItems={upcomingAppointments.length}
+                      itemsPerPage={itemsPerPage}
+                      currentPage={upcomingPage}
+                      onPageChange={setUpcomingPage}
+                      showAll={showAllUpcoming}
+                      onToggleShowAll={() => setShowAllUpcoming(!showAllUpcoming)}
+                    />
+                  </div>
                 )}
               </div>
 
@@ -438,14 +440,16 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                   </div>
                 )}
                 {pastAppointments.length > 0 && (
-                  <Pagination
-                    totalItems={pastAppointments.length}
-                    itemsPerPage={itemsPerPage}
-                    currentPage={pastPage}
-                    onPageChange={setPastPage}
-                    showAll={showAllPast}
-                    onToggleShowAll={() => setShowAllPast(!showAllPast)}
-                  />
+                  <div className="sticky bottom-0 bg-white pt-3 border-t border-gray-100">
+                    <Pagination
+                      totalItems={pastAppointments.length}
+                      itemsPerPage={itemsPerPage}
+                      currentPage={pastPage}
+                      onPageChange={setPastPage}
+                      showAll={showAllPast}
+                      onToggleShowAll={() => setShowAllPast(!showAllPast)}
+                    />
+                  </div>
                 )}
               </div>
             </>
