@@ -99,7 +99,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   };
 
   return (
-  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
+  <div className="flex flex-col h-full bg-white overflow-hidden">
     <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white sticky top-0 z-10">
       <div>
         <h2 className="text-xl font-bold text-gray-800">Patient Directory</h2>
@@ -133,13 +133,13 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       </div>
     </div>
     {loading ? (
-      <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>
+      <div className="flex-1 flex items-center justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>
     ) : patients.length === 0 ? (
-      <div className="p-12 text-center text-gray-400 italic">No patients found. Add your first patient to begin.</div>
+      <div className="flex-1 flex items-center justify-center p-12 text-center text-gray-400 italic">No patients found. Add your first patient to begin.</div>
     ) : (
       <>
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -243,7 +243,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden divide-y divide-gray-100">
+        <div className="md:hidden divide-y divide-gray-100 overflow-y-auto flex-1 min-h-0">
           {paginatedPatients.map((patient) => (
             <div 
               key={patient.id} 
@@ -338,14 +338,16 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       </>
     )}
     {!loading && patients.length > 0 && (
-      <Pagination
-        totalItems={patients.length}
-        itemsPerPage={itemsPerPage}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        showAll={showAll}
-        onToggleShowAll={() => setShowAll(!showAll)}
-      />
+      <div className="sticky bottom-0 bg-white border-t border-gray-100">
+        <Pagination
+          totalItems={patients.length}
+          itemsPerPage={itemsPerPage}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          showAll={showAll}
+          onToggleShowAll={() => setShowAll(!showAll)}
+        />
+      </div>
     )}
 
     {authModal.open && authModal.patient && (
