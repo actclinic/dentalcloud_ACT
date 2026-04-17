@@ -1919,6 +1919,16 @@ const App: React.FC = () => {
                 loyaltyRules={loyaltyRules}
                 onSelectPatient={handlePatientSelect} 
                 onAddPatient={() => setShowPatientModal(true)} 
+                onExportPDF={async () => {
+                   const freshPatients = await api.patients.getAll(currentLocationId || undefined);
+                   const { exportPatientsToPDF } = await import('./utils/pdfExport');
+                   exportPatientsToPDF(freshPatients, currency);
+                }}
+                onExportExcel={async () => {
+                   const freshPatients = await api.patients.getAll(currentLocationId || undefined);
+                   const { exportPatientsToExcel } = await import('./utils/excelExport');
+                   await exportPatientsToExcel(freshPatients, currency);
+                }}
                 onUpdatePatient={async (id, data) => {
                   try {
                     await api.patients.update(id, data);
@@ -1941,7 +1951,24 @@ const App: React.FC = () => {
                   }
                 }}
             />}
-            {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView appointments={appointments} loading={loading} onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' }); setAvailableTimes([]); setShowAppointmentModal(true)}} onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || 'Checkup', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); if (apt.doctor_id && apt.date) fetchAvailableTimes(apt.doctor_id, apt.date); setShowAppointmentModal(true)}} onDeleteAppointment={handleDeleteAppointment} onUpdateStatus={handleUpdateAppointmentStatus} />}
+            {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView 
+                appointments={appointments} 
+                loading={loading} 
+                onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' }); setAvailableTimes([]); setShowAppointmentModal(true)}} 
+                onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || 'Checkup', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); if (apt.doctor_id && apt.date) fetchAvailableTimes(apt.doctor_id, apt.date); setShowAppointmentModal(true)}} 
+                onDeleteAppointment={handleDeleteAppointment} 
+                onUpdateStatus={handleUpdateAppointmentStatus} 
+                onExportPDF={async () => {
+                   const freshAppointments = await api.appointments.getAll(currentLocationId || undefined);
+                   const { exportAppointmentsToPDF } = await import('./utils/pdfExport');
+                   exportAppointmentsToPDF(freshAppointments);
+                }}
+                onExportExcel={async () => {
+                   const freshAppointments = await api.appointments.getAll(currentLocationId || undefined);
+                   const { exportAppointmentsToExcel } = await import('./utils/excelExport');
+                   await exportAppointmentsToExcel(freshAppointments);
+                }}
+            />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}

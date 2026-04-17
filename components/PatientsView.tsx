@@ -19,6 +19,8 @@ interface PatientsViewProps {
   onDeletePatient?: (id: string) => Promise<void>;
   onRedeemPoints?: (patient: Patient, points: number, amount: number) => void;
   onUpdatePatientAuth?: (patient: Patient, password: string) => void;
+  onExportPDF?: () => Promise<void>;
+  onExportExcel?: () => Promise<void>;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
 }
@@ -33,6 +35,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   onDeletePatient,
   onRedeemPoints, 
   onUpdatePatientAuth,
+  onExportPDF,
+  onExportExcel,
   loyaltyEnabled, 
   loyaltyRules = [] 
 }) => {
@@ -84,12 +88,32 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     setCurrentPage(1);
   }, [patients]);
 
-  const handleDownloadPDF = () => {
-    exportPatientsToPDF(patients, currency);
+  const [exporting, setExporting] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    if (onExportPDF) {
+      setExporting(true);
+      try {
+        await onExportPDF();
+      } finally {
+        setExporting(false);
+      }
+    } else {
+      exportPatientsToPDF(patients, currency);
+    }
   };
 
   const handleDownloadExcel = async () => {
-    await exportPatientsToExcel(patients, currency);
+    if (onExportExcel) {
+      setExporting(true);
+      try {
+        await onExportExcel();
+      } finally {
+        setExporting(false);
+      }
+    } else {
+      await exportPatientsToExcel(patients, currency);
+    }
   };
 
   const canRedeem = (patient: Patient) => (patient.loyalty_points || 0) > 0;
@@ -137,7 +161,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         </div>
         <div className="flex gap-2">
           <ExportMenu
-            disabled={patients.length === 0}
+            disabled={patients.length === 0 || exporting}
             onExportPDF={handleDownloadPDF}
             onExportExcel={handleDownloadExcel}
             className="flex-1 sm:flex-initial"

@@ -14,6 +14,8 @@ interface AppointmentsViewProps {
   onEditAppointment: (appointment: Appointment) => void;
   onDeleteAppointment: (id: string) => void;
   onUpdateStatus: (id: string, status: 'Scheduled' | 'Completed' | 'Cancelled') => void;
+  onExportPDF?: () => Promise<void>;
+  onExportExcel?: () => Promise<void>;
 }
 
 const AppointmentsView: React.FC<AppointmentsViewProps> = ({
@@ -22,7 +24,9 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   onAddAppointment,
   onEditAppointment,
   onDeleteAppointment,
-  onUpdateStatus
+  onUpdateStatus,
+  onExportPDF,
+  onExportExcel
 }) => {
   const [viewMode, setViewMode] = useState<'current' | 'calendar'>('current');
   const [upcomingPage, setUpcomingPage] = useState(1);
@@ -117,12 +121,32 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     return pastAppointments.slice(startIndex, startIndex + itemsPerPage);
   }, [pastAppointments, pastPage, showAllPast]);
 
-  const handleDownloadPDF = () => {
-    exportAppointmentsToPDF(appointments);
+  const [exporting, setExporting] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    if (onExportPDF) {
+      setExporting(true);
+      try {
+        await onExportPDF();
+      } finally {
+        setExporting(false);
+      }
+    } else {
+      exportAppointmentsToPDF(appointments);
+    }
   };
 
   const handleDownloadExcel = async () => {
-    await exportAppointmentsToExcel(appointments);
+    if (onExportExcel) {
+      setExporting(true);
+      try {
+        await onExportExcel();
+      } finally {
+        setExporting(false);
+      }
+    } else {
+      await exportAppointmentsToExcel(appointments);
+    }
   };
 
   const toISODate = (date: Date) => date.toISOString().split('T')[0];
@@ -213,7 +237,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <ExportMenu
-            disabled={appointments.length === 0}
+            disabled={appointments.length === 0 || exporting}
             onExportPDF={handleDownloadPDF}
             onExportExcel={handleDownloadExcel}
             className="flex-1 md:flex-initial"
