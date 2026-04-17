@@ -2,34 +2,104 @@ import { Appointment, ClinicalRecord, Doctor, Expense, Medicine, Patient } from 
 import { Currency } from './currency';
 import { formatTeethWithPosition } from './toothNumbering';
 
-type ExcelRow = Record<string, string | number>;
+type ExcelPrimitive = string | number;
+type ExcelRow = Record<string, ExcelPrimitive>;
+type ColumnFormat = 'text' | 'integer' | 'currency';
 
-const buildWorksheet = async (rows: ExcelRow[], headers: string[]) => {
+interface ExcelColumn {
+  header: string;
+  width?: number;
+  format?: ColumnFormat;
+}
+
+const getCurrencyNumberFormat = (currency: Currency) => {
+  return currency === 'MMK' ? '#,##0"Ks"' : '$#,##0.00';
+};
+
+const applyColumnFormatting = (
+  worksheet: Record<string, any>,
+  columns: ExcelColumn[],
+  rowCount: number,
+  currency: Currency
+) => {
+  columns.forEach((column, columnIndex) => {
+    if (!column.format || rowCount === 0) return;
+
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      const cellAddress = `${String.fromCharCode(65 + columnIndex)}${rowIndex + 2}`;
+      const cell = worksheet[cellAddress];
+
+      if (!cell || cell.t !== 'n') continue;
+
+      if (column.format === 'currency') {
+        cell.z = getCurrencyNumberFormat(currency);
+      }
+
+      if (column.format === 'integer') {
+        cell.z = '#,##0';
+      }
+    }
+  });
+};
+
+const buildWorksheet = async (rows: ExcelRow[], columns: ExcelColumn[], currency: Currency) => {
   const XLSX = await import('xlsx');
-  const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+  const headers = columns.map(column => column.header);
+  const worksheet = XLSX.utils.aoa_to_sheet([headers]);
 
-  worksheet['!cols'] = headers.map((header) => {
-    const headerLength = header.length;
+  if (rows.length > 0) {
+    XLSX.utils.sheet_add_json(worksheet, rows, {
+      header: headers,
+      skipHeader: true,
+      origin: 'A2'
+    });
+  }
+
+  worksheet['!cols'] = columns.map((column) => {
+    if (column.width) return { wch: column.width };
+
     const valueLength = rows.reduce((max, row) => {
-      const value = row[header];
+      const value = row[column.header];
       return Math.max(max, String(value ?? '').length);
-    }, headerLength);
+    }, column.header.length);
 
     return { wch: Math.min(Math.max(valueLength + 2, 12), 40) };
   });
 
+  if (headers.length > 0) {
+    const lastColumnLetter = String.fromCharCode(64 + headers.length);
+    const lastRowNumber = rows.length + 1;
+    worksheet['!autofilter'] = { ref: `A1:${lastColumnLetter}${lastRowNumber}` };
+  }
+
+  applyColumnFormatting(worksheet, columns, rows.length, currency);
+
   return { XLSX, worksheet };
 };
 
-const saveWorkbook = async (rows: ExcelRow[], headers: string[], sheetName: string, fileName: string) => {
-  const { XLSX, worksheet } = await buildWorksheet(rows, headers);
+const saveWorkbook = async (
+  rows: ExcelRow[],
+  columns: ExcelColumn[],
+  sheetName: string,
+  fileName: string,
+  currency: Currency = 'USD'
+) => {
+  const { XLSX, worksheet } = await buildWorksheet(rows, columns, currency);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   XLSX.writeFile(workbook, fileName);
 };
 
 export const exportPatientsToExcel = async (patients: Patient[], currency: Currency) => {
-  const headers = ['Patient Name', 'Phone', 'Email', 'Medical Status', 'Balance', 'Portal Access', 'Loyalty Points'];
+  const columns: ExcelColumn[] = [
+    { header: 'Patient Name', width: 24 },
+    { header: 'Phone', width: 16 },
+    { header: 'Email', width: 28 },
+    { header: 'Medical Status', width: 18 },
+    { header: 'Balance', width: 14, format: 'currency' },
+    { header: 'Portal Access', width: 14 },
+    { header: 'Loyalty Points', width: 14, format: 'integer' }
+  ];
   const rows = patients.map((patient) => ({
     'Patient Name': patient.name,
     Phone: patient.phone,
@@ -40,11 +110,19 @@ export const exportPatientsToExcel = async (patients: Patient[], currency: Curre
     'Loyalty Points': patient.loyalty_points || 0
   }));
 
-  await saveWorkbook(rows, headers, 'Patients', `patient-directory-${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveWorkbook(rows, columns, 'Patients', `patient-directory-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
 };
 
 export const exportAppointmentsToExcel = async (appointments: Appointment[]) => {
-  const headers = ['Date', 'Time', 'Patient', 'Type', 'Doctor', 'Status', 'Notes'];
+  const columns: ExcelColumn[] = [
+    { header: 'Date', width: 14 },
+    { header: 'Time', width: 10 },
+    { header: 'Patient', width: 24 },
+    { header: 'Type', width: 18 },
+    { header: 'Doctor', width: 22 },
+    { header: 'Status', width: 14 },
+    { header: 'Notes', width: 32 }
+  ];
   const rows = appointments
     .slice()
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
@@ -58,11 +136,18 @@ export const exportAppointmentsToExcel = async (appointments: Appointment[]) => 
       Notes: appointment.notes || ''
     }));
 
-  await saveWorkbook(rows, headers, 'Appointments', `appointments-report-${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveWorkbook(rows, columns, 'Appointments', `appointments-report-${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
 export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], currency: Currency) => {
-  const headers = ['Date', 'Patient', 'Doctor', 'Treatment', 'Teeth', 'Amount'];
+  const columns: ExcelColumn[] = [
+    { header: 'Date', width: 14 },
+    { header: 'Patient', width: 24 },
+    { header: 'Doctor', width: 22 },
+    { header: 'Treatment', width: 32 },
+    { header: 'Teeth', width: 18 },
+    { header: 'Amount', width: 14, format: 'currency' }
+  ];
   const rows = records.map((record) => ({
     Date: record.date,
     Patient: record.patient_name || 'Unknown',
@@ -72,12 +157,18 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     Amount: record.cost || 0
   }));
 
-  await saveWorkbook(rows, headers, 'Clinical Records', `clinical-records-${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveWorkbook(rows, columns, 'Clinical Records', `clinical-records-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
 };
 
 export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const headers = ['Doctor Name', 'Specialization', 'Phone', 'Email', 'Schedule'];
+  const columns: ExcelColumn[] = [
+    { header: 'Doctor Name', width: 24 },
+    { header: 'Specialization', width: 18 },
+    { header: 'Phone', width: 16 },
+    { header: 'Email', width: 28 },
+    { header: 'Schedule', width: 40 }
+  ];
   const rows = doctors.map((doctor) => ({
     'Doctor Name': `Dr. ${doctor.name}`,
     Specialization: doctor.specialization || 'General',
@@ -90,11 +181,20 @@ export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
           .join(' | ')
   }));
 
-  await saveWorkbook(rows, headers, 'Doctors', `doctors-directory-${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveWorkbook(rows, columns, 'Doctors', `doctors-directory-${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
 export const exportInventoryToExcel = async (medicines: Medicine[], currency: Currency) => {
-  const headers = ['Medicine', 'Category', 'Description', 'Unit', 'Price', 'Stock', 'Min Stock', 'Inventory Value'];
+  const columns: ExcelColumn[] = [
+    { header: 'Medicine', width: 24 },
+    { header: 'Category', width: 18 },
+    { header: 'Description', width: 30 },
+    { header: 'Unit', width: 10 },
+    { header: 'Price', width: 14, format: 'currency' },
+    { header: 'Stock', width: 12, format: 'integer' },
+    { header: 'Min Stock', width: 12, format: 'integer' },
+    { header: 'Inventory Value', width: 16, format: 'currency' }
+  ];
   const rows = medicines.map((medicine) => ({
     Medicine: medicine.name,
     Category: medicine.category || 'N/A',
@@ -102,15 +202,20 @@ export const exportInventoryToExcel = async (medicines: Medicine[], currency: Cu
     Unit: medicine.unit,
     Price: medicine.price || 0,
     Stock: medicine.stock || 0,
-    'Min Stock': medicine.min_stock ?? '',
+    'Min Stock': medicine.min_stock ?? 0,
     'Inventory Value': (medicine.price || 0) * (medicine.stock || 0)
   }));
 
-  await saveWorkbook(rows, headers, 'Inventory', `inventory-report-${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveWorkbook(rows, columns, 'Inventory', `inventory-report-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
 };
 
 export const exportExpensesToExcel = async (expenses: Expense[], currency: Currency) => {
-  const headers = ['Date', 'Description', 'Category', 'Amount'];
+  const columns: ExcelColumn[] = [
+    { header: 'Date', width: 14 },
+    { header: 'Description', width: 32 },
+    { header: 'Category', width: 18 },
+    { header: 'Amount', width: 14, format: 'currency' }
+  ];
   const rows = expenses.map((expense) => ({
     Date: expense.date,
     Description: expense.description,
@@ -118,5 +223,5 @@ export const exportExpensesToExcel = async (expenses: Expense[], currency: Curre
     Amount: expense.amount || 0
   }));
 
-  await saveWorkbook(rows, headers, 'Expenses', `expenses-${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveWorkbook(rows, columns, 'Expenses', `expenses-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
 };
