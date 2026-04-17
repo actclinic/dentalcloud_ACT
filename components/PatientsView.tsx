@@ -7,6 +7,7 @@ import { exportPatientsToExcel } from '../utils/excelExport';
 import Pagination from './Pagination';
 import { Modal, Input, ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
+import { getMyanmarCities, myanmarStatesAndRegions, getStateRegionForCity } from '../utils/myanmarCities';
 
 interface PatientsViewProps {
   patients: Patient[];
@@ -42,7 +43,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [editModal, setEditModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
   const [redeemModal, setRedeemModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
   const [redeemPointsInput, setRedeemPointsInput] = useState('');
-  const [editData, setEditData] = useState({ name: '', email: '', phone: '', medicalHistory: '' });
+  const [editData, setEditData] = useState({ 
+    name: '', 
+    email: '', 
+    phone: '', 
+    medicalHistory: '',
+    age: '',
+    address: '',
+    city: '',
+    state_region: '',
+    patient_type: 'walk-in' as Patient['patient_type']
+  });
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -228,7 +239,12 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                             name: patient.name,
                             email: patient.email || '',
                             phone: patient.phone || '',
-                            medicalHistory: patient.medicalHistory || ''
+                            medicalHistory: patient.medicalHistory || '',
+                            age: patient.age?.toString() || '',
+                            address: patient.address || '',
+                            city: patient.city || '',
+                            state_region: patient.state_region || '',
+                            patient_type: patient.patient_type || 'walk-in'
                           });
                         }}
                         className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
@@ -307,7 +323,12 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     name: patient.name,
                     email: patient.email || '',
                     phone: patient.phone || '',
-                    medicalHistory: patient.medicalHistory || ''
+                    medicalHistory: patient.medicalHistory || '',
+                    age: patient.age?.toString() || '',
+                    address: patient.address || '',
+                    city: patient.city || '',
+                    state_region: patient.state_region || '',
+                    patient_type: patient.patient_type || 'walk-in'
                   });
                 }}
                 className="w-full mt-2 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100 flex items-center justify-center gap-2"
@@ -422,7 +443,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             setIsSubmitting(true);
             try {
               if (onUpdatePatient && editModal.patient) {
-                await onUpdatePatient(editModal.patient.id, editData);
+                const patientData: Partial<Patient> = {
+                  name: editData.name,
+                  email: editData.email,
+                  phone: editData.phone,
+                  medicalHistory: editData.medicalHistory,
+                  age: editData.age ? parseInt(editData.age) : undefined,
+                  address: editData.address || undefined,
+                  city: editData.city || undefined,
+                  state_region: editData.state_region || undefined,
+                  patient_type: editData.patient_type
+                };
+                await onUpdatePatient(editModal.patient.id, patientData);
                 setEditModal({ open: false, patient: null });
               }
             } catch (err: any) {
@@ -447,6 +479,80 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           <div className="grid grid-cols-2 gap-4">
              <Input label="Primary Email" type="email" value={editData.email} onChange={(e: any) => setEditData({...editData, email: e.target.value})} />
              <Input label="Mobile Contact" required value={editData.phone} onChange={(e: any) => setEditData({...editData, phone: e.target.value})} />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Age</label>
+              <input
+                type="number"
+                min="0"
+                max="150"
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                value={editData.age}
+                onChange={(e) => setEditData({...editData, age: e.target.value})}
+                placeholder="Enter age"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Patient Type</label>
+              <select
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+                value={editData.patient_type}
+                onChange={(e) => setEditData({...editData, patient_type: e.target.value as Patient['patient_type']})}
+              >
+                <option value="walk-in">Walk-in</option>
+                <option value="online">Online</option>
+                <option value="phone call">Phone Call</option>
+                <option value="hotline">Hotline</option>
+                <option value="tiktok">TikTok</option>
+                <option value="tiktok hotline">TikTok Hotline</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Address</label>
+            <input
+              type="text"
+              className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+              value={editData.address}
+              onChange={(e) => setEditData({...editData, address: e.target.value})}
+              placeholder="Street address"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">City</label>
+              <select
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+                value={editData.city}
+                onChange={(e) => {
+                  const selectedCity = e.target.value;
+                  const stateRegion = getStateRegionForCity(selectedCity) || '';
+                  setEditData({...editData, city: selectedCity, state_region: stateRegion});
+                }}
+              >
+                <option value="">Select City</option>
+                {getMyanmarCities().map(city => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">State/Region</label>
+              <select
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+                value={editData.state_region}
+                onChange={(e) => setEditData({...editData, state_region: e.target.value})}
+              >
+                <option value="">Select State/Region</option>
+                {myanmarStatesAndRegions.map(state => (
+                  <option key={state} value={state}>{state}</option>
+                ))}
+              </select>
+            </div>
           </div>
           
           <div>

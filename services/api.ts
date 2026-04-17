@@ -368,6 +368,11 @@ export const api = {
         name: data.name,
         email: normalizedEmail,
         phone: normalizedPhone,
+        age: data.age || null,
+        address: data.address || null,
+        city: data.city || null,
+        state_region: data.state_region || null,
+        patient_type: data.patient_type || 'walk-in',
         balance: data.balance ?? 0,
         loyalty_points: 0,
         medical_history: data.medicalHistory || null
@@ -408,6 +413,11 @@ export const api = {
         name: data.name,
         email: normalizedEmail,
         phone: normalizedPhone,
+        age: data.age,
+        address: data.address,
+        city: data.city,
+        state_region: data.state_region,
+        patient_type: data.patient_type,
         balance: data.balance,
         medical_history: data.medicalHistory
       };

@@ -58,6 +58,7 @@ import { api } from './services/api';
 import { formatCurrency, getCurrencySymbol, Currency } from './utils/currency';
 import { buildFinancialReport, renderFinancialReportMarkdown } from './utils/aiReport';
 import { auth } from './services/auth';
+import { getMyanmarCities, myanmarStatesAndRegions, getStateRegionForCity } from './utils/myanmarCities';
 import { supabase } from './services/supabase';
 import { resolveAllowedTabs } from './utils/permissions';
 import { loadEmailSettings } from './utils/emailSettings';
@@ -261,7 +262,18 @@ const App: React.FC = () => {
   
   // -- Form State --
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({ name: '', email: '', phone: '', medicalHistory: '', password: '' });
+  const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({ 
+      name: '', 
+      email: '', 
+      phone: '', 
+      medicalHistory: '', 
+      password: '',
+      age: undefined,
+      address: '',
+      city: '',
+      state_region: '',
+      patient_type: 'walk-in'
+    });
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
@@ -906,7 +918,18 @@ const App: React.FC = () => {
       await api.patients.create({ ...newPatientData, location_id: currentLocationId });
       setShowPatientModal(false);
       fetchInitialData(); 
-      setNewPatientData({ name: '', email: '', phone: '', medicalHistory: '', password: '' });
+      setNewPatientData({ 
+        name: '', 
+        email: '', 
+        phone: '', 
+        medicalHistory: '', 
+        password: '',
+        age: undefined,
+        address: '',
+        city: '',
+        state_region: '',
+        patient_type: 'walk-in'
+      });
     } catch (err: any) {
       console.error('Patient creation error:', err);
       alert(`Error creating patient: ${err.message}`);
@@ -2055,6 +2078,80 @@ const App: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
                <Input label="Primary Email" type="email" value={newPatientData.email} onChange={(e: any) => setNewPatientData({...newPatientData, email: e.target.value})} />
                <Input label="Mobile Contact" required value={newPatientData.phone} onChange={(e: any) => setNewPatientData({...newPatientData, phone: e.target.value})} />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Age</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="150"
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  value={newPatientData.age || ''}
+                  onChange={(e) => setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value) : undefined})}
+                  placeholder="Enter age"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient Type</label>
+                <select
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                  value={newPatientData.patient_type || 'walk-in'}
+                  onChange={(e) => setNewPatientData({...newPatientData, patient_type: e.target.value as Patient['patient_type']})}
+                >
+                  <option value="walk-in">Walk-in</option>
+                  <option value="online">Online</option>
+                  <option value="phone call">Phone Call</option>
+                  <option value="hotline">Hotline</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="tiktok hotline">TikTok Hotline</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Address</label>
+              <input
+                type="text"
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                value={newPatientData.address || ''}
+                onChange={(e) => setNewPatientData({...newPatientData, address: e.target.value})}
+                placeholder="Street address"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">City</label>
+                <select
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                  value={newPatientData.city || ''}
+                  onChange={(e) => {
+                    const selectedCity = e.target.value;
+                    const stateRegion = getStateRegionForCity(selectedCity) || '';
+                    setNewPatientData({...newPatientData, city: selectedCity, state_region: stateRegion});
+                  }}
+                >
+                  <option value="">Select City</option>
+                  {getMyanmarCities().map(city => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">State/Region</label>
+                <select
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                  value={newPatientData.state_region || ''}
+                  onChange={(e) => setNewPatientData({...newPatientData, state_region: e.target.value})}
+                >
+                  <option value="">Select State/Region</option>
+                  {myanmarStatesAndRegions.map(state => (
+                    <option key={state} value={state}>{state}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             
             <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">

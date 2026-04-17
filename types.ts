@@ -15,6 +15,11 @@ export interface Patient {
   name: string;
   email: string;
   phone: string;
+  age?: number;
+  address?: string;
+  city?: string;
+  state_region?: string;
+  patient_type?: 'online' | 'walk-in' | 'phone call' | 'hotline' | 'tiktok' | 'tiktok hotline';
   lastVisit?: string;
   balance: number;
   loyalty_points: number;
