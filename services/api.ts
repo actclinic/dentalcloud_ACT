@@ -41,6 +41,7 @@ const detectUsersAllowedTabsSupport = async (): Promise<boolean> => {
 // Utility: map DB snake_case fields to app camelCase
 const mapPatient = (row: any): Patient => ({
   ...row,
+  township: row?.township ?? row?.state_region ?? undefined,
   loyalty_points: row?.loyalty_points ?? 0,
   medicalHistory: row?.medical_history ?? row?.medicalHistory,
   created_at: row?.created_at,
@@ -265,17 +266,28 @@ export const api = {
   patients: {
     getAll: async (locationId?: string): Promise<Patient[]> => {
       try {
-        let query = supabase
-          .from('patients')
-          .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at, patient_auth(id)')
-          .order('created_at', { ascending: false });
-        
-        if (locationId) {
-          query = query.eq('location_id', locationId);
+        const baseColumns = 'id, location_id, name, email, phone, age, address, city, patient_type, balance, loyalty_points, medical_history, created_at, patient_auth(id)';
+        const buildQuery = (regionColumn: 'township' | 'state_region') => {
+          let query = supabase
+            .from('patients')
+            .select(`${baseColumns}, ${regionColumn}`)
+            .order('created_at', { ascending: false });
+
+          if (locationId) {
+            query = query.eq('location_id', locationId);
+          }
+
+          return query;
+        };
+
+        let { data, error } = await buildQuery('township');
+
+        if (error && isMissingColumnError(error, 'township')) {
+          const fallbackResult = await buildQuery('state_region');
+          data = fallbackResult.data;
+          error = fallbackResult.error;
         }
-        
-        const { data, error } = await query;
-        
+
         if (error) throw error;
         return (data || []).map(mapPatient);
       } catch (err) {
