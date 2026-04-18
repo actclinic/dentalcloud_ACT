@@ -99,7 +99,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         setExporting(false);
       }
     } else {
-      exportPatientsToPDF(patients, currency); // Using original patients array instead of filteredPatients
+      exportPatientsToPDF(patients, currency);
     }
   };
 
@@ -112,7 +112,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         setExporting(false);
       }
     } else {
-      await exportPatientsToExcel(patients, currency); // Using original patients array instead of filteredPatients
+      await exportPatientsToExcel(patients, currency);
     }
   };
 

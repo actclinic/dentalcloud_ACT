@@ -268,7 +268,7 @@ export const api = {
         let query = supabase
           .from('patients')
           .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at, patient_auth(id)')
-          .order('name');
+          .order('created_at', { ascending: false });
         
         if (locationId) {
           query = query.eq('location_id', locationId);
