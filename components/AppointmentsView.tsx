@@ -34,11 +34,25 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow'>('all');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null);
   const itemsPerPage = 10;
+
+  const toLocalISODate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const tomorrowISO = useMemo(() => {
+    const nextDay = new Date();
+    nextDay.setDate(nextDay.getDate() + 1);
+    return toLocalISODate(nextDay);
+  }, []);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -70,18 +84,23 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
   // Filtered data based on search term
   const filteredAppointments = useMemo(() => {
-    if (!searchTerm) return appointments;
     const term = searchTerm.toLowerCase();
-    return appointments.filter(apt => 
-      apt.patient_name?.toLowerCase().includes(term) ||
-      apt.type?.toLowerCase().includes(term) ||
-      apt.doctor_name?.toLowerCase().includes(term) ||
-      apt.date.toLowerCase().includes(term) ||
-      apt.time.toLowerCase().includes(term) ||
-      apt.status.toLowerCase().includes(term) ||
-      apt.notes?.toLowerCase().includes(term)
-    );
-  }, [appointments, searchTerm]);
+    return appointments.filter(apt => {
+      const matchesSearch = !searchTerm || (
+        apt.patient_name?.toLowerCase().includes(term) ||
+        apt.type?.toLowerCase().includes(term) ||
+        apt.doctor_name?.toLowerCase().includes(term) ||
+        apt.date.toLowerCase().includes(term) ||
+        apt.time.toLowerCase().includes(term) ||
+        apt.status.toLowerCase().includes(term) ||
+        apt.notes?.toLowerCase().includes(term)
+      );
+
+      if (!matchesSearch) return false;
+      if (dateQuickFilter === 'tomorrow') return apt.date === tomorrowISO;
+      return true;
+    });
+  }, [appointments, searchTerm, dateQuickFilter, tomorrowISO]);
 
   // Separate upcoming and past appointments
   const upcomingAppointments = filteredAppointments.filter(apt => {
@@ -247,6 +266,32 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             className="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Appointment</span>
+          </button>
+        </div>
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 w-full md:w-auto">
+          <button
+            onClick={() => {
+              setDateQuickFilter('all');
+              setUpcomingPage(1);
+              setPastPage(1);
+            }}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
+              dateQuickFilter === 'all' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => {
+              setDateQuickFilter('tomorrow');
+              setUpcomingPage(1);
+              setPastPage(1);
+            }}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
+              dateQuickFilter === 'tomorrow' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Tomorrow
           </button>
         </div>
         <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 w-full md:w-auto">

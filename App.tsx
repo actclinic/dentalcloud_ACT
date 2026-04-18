@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 
 import { Modal, Input, NavItem, Toast, ConfirmDialog } from './components/Shared';
+import { SearchableSelect } from './components/SearchableSelect';
 import { 
   Patient, 
   Appointment, 
@@ -58,7 +59,7 @@ import { api } from './services/api';
 import { formatCurrency, getCurrencySymbol, Currency } from './utils/currency';
 import { buildFinancialReport, renderFinancialReportMarkdown } from './utils/aiReport';
 import { auth } from './services/auth';
-import { getMyanmarCities, myanmarTownships, getTownshipForCity } from './utils/myanmarCities';
+import { getMyanmarCities, getTownshipsForCity } from './utils/myanmarCities';
 import { supabase } from './services/supabase';
 import { resolveAllowedTabs } from './utils/permissions';
 import { loadEmailSettings } from './utils/emailSettings';
@@ -298,6 +299,14 @@ const App: React.FC = () => {
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });
   const [newExpenseData, setNewExpenseData] = useState<Partial<Expense>>(getDefaultExpenseFormData());
   const emailSettings = useMemo(() => loadEmailSettings(), []);
+  const cityOptions = useMemo(
+    () => getMyanmarCities().map((city) => ({ value: city, label: city })),
+    []
+  );
+  const townshipOptionsForNewPatient = useMemo(
+    () => getTownshipsForCity(newPatientData.city || '').map((township) => ({ value: township, label: township })),
+    [newPatientData.city]
+  );
 
   const applySessionState = (session: ReturnType<typeof auth.getSession>) => {
     if (!session) {
@@ -2151,33 +2160,27 @@ const App: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">City</label>
-                <select
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                <SearchableSelect
                   value={newPatientData.city || ''}
-                  onChange={(e) => {
-                    const selectedCity = e.target.value;
-                    const township = getTownshipForCity(selectedCity) || '';
-                    setNewPatientData({...newPatientData, city: selectedCity, township: township});
+                  onChange={(selectedCity) => {
+                    const allowedTownships = getTownshipsForCity(selectedCity);
+                    const nextTownship = allowedTownships.includes(newPatientData.township || '') ? newPatientData.township : '';
+                    setNewPatientData({ ...newPatientData, city: selectedCity, township: nextTownship });
                   }}
-                >
-                  <option value="">Select City</option>
-                  {getMyanmarCities().map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
+                  options={cityOptions}
+                  placeholder="Select City"
+                  emptyMessage="No city found"
+                />
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Township</label>
-                <select
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                <SearchableSelect
                   value={newPatientData.township || ''}
-                  onChange={(e) => setNewPatientData({...newPatientData, township: e.target.value})}
-                >
-                  <option value="">Select Township</option>
-                  {myanmarTownships.map(township => (
-                    <option key={township} value={township}>{township}</option>
-                  ))}
-                </select>
+                  onChange={(selectedTownship) => setNewPatientData({ ...newPatientData, township: selectedTownship })}
+                  options={townshipOptionsForNewPatient}
+                  placeholder={newPatientData.city ? 'Select Township' : 'Select City first'}
+                  emptyMessage={newPatientData.city ? 'No township found for this city' : 'Choose city first'}
+                />
               </div>
             </div>
             

@@ -7,7 +7,8 @@ import { exportPatientsToExcel } from '../utils/excelExport';
 import Pagination from './Pagination';
 import { Modal, Input, ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
-import { getMyanmarCities, myanmarTownships, getTownshipForCity } from '../utils/myanmarCities';
+import { SearchableSelect } from './SearchableSelect';
+import { getMyanmarCities, getTownshipsForCity } from '../utils/myanmarCities';
 
 interface PatientsViewProps {
   patients: Patient[];
@@ -75,6 +76,16 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       patient.medicalHistory?.toLowerCase().includes(term)
     );
   }, [patients, searchTerm]);
+
+  const cityOptions = useMemo(
+    () => getMyanmarCities().map((city) => ({ value: city, label: city })),
+    []
+  );
+
+  const townshipOptions = useMemo(
+    () => getTownshipsForCity(editData.city || '').map((township) => ({ value: township, label: township })),
+    [editData.city]
+  );
 
   // Paginated data
   const paginatedPatients = useMemo(() => {
@@ -549,33 +560,27 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">City</label>
-              <select
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+              <SearchableSelect
                 value={editData.city || ''}
-                onChange={(e) => {
-                  const selectedCity = e.target.value;
-                  const township = getTownshipForCity(selectedCity) || '';
-                  setEditData({...editData, city: selectedCity, township: township});
+                onChange={(selectedCity) => {
+                  const allowedTownships = getTownshipsForCity(selectedCity);
+                  const nextTownship = allowedTownships.includes(editData.township || '') ? editData.township : '';
+                  setEditData({ ...editData, city: selectedCity, township: nextTownship });
                 }}
-              >
-                <option value="">Select City</option>
-                {getMyanmarCities().map(city => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
+                options={cityOptions}
+                placeholder="Select City"
+                emptyMessage="No city found"
+              />
             </div>
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Township</label>
-              <select
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+              <SearchableSelect
                 value={editData.township || ''}
-                onChange={(e) => setEditData({...editData, township: e.target.value})}
-              >
-                <option value="">Select Township</option>
-                {myanmarTownships.map(township => (
-                  <option key={township} value={township}>{township}</option>
-                ))}
-              </select>
+                onChange={(selectedTownship) => setEditData({ ...editData, township: selectedTownship })}
+                options={townshipOptions}
+                placeholder={editData.city ? 'Select Township' : 'Select City first'}
+                emptyMessage={editData.city ? 'No township found for this city' : 'Choose city first'}
+              />
             </div>
           </div>
           
