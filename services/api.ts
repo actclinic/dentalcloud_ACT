@@ -2058,6 +2058,29 @@ export const api = {
     }
   },
 
+  patients: {
+    getAll: async (locationId?: string): Promise<Patient[]> => {
+      try {
+        let query = supabase
+          .from('patients')
+          .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at, patient_auth(id)')
+          .order('created_at', { ascending: false });  // Changed from ordering by name to ordering by created_at descending
+        
+        if (locationId) {
+          query = query.eq('location_id', locationId);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) throw error;
+        return (data || []).map(mapPatient);
+      } catch (err) {
+        console.warn("Error fetching patients:", err);
+        return []; // Return empty array instead of crashing
+      }
+    },
+  },
+
   expenses: {
     getAll: async (locationId?: string): Promise<Expense[]> => {
       try {
