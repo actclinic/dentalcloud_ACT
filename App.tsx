@@ -983,6 +983,26 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCreateAppointmentFromClinical = async (data: Partial<Appointment>) => {
+    if (!data?.patient_id) {
+      throw new Error('Please select a patient before scheduling an appointment.');
+    }
+    if (!data?.date || !data?.time) {
+      throw new Error('Appointment date and time are required.');
+    }
+    if (!currentLocationId) {
+      throw new Error('Select a branch before creating appointments.');
+    }
+
+    await api.appointments.create({
+      ...data,
+      location_id: currentLocationId,
+      status: 'Scheduled'
+    });
+
+    await fetchInitialData();
+  };
+
   const handleDoctorChange = async (doctorId: string) => {
     setNewAppointmentData({ ...newAppointmentData, doctor_id: doctorId, time: '' });
     setAvailableTimes([]);
@@ -2093,11 +2113,8 @@ const App: React.FC = () => {
                     alert('Error: ' + err.message);
                   }
                 }}
-                recalls={recalls}
-                onCreateRecall={handleCreateRecall}
-                onUpdateRecall={handleUpdateRecall}
-                onUpdateRecallStatus={handleUpdateRecallStatus}
-                onDeleteRecall={handleDeleteRecall}
+                onCreateAppointment={handleCreateAppointmentFromClinical}
+                onOpenAppointments={() => setCurrentView('appointments')}
                 loyaltyEnabled={loyaltyEnabled}
                 loyaltyRules={loyaltyRules}
                 loyaltyTransactions={loyaltyTransactions}

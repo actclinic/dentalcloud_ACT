@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, BellRing, Plus } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
-import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Recall } from '../types';
+import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 import { Modal, Input } from './Shared';
@@ -42,11 +42,8 @@ interface ClinicalViewProps {
   onRedeemPoints?: (points: number, amount: number) => void;
   onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
   onUpdateAccount?: (patient: Patient, password: string) => void;
-  recalls?: Recall[];
-  onCreateRecall?: (data: Partial<Recall>) => Promise<void>;
-  onUpdateRecall?: (id: string, data: Partial<Recall>) => Promise<void>;
-  onUpdateRecallStatus?: (id: string, status: Recall['status']) => Promise<void>;
-  onDeleteRecall?: (id: string) => Promise<void>;
+  onCreateAppointment?: (data: Partial<Appointment>) => Promise<void>;
+  onOpenAppointments?: () => void;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
   loyaltyTransactions?: LoyaltyTransaction[];
@@ -80,15 +77,18 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onRedeemPoints,
   onUpdatePatient,
   onUpdateAccount,
-  recalls = [],
-  onCreateRecall,
-  onUpdateRecall,
-  onUpdateRecallStatus,
-  onDeleteRecall,
+  onCreateAppointment,
+  onOpenAppointments,
   loyaltyEnabled,
   loyaltyRules = [],
   loyaltyTransactions = []
 }) => {
+  const getDefaultNextAppointmentDate = () => {
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + 7);
+    return nextDate.toISOString().split('T')[0];
+  };
+
   const currencySymbol = getCurrencySymbol(currency);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [authModal, setAuthModal] = React.useState(false);
@@ -105,14 +105,14 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [deleteModal, setDeleteModal] = React.useState(false);
   const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showRecallModal, setShowRecallModal] = React.useState(false);
-  const [editingRecall, setEditingRecall] = React.useState<Recall | null>(null);
-  const [isSavingRecall, setIsSavingRecall] = React.useState(false);
-  const [recallForm, setRecallForm] = React.useState<Partial<Recall>>({
-    title: '6-Month Checkup Recall',
-    due_date: '',
-    reminder_days_before: 7,
-    status: 'PENDING',
+  const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
+  const [nextAppointmentFeedback, setNextAppointmentFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [nextAppointmentForm, setNextAppointmentForm] = React.useState<Partial<Appointment>>({
+    date: getDefaultNextAppointmentDate(),
+    time: '',
+    type: 'Follow-up',
+    status: 'Scheduled',
+    doctor_id: '',
     notes: ''
   });
   const menuRef = useRef<HTMLDivElement>(null);
@@ -131,24 +131,18 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   }, [patientFiles.length]);
 
   useEffect(() => {
-    setShowRecallModal(false);
-    setEditingRecall(null);
-    setRecallForm({
-      title: '6-Month Checkup Recall',
-      due_date: '',
-      reminder_days_before: 7,
-      status: 'PENDING',
+    setNextAppointmentFeedback(null);
+    setNextAppointmentForm({
+      date: getDefaultNextAppointmentDate(),
+      time: '',
+      type: 'Follow-up',
+      status: 'Scheduled',
+      doctor_id: selectedDoctorId || '',
       notes: ''
     });
-  }, [selectedPatient?.id]);
+  }, [selectedPatient?.id, selectedDoctorId]);
 
   const canRedeem = (selectedPatient?.loyalty_points || 0) > 0;
-  const patientRecalls = React.useMemo(() => {
-    if (!selectedPatient) return [];
-    return recalls
-      .filter(recall => recall.patient_id === selectedPatient.id)
-      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-  }, [recalls, selectedPatient]);
 
   // Close dropdown menu when clicking outside
   useEffect(() => {
@@ -213,67 +207,51 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
   };
 
-  const getRecallStatusClass = (status: Recall['status']) => {
-    switch (status) {
-      case 'OVERDUE':
-        return 'bg-red-100 text-red-700 border-red-200';
-      case 'COMPLETED':
-        return 'bg-green-100 text-green-700 border-green-200';
-      case 'SCHEDULED':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'CANCELLED':
-        return 'bg-gray-100 text-gray-700 border-gray-200';
-      default:
-        return 'bg-amber-100 text-amber-700 border-amber-200';
-    }
+  const handleQuickDateApply = (daysAhead: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + daysAhead);
+    setNextAppointmentForm((prev) => ({ ...prev, date: date.toISOString().split('T')[0] }));
   };
 
-  const openNewRecallComposer = () => {
-    const defaultDate = new Date();
-    defaultDate.setMonth(defaultDate.getMonth() + 6);
-    setEditingRecall(null);
-    setRecallForm({
-      title: '6-Month Checkup Recall',
-      due_date: defaultDate.toISOString().split('T')[0],
-      reminder_days_before: 7,
-      status: 'PENDING',
-      notes: ''
-    });
-    setShowRecallModal(true);
-  };
-
-  const openEditRecallComposer = (recall: Recall) => {
-    setEditingRecall(recall);
-    setRecallForm({
-      title: recall.title,
-      due_date: recall.due_date,
-      reminder_days_before: recall.reminder_days_before,
-      status: recall.status,
-      notes: recall.notes || ''
-    });
-    setShowRecallModal(true);
-  };
-
-  const handleRecallSubmit = async (e: React.FormEvent) => {
+  const handleCreateNextAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatient || !recallForm.title || !recallForm.due_date) return;
+    if (!selectedPatient || !onCreateAppointment) return;
 
-    setIsSavingRecall(true);
+    if (!nextAppointmentForm.date || !nextAppointmentForm.time) {
+      setNextAppointmentFeedback({
+        type: 'error',
+        message: 'Date and time are required to schedule the next appointment.'
+      });
+      return;
+    }
+
+    setIsSavingNextAppointment(true);
+    setNextAppointmentFeedback(null);
     try {
-      if (editingRecall && onUpdateRecall) {
-        await onUpdateRecall(editingRecall.id, recallForm);
-      } else if (onCreateRecall) {
-        await onCreateRecall({
-          ...recallForm,
-          patient_id: selectedPatient.id,
-          patient_name: selectedPatient.name,
-          status: recallForm.status || 'PENDING'
-        });
-      }
-      setShowRecallModal(false);
-      setEditingRecall(null);
+      await onCreateAppointment({
+        ...nextAppointmentForm,
+        patient_id: selectedPatient.id,
+        status: 'Scheduled'
+      });
+      setNextAppointmentFeedback({
+        type: 'success',
+        message: 'Next appointment created. It is now visible in the Appointments tab.'
+      });
+      setNextAppointmentForm({
+        date: getDefaultNextAppointmentDate(),
+        time: '',
+        type: 'Follow-up',
+        status: 'Scheduled',
+        doctor_id: selectedDoctorId || '',
+        notes: ''
+      });
+    } catch (error: any) {
+      setNextAppointmentFeedback({
+        type: 'error',
+        message: error?.message || 'Could not create the appointment. Please check the details and try again.'
+      });
     } finally {
-      setIsSavingRecall(false);
+      setIsSavingNextAppointment(false);
     }
   };
 
@@ -565,90 +543,113 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                  <ReceiptIcon size={16} /> Generate Receipt
                </button>
 
-               {selectedPatient && onCreateRecall && (
-                 <button 
-                  className="w-full bg-sky-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-sky-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-sky-600/20"
-                  onClick={openNewRecallComposer}
-                 >
-                   <BellRing size={16} /> Quick Recall
-                 </button>
-               )}
-
-               {selectedPatient && patientRecalls.length > 0 && (
-                 <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4 space-y-4">
+               {selectedPatient && onCreateAppointment && (
+                 <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 space-y-4">
                    <div className="flex items-center justify-between gap-3">
                      <div>
-                       <p className="text-[10px] text-sky-600 uppercase font-bold tracking-wider mb-1">Patient Recall</p>
-                       <h4 className="text-sm font-bold text-sky-950">
-                         {patientRecalls.length} recall{patientRecalls.length === 1 ? '' : 's'} for {selectedPatient.name}
-                       </h4>
+                       <p className="text-[10px] text-indigo-600 uppercase font-bold tracking-wider mb-1">Next Appointment</p>
+                       <h4 className="text-sm font-bold text-indigo-950">Schedule directly from clinical focus</h4>
                      </div>
-                     <button
-                       onClick={openNewRecallComposer}
-                       className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-sky-700 border border-sky-200 hover:bg-sky-100"
-                     >
-                       <Plus size={13} /> Add
-                     </button>
+                     {onOpenAppointments && (
+                       <button
+                         onClick={onOpenAppointments}
+                         className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+                       >
+                         <Calendar size={13} /> Appointments
+                       </button>
+                     )}
                    </div>
 
-                   <div className="space-y-2">
-                     {patientRecalls.map((recall) => (
-                       <div key={recall.id} className="rounded-xl border border-sky-100 bg-white p-3">
-                         <div className="flex items-start justify-between gap-3">
-                           <div className="min-w-0">
-                             <div className="flex items-center gap-2 flex-wrap">
-                               <p className="text-sm font-bold text-gray-900">{recall.title}</p>
-                               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${getRecallStatusClass(recall.status)}`}>
-                                 {recall.status}
-                               </span>
-                             </div>
-                             <p className="mt-1 text-xs text-gray-500">Due {recall.due_date} · Remind {recall.reminder_days_before} day(s) before</p>
-                             {recall.notes && <p className="mt-1 text-xs text-gray-600">{recall.notes}</p>}
-                           </div>
-                           <div className="flex items-center gap-2">
-                             {onUpdateRecallStatus && (
-                               <select
-                                 value={recall.status}
-                                 onChange={(e) => onUpdateRecallStatus(recall.id, e.target.value as Recall['status'])}
-                                 className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
-                               >
-                                 <option value="PENDING">Pending</option>
-                                 <option value="SCHEDULED">Scheduled</option>
-                                 <option value="COMPLETED">Completed</option>
-                                 <option value="OVERDUE">Overdue</option>
-                                 <option value="CANCELLED">Cancelled</option>
-                               </select>
-                             )}
-                             {onUpdateRecall && (
-                               <button
-                                 onClick={() => openEditRecallComposer(recall)}
-                                 className="rounded-lg bg-sky-50 p-2 text-sky-700 hover:bg-sky-100"
-                                 title="Edit recall"
-                               >
-                                 <Edit size={14} />
-                               </button>
-                             )}
-                             {onDeleteRecall && (
-                               <button
-                                 onClick={async () => {
-                                   if (window.confirm('Delete this recall for the patient?')) {
-                                     await onDeleteRecall(recall.id);
-                                   }
-                                 }}
-                                 className="rounded-lg bg-red-50 p-2 text-red-600 hover:bg-red-100"
-                                 title="Delete recall"
-                               >
-                                 <Trash2 size={14} />
-                               </button>
-                             )}
-                           </div>
-                         </div>
-                       </div>
-                     ))}
+                   <div className="flex flex-wrap gap-2">
+                     <button type="button" onClick={() => handleQuickDateApply(7)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Week</button>
+                     <button type="button" onClick={() => handleQuickDateApply(14)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+2 Weeks</button>
+                     <button type="button" onClick={() => handleQuickDateApply(30)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Month</button>
+                     <button type="button" onClick={() => handleQuickDateApply(180)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+6 Months</button>
                    </div>
+
+                   <form onSubmit={handleCreateNextAppointment} className="space-y-3">
+                     <div className="grid grid-cols-2 gap-3">
+                       <Input
+                         label="Date"
+                         type="date"
+                         required
+                         value={nextAppointmentForm.date || ''}
+                         onChange={(e: any) => setNextAppointmentForm((prev) => ({ ...prev, date: e.target.value }))}
+                       />
+                       <Input
+                         label="Time"
+                         type="time"
+                         required
+                         value={nextAppointmentForm.time || ''}
+                         onChange={(e: any) => setNextAppointmentForm((prev) => ({ ...prev, time: e.target.value }))}
+                       />
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-3">
+                       <div>
+                         <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Doctor (Optional)</label>
+                         <SearchableSelect
+                           value={nextAppointmentForm.doctor_id || ''}
+                           onChange={(doctorId) => setNextAppointmentForm((prev) => ({ ...prev, doctor_id: doctorId }))}
+                           options={[
+                             { value: '', label: 'No specific doctor' },
+                             ...doctors.map((doctor) => ({
+                               value: doctor.id,
+                               label: `Dr. ${doctor.name}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
+                             }))
+                           ]}
+                           placeholder="Select doctor"
+                           emptyMessage="No doctors found"
+                         />
+                       </div>
+                       <div>
+                         <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Type</label>
+                         <select
+                           value={nextAppointmentForm.type || 'Follow-up'}
+                           onChange={(e) => setNextAppointmentForm((prev) => ({ ...prev, type: e.target.value }))}
+                           className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+                         >
+                           <option value="Follow-up">Follow-up</option>
+                           <option value="Checkup">Checkup</option>
+                           <option value="Cleaning">Cleaning</option>
+                           <option value="Consultation">Consultation</option>
+                           <option value="Treatment">Treatment</option>
+                         </select>
+                       </div>
+                     </div>
+
+                     <div>
+                       <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Notes</label>
+                       <textarea
+                         rows={2}
+                         value={nextAppointmentForm.notes || ''}
+                         onChange={(e) => setNextAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                         className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all resize-none"
+                         placeholder="Optional notes for front desk or doctor..."
+                       />
+                     </div>
+
+                     {nextAppointmentFeedback && (
+                       <div className={`rounded-xl border p-3 text-xs font-semibold flex items-start gap-2 ${
+                         nextAppointmentFeedback.type === 'success'
+                           ? 'border-green-200 bg-green-50 text-green-700'
+                           : 'border-red-200 bg-red-50 text-red-700'
+                       }`}>
+                         {nextAppointmentFeedback.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
+                         <span>{nextAppointmentFeedback.message}</span>
+                       </div>
+                     )}
+
+                     <button
+                       type="submit"
+                       disabled={isSavingNextAppointment}
+                       className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                     >
+                       {isSavingNextAppointment ? 'Scheduling...' : 'Create Next Appointment'}
+                     </button>
+                   </form>
                  </div>
                )}
-
                {onUpdatePatient && selectedPatient && (
                  <button 
                   className="w-full bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold text-sm mt-2 hover:bg-indigo-100 transition-all flex items-center justify-center gap-2 border border-indigo-100"
@@ -1150,107 +1151,11 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           </div>
         </div>
       )}
-
-      {/* Recall Modal - Root level for proper overlay */}
-      {showRecallModal && selectedPatient && (
-        <Modal 
-          title={editingRecall ? "Edit Recall" : "Create New Recall"} 
-          onClose={() => {
-            setShowRecallModal(false);
-            setEditingRecall(null);
-          }}
-        >
-          <form onSubmit={handleRecallSubmit} className="space-y-5">
-            <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100">
-              <p className="text-[10px] font-black text-sky-600 uppercase tracking-widest">Patient</p>
-              <p className="text-lg font-black text-sky-900">{selectedPatient.name}</p>
-            </div>
-
-            <Input
-              label="Recall Title"
-              required
-              value={recallForm.title || ''}
-              onChange={(e: any) => setRecallForm(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="e.g., 6-Month Checkup"
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Due Date"
-                type="date"
-                required
-                value={recallForm.due_date || ''}
-                onChange={(e: any) => setRecallForm(prev => ({ ...prev, due_date: e.target.value }))}
-              />
-              <Input
-                label="Reminder Days Before"
-                type="number"
-                min="0"
-                value={recallForm.reminder_days_before ?? 7}
-                onChange={(e: any) => setRecallForm(prev => ({ ...prev, reminder_days_before: Number(e.target.value) }))}
-              />
-            </div>
-
-            {editingRecall && (
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Status</label>
-                <select
-                  value={recallForm.status || 'PENDING'}
-                  onChange={(e) => setRecallForm(prev => ({ ...prev, status: e.target.value as Recall['status'] }))}
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none transition-all"
-                >
-                  <option value="PENDING">Pending</option>
-                  <option value="SCHEDULED">Scheduled</option>
-                  <option value="COMPLETED">Completed</option>
-                  <option value="OVERDUE">Overdue</option>
-                  <option value="CANCELLED">Cancelled</option>
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Notes</label>
-              <textarea
-                rows={4}
-                value={recallForm.notes || ''}
-                onChange={(e) => setRecallForm(prev => ({ ...prev, notes: e.target.value }))}
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none transition-all resize-none"
-                placeholder="Add any additional notes or instructions..."
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRecallModal(false);
-                  setEditingRecall(null);
-                }}
-                className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSavingRecall}
-                className="flex-1 rounded-xl bg-sky-600 px-4 py-3 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-sky-600/20"
-              >
-                {isSavingRecall ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                    Saving...
-                  </span>
-                ) : (
-                  editingRecall ? 'Update Recall' : 'Create Recall'
-                )}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
     </div>
   </div>
   );
 };
 
 export default ClinicalView;
+
+
