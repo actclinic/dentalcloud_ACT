@@ -109,7 +109,7 @@ export const exportPatientsToExcel = async (patients: Patient[], currency: Curre
   const rows = patients.map((patient) => ({
     'Patient Name': patient.name,
     Age: patient.age || 'N/A',
-    'Patient Type': patient.patient_type ? (patient.patient_type.charAt(0).toUpperCase() + patient.patient_type.slice(1)) : 'N/A',
+    'Patient Type': patient.patient_type || 'N/A',
     Phone: patient.phone || 'N/A',
     Email: patient.email || 'N/A',
     Address: patient.address || '',

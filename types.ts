@@ -19,7 +19,7 @@ export interface Patient {
   address?: string;
   city?: string;
   township?: string;
-  patient_type?: 'online' | 'walk-in' | 'phone call' | 'hotline' | 'tiktok' | 'tiktok hotline';
+  patient_type?: 'Walk-in' | 'ONP' | 'RNP' | 'Hotline' | 'Rec-ph call' | 'Tiktok' | 'Tiktok Hotline';
   lastVisit?: string;
   balance: number;
   loyalty_points: number;

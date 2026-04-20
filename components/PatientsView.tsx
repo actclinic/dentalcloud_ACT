@@ -57,7 +57,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     address: '',
     city: '',
     township: '',
-    patient_type: 'walk-in' as Patient['patient_type']
+    patient_type: 'Walk-in' as Patient['patient_type']
   });
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,6 +86,27 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     () => getTownshipsForCity(editData.city || '').map((township) => ({ value: township, label: township })),
     [editData.city]
   );
+
+  const normalizePatientType = (value?: string): Patient['patient_type'] => {
+    const normalized = (value || '').trim();
+    const mappedLegacy = normalized.toLowerCase();
+    const legacyMap: Record<string, Patient['patient_type']> = {
+      'walk-in': 'Walk-in',
+      online: 'ONP',
+      'phone call': 'Rec-ph call',
+      hotline: 'Hotline',
+      tiktok: 'Tiktok',
+      'tiktok hotline': 'Tiktok Hotline',
+      onp: 'ONP',
+      rnp: 'RNP'
+    };
+
+    if (normalized === 'Walk-in' || normalized === 'ONP' || normalized === 'RNP' || normalized === 'Hotline' || normalized === 'Rec-ph call' || normalized === 'Tiktok' || normalized === 'Tiktok Hotline') {
+      return normalized as Patient['patient_type'];
+    }
+
+    return legacyMap[mappedLegacy] || 'Walk-in';
+  };
 
   // Paginated data
   const paginatedPatients = useMemo(() => {
@@ -279,7 +300,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                             address: patient.address || '',
                             city: patient.city || '',
                             township: patient.township || '',
-                            patient_type: patient.patient_type || 'walk-in'
+                            patient_type: normalizePatientType(patient.patient_type)
                           });
                         }}
                         className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
@@ -363,7 +384,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     address: patient.address || '',
                     city: patient.city || '',
                     township: patient.township || '',
-                    patient_type: patient.patient_type || 'walk-in'
+                    patient_type: normalizePatientType(patient.patient_type)
                   });
                 }}
                 className="w-full mt-2 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100 flex items-center justify-center gap-2"
@@ -536,12 +557,13 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 value={editData.patient_type}
                 onChange={(e) => setEditData({...editData, patient_type: e.target.value as Patient['patient_type']})}
               >
-                <option value="walk-in">Walk-in</option>
-                <option value="online">Online</option>
-                <option value="phone call">Phone Call</option>
-                <option value="hotline">Hotline</option>
-                <option value="tiktok">TikTok</option>
-                <option value="tiktok hotline">TikTok Hotline</option>
+                <option value="Walk-in">Walk-in</option>
+                <option value="ONP">ONP</option>
+                <option value="RNP">RNP</option>
+                <option value="Hotline">Hotline</option>
+                <option value="Rec-ph call">Rec-ph call</option>
+                <option value="Tiktok">Tiktok</option>
+                <option value="Tiktok Hotline">Tiktok Hotline</option>
               </select>
             </div>
           </div>

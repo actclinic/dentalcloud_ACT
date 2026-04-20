@@ -273,7 +273,7 @@ const App: React.FC = () => {
       address: '',
       city: '',
       township: '',
-      patient_type: 'walk-in'
+      patient_type: 'Walk-in'
     });
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
@@ -937,7 +937,7 @@ const App: React.FC = () => {
         address: '',
         city: '',
         township: '',
-        patient_type: 'walk-in'
+        patient_type: 'Walk-in'
       });
     } catch (err: any) {
       console.error('Patient creation error:', err);
@@ -2133,15 +2133,16 @@ const App: React.FC = () => {
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient Type</label>
                 <select
                   className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                  value={newPatientData.patient_type || 'walk-in'}
+                  value={newPatientData.patient_type || 'Walk-in'}
                   onChange={(e) => setNewPatientData({...newPatientData, patient_type: e.target.value as Patient['patient_type']})}
                 >
-                  <option value="walk-in">Walk-in</option>
-                  <option value="online">Online</option>
-                  <option value="phone call">Phone Call</option>
-                  <option value="hotline">Hotline</option>
-                  <option value="tiktok">TikTok</option>
-                  <option value="tiktok hotline">TikTok Hotline</option>
+                  <option value="Walk-in">Walk-in</option>
+                  <option value="ONP">ONP</option>
+                  <option value="RNP">RNP</option>
+                  <option value="Hotline">Hotline</option>
+                  <option value="Rec-ph call">Rec-ph call</option>
+                  <option value="Tiktok">Tiktok</option>
+                  <option value="Tiktok Hotline">Tiktok Hotline</option>
                 </select>
               </div>
             </div>
