@@ -42,7 +42,7 @@ export interface TreatmentType {
   location_id: string;
   name: string; // Display name (e.g., "Root Canal")
   cost: number;
-  category: 'Restorative' | 'Cosmetic' | 'Preventative' | 'Surgery' | 'Orthodontics';
+  category: string;
 }
 
 export interface ClinicalRecord {

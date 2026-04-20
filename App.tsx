@@ -290,7 +290,7 @@ const App: React.FC = () => {
     const spec = doctor.specialization?.toLowerCase() || '';
     return name.startsWith(query) || spec.startsWith(query);
   });
-  const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: 'Preventative' });
+  const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: '' });
   const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', schedules: [] });
   const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -312,6 +312,10 @@ const App: React.FC = () => {
     }
     return [...appointmentTypeOptions, currentType];
   }, [appointmentTypeOptions, newAppointmentData.type]);
+  const treatmentCategorySuggestions = useMemo(() => {
+    const existing = treatmentTypes.map((type) => (type.category || '').trim()).filter(Boolean);
+    return [...new Set([...TREATMENT_CATEGORIES, ...existing])].sort((a, b) => a.localeCompare(b));
+  }, [treatmentTypes]);
   const townshipOptionsForNewPatient = useMemo(
     () => getTownshipsForCity(newPatientData.city || '').map((township) => ({ value: township, label: township })),
     [newPatientData.city]
@@ -1492,7 +1496,7 @@ const App: React.FC = () => {
       setTreatmentTypes(updatedTypes);
       setShowTreatmentTypeModal(false);
       setEditingTreatmentType(null);
-      setNewTreatmentTypeData({ name: '', cost: 0, category: 'Preventative' });
+      setNewTreatmentTypeData({ name: '', cost: 0, category: '' });
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -1985,7 +1989,7 @@ const App: React.FC = () => {
                 }}
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
-            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
+            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
@@ -2471,11 +2475,19 @@ const App: React.FC = () => {
             <Input label="Service Description" required value={newTreatmentTypeData.name} onChange={(e: any) => setNewTreatmentTypeData({...newTreatmentTypeData, name: e.target.value})} />
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Specialty Department</label>
-              <select className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                 value={newTreatmentTypeData.category}
-                 onChange={e => setNewTreatmentTypeData({...newTreatmentTypeData, category: e.target.value as any})}>
-                 {TREATMENT_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
+              <input
+                list="treatment-category-suggestions"
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                required
+                value={newTreatmentTypeData.category || ''}
+                onChange={(e) => setNewTreatmentTypeData({ ...newTreatmentTypeData, category: e.target.value })}
+                placeholder="Type or pick a specialty category"
+              />
+              <datalist id="treatment-category-suggestions">
+                {treatmentCategorySuggestions.map((category) => (
+                  <option key={category} value={category} />
+                ))}
+              </datalist>
             </div>
             <Input label={`Standard Fee (${getCurrencySymbol(currency)})`} type="number" required min="0" value={newTreatmentTypeData.cost} onChange={(e: any) => setNewTreatmentTypeData({...newTreatmentTypeData, cost: parseFloat(e.target.value)})} />
             <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg">Save Configuration</button>
