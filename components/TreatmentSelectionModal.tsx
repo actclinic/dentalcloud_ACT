@@ -56,7 +56,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold text-gray-800">Select Treatments for Receipt</h2>
-            <p className="text-sm text-gray-500 mt-1">Choose which treatments to include on the receipt</p>
+            <p className="text-sm text-gray-500 mt-1">Choose which treatments to include. Related medicine sales are listed separately on the receipt.</p>
           </div>
           <button
             onClick={onClose}
@@ -66,7 +66,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 flex-1 overflow-y-auto">
+        <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
           <div className="mb-4 flex gap-2">
             <button
               onClick={selectAll}

@@ -212,6 +212,7 @@ const App: React.FC = () => {
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
   const [selectedTreatmentsForReceipt, setSelectedTreatmentsForReceipt] = useState<ClinicalRecord[]>([]);
+  const [selectedMedicineSalesForReceipt, setSelectedMedicineSalesForReceipt] = useState<MedicineSale[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'MMK'>(() => {
     const savedCurrency = localStorage.getItem('currency');
     return (savedCurrency === 'USD' || savedCurrency === 'MMK') ? savedCurrency : 'USD';
@@ -472,16 +473,6 @@ const App: React.FC = () => {
       resetStaffSession();
     });
     
-    // Set up periodic cleanup every 24 hours
-    const cleanupInterval = setInterval(() => {
-      if (isAuthenticated) {
-        api.appointments.cleanupOld(4).catch(err => {
-          console.warn('Periodic cleanup failed:', err);
-        });
-      }
-    }, 24 * 60 * 60 * 1000); // 24 hours in milliseconds
-    
-    return () => clearInterval(cleanupInterval);
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -670,12 +661,6 @@ const App: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Cleanup old appointments (older than 4 days) - run silently in background
-      api.appointments.cleanupOld(4).catch(err => {
-        console.warn('Failed to cleanup old appointments:', err);
-        // Don't show error to user, just log it
-      });
-
       api.recalls.updateOverdueStatus(overrideLocationId || currentLocationId || undefined).catch(err => {
         console.warn('Failed to update overdue recalls:', err);
       });
@@ -1671,6 +1656,8 @@ const App: React.FC = () => {
       const res = await api.finance.processPayment(selectedPatient.id, paymentAmount);
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
       setLastPaymentAmount(paymentAmount);
+      setSelectedTreatmentsForReceipt([]);
+      setSelectedMedicineSalesForReceipt([]);
       setShowPaymentModal(false);
       // Show treatment selection first, then receipt
       setShowTreatmentSelection(true);
@@ -1682,11 +1669,25 @@ const App: React.FC = () => {
 
   const handleGenerateReceipt = () => {
     setLastPaymentAmount(0);
+    setSelectedTreatmentsForReceipt([]);
+    setSelectedMedicineSalesForReceipt([]);
     setShowTreatmentSelection(true);
   };
 
   const handleTreatmentSelectionConfirm = (selectedTreatments: ClinicalRecord[]) => {
+    const selectedTreatmentIds = new Set(selectedTreatments.map((treatment) => treatment.id));
+    const selectedDates = new Set(selectedTreatments.map((treatment) => treatment.date));
+    const matchedMedicineSales = medicineSales.filter((sale) => {
+      if (!selectedPatient || sale.patient_id !== selectedPatient.id) {
+        return false;
+      }
+
+      // Prefer direct treatment linkage; fall back to same-date patient sales.
+      return (sale.treatment_id && selectedTreatmentIds.has(sale.treatment_id)) || selectedDates.has(sale.date);
+    });
+
     setSelectedTreatmentsForReceipt(selectedTreatments);
+    setSelectedMedicineSalesForReceipt(matchedMedicineSales);
     setShowTreatmentSelection(false);
     setShowReceipt(true);
   };
@@ -2873,9 +2874,14 @@ const App: React.FC = () => {
           <Receipt
             patient={selectedPatient}
             treatments={selectedTreatmentsForReceipt.length > 0 ? selectedTreatmentsForReceipt : treatmentHistory}
+            medicines={selectedMedicineSalesForReceipt}
             paymentAmount={lastPaymentAmount}
             currency={currency}
-            onClose={() => setShowReceipt(false)}
+            onClose={() => {
+              setShowReceipt(false);
+              setSelectedTreatmentsForReceipt([]);
+              setSelectedMedicineSalesForReceipt([]);
+            }}
           />
         </Suspense>
       )}

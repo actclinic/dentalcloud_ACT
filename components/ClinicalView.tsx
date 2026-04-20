@@ -390,7 +390,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 emptyMessage="No doctors found"
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                {treatmentTypes.map(t => {
                  const displayCost = useFlatRate 
                    ? t.cost 
@@ -420,6 +421,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                    </button>
                  );
                })}
+              </div>
             </div>
           </div>
         )}
@@ -428,7 +430,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
       {selectedPatient && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h3 className="text-lg font-bold text-gray-800 mb-4">Clinical Case History</h3>
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <div className="overflow-x-auto max-h-96 overflow-y-auto custom-scrollbar">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-500 sticky top-0 border-b border-gray-100">
                 <tr>

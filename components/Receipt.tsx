@@ -1,18 +1,19 @@
 import React from 'react';
 import { X, Printer } from 'lucide-react';
-import { Patient, ClinicalRecord } from '../types';
+import { Patient, ClinicalRecord, MedicineSale } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 
 interface ReceiptProps {
   patient: Patient;
   treatments: ClinicalRecord[];
+  medicines?: MedicineSale[];
   paymentAmount?: number;
   currency: Currency;
   onClose: () => void;
 }
 
-const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, paymentAmount, currency, onClose }) => {
+const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, medicines = [], paymentAmount, currency, onClose }) => {
   const receiptNumber = `REC-${Date.now().toString().slice(-8)}`;
   const today = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -21,17 +22,111 @@ const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, paymentAmount, c
   });
 
   const totalTreatmentCost = treatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0);
+  const totalMedicineCost = medicines.reduce((sum, medicine) => sum + (medicine.total_price || 0), 0);
+  const grandTotal = totalTreatmentCost + totalMedicineCost;
   const totalPaid = paymentAmount || 0;
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
   // Otherwise, calculate balance based on selected treatments
   const remainingBalance = totalPaid > 0 
     ? patient.balance  // After payment, show patient's current balance
-    : Math.max(0, totalTreatmentCost - totalPaid); // For invoice, calculate from treatments
+    : Math.max(0, grandTotal - totalPaid); // For invoice, calculate from selected services and medicines
 
   const handlePrint = () => {
     window.print();
   };
+
+  const renderServicesTable = (isPrint = false) => (
+    <div className="mb-8">
+      <h3 className="text-lg font-bold text-gray-900 mb-4 border-b border-gray-300 pb-2">Treatment Services</h3>
+      <table className="w-full border-collapse" style={isPrint ? { borderCollapse: 'collapse' } : undefined}>
+        <thead>
+          <tr className="bg-gray-100 border-b-2 border-gray-800">
+            <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Date</th>
+            <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Description</th>
+            <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Teeth</th>
+            <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {treatments.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
+                No treatment services recorded
+              </td>
+            </tr>
+          ) : (
+            treatments.map((treatment, index) => (
+              <tr key={index} className="border-b border-gray-200" style={isPrint ? { borderBottom: '1px solid #e5e7eb' } : undefined}>
+                <td className="py-3 px-4 text-sm text-gray-700" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {new Date(treatment.date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-900 font-medium" style={isPrint ? { padding: '12px 16px' } : undefined}>{treatment.description}</td>
+                <td className="py-3 px-4 text-sm text-gray-600" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {treatment.teeth && treatment.teeth.length > 0
+                    ? formatTeethWithPosition(treatment.teeth)
+                    : 'General'}
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {formatCurrency(treatment.cost || 0, currency)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderMedicinesTable = (isPrint = false) => (
+    <div className="mb-8">
+      <h3 className="text-lg font-bold text-gray-900 mb-4 border-b border-gray-300 pb-2">Medicines & Items</h3>
+      <table className="w-full border-collapse" style={isPrint ? { borderCollapse: 'collapse' } : undefined}>
+        <thead>
+          <tr className="bg-gray-100 border-b-2 border-gray-800">
+            <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Date</th>
+            <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Item</th>
+            <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Qty</th>
+            <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Unit Price</th>
+            <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {medicines.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
+                No medicines or items recorded
+              </td>
+            </tr>
+          ) : (
+            medicines.map((medicine, index) => (
+              <tr key={index} className="border-b border-gray-200" style={isPrint ? { borderBottom: '1px solid #e5e7eb' } : undefined}>
+                <td className="py-3 px-4 text-sm text-gray-700" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {new Date(medicine.date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-900 font-medium" style={isPrint ? { padding: '12px 16px' } : undefined}>{medicine.medicine_name || 'Medicine'}</td>
+                <td className="py-3 px-4 text-sm text-gray-600 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>{medicine.quantity}</td>
+                <td className="py-3 px-4 text-sm text-gray-600 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {formatCurrency(medicine.unit_price || 0, currency)}
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {formatCurrency(medicine.total_price || 0, currency)}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <>
@@ -84,59 +179,29 @@ const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, paymentAmount, c
             </div>
           </div>
 
-          {/* Services Table */}
-          <div className="mb-8">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 border-b border-gray-300 pb-2">Services Provided</h3>
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-100 border-b-2 border-gray-800">
-                  <th className="text-left py-3 px-4 text-sm font-bold text-gray-900">Date</th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-gray-900">Description</th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-gray-900">Teeth</th>
-                  <th className="text-right py-3 px-4 text-sm font-bold text-gray-900">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {treatments.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center text-gray-500 italic">
-                      No treatments recorded
-                    </td>
-                  </tr>
-                ) : (
-                  treatments.map((treatment, index) => (
-                    <tr key={index} className="border-b border-gray-200">
-                      <td className="py-3 px-4 text-sm text-gray-700">
-                        {new Date(treatment.date).toLocaleDateString('en-US', { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-900 font-medium">{treatment.description}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {treatment.teeth && treatment.teeth.length > 0
-                          ? formatTeethWithPosition(treatment.teeth)
-                          : 'General'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold">
-                        {formatCurrency(treatment.cost || 0, currency)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {renderServicesTable()}
+          {renderMedicinesTable()}
 
           {/* Summary */}
           <div className="mb-8">
             <div className="flex justify-end">
               <div className="w-64">
                 <div className="flex justify-between py-2 border-b border-gray-300">
-                  <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
+                  <span className="text-sm font-semibold text-gray-700">Treatment Services:</span>
                   <span className="text-sm font-semibold text-gray-900">
                     {formatCurrency(totalTreatmentCost, currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-300">
+                  <span className="text-sm font-semibold text-gray-700">Medicines & Items:</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(totalMedicineCost, currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-300">
+                  <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(grandTotal, currency)}
                   </span>
                 </div>
                 {totalPaid > 0 && (
@@ -224,73 +289,43 @@ const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, paymentAmount, c
             </div>
           </div>
 
-          {/* Services Table */}
-          <div className="mb-8">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 border-b border-gray-300 pb-2">Services Provided</h3>
-            <table className="w-full border-collapse" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr className="bg-gray-100 border-b-2 border-gray-800">
-                  <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={{ borderBottom: '2px solid #1f2937' }}>Date</th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={{ borderBottom: '2px solid #1f2937' }}>Description</th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={{ borderBottom: '2px solid #1f2937' }}>Teeth</th>
-                  <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={{ borderBottom: '2px solid #1f2937' }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {treatments.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center text-gray-500 italic" style={{ padding: '24px 16px' }}>
-                      No treatments recorded
-                    </td>
-                  </tr>
-                ) : (
-                  treatments.map((treatment, index) => (
-                    <tr key={index} className="border-b border-gray-200" style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td className="py-3 px-4 text-sm text-gray-700" style={{ padding: '12px 16px' }}>
-                        {new Date(treatment.date).toLocaleDateString('en-US', { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-900 font-medium" style={{ padding: '12px 16px' }}>{treatment.description}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600" style={{ padding: '12px 16px' }}>
-                        {treatment.teeth && treatment.teeth.length > 0
-                          ? formatTeethWithPosition(treatment.teeth)
-                          : 'General'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={{ padding: '12px 16px' }}>
-                        ${(treatment.cost || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {renderServicesTable(true)}
+          {renderMedicinesTable(true)}
 
           {/* Summary */}
           <div className="mb-8">
             <div className="flex justify-end">
               <div className="w-64">
                 <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
+                  <span className="text-sm font-semibold text-gray-700">Treatment Services:</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(totalTreatmentCost, currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
+                  <span className="text-sm font-semibold text-gray-700">Medicines & Items:</span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(totalMedicineCost, currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
                   <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
                   <span className="text-sm font-semibold text-gray-900">
-                    ${totalTreatmentCost.toFixed(2)}
+                    {formatCurrency(grandTotal, currency)}
                   </span>
                 </div>
                 {totalPaid > 0 && (
                   <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
                     <span className="text-sm font-semibold text-gray-700">Payment Received:</span>
                     <span className="text-sm font-semibold text-green-600">
-                      -${totalPaid.toFixed(2)}
+                      -{formatCurrency(totalPaid, currency)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between py-3 mt-2 border-t-2 border-gray-800" style={{ borderTop: '2px solid #1f2937', padding: '12px 0' }}>
                   <span className="text-base font-bold text-gray-900">Balance Due:</span>
                   <span className={`text-base font-bold ${remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    ${remainingBalance.toFixed(2)}
+                    {formatCurrency(remainingBalance, currency)}
                   </span>
                 </div>
               </div>
