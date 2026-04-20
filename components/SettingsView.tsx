@@ -22,6 +22,9 @@ interface SettingsViewProps {
   messagingEnabled: boolean;
   onToggleMessaging: (enabled: boolean) => void;
   onRemoveAllMessages: () => void;
+  clinicalFeeEnabled: boolean;
+  clinicalFeeAmount: number;
+  onSaveClinicalFeeSettings: (enabled: boolean, amount: number) => Promise<void>;
   isAdmin: boolean;
 }
 
@@ -52,6 +55,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   messagingEnabled,
   onToggleMessaging,
   onRemoveAllMessages,
+  clinicalFeeEnabled,
+  clinicalFeeAmount,
+  onSaveClinicalFeeSettings,
   isAdmin 
 }) => {
   const MANAGER_EMAILS_KEY = 'loli_manager_emails';
@@ -107,6 +113,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     bucket: ''
   });
   const [supabaseStorageMessage, setSupabaseStorageMessage] = useState<string>('');
+  const [clinicalFeeForm, setClinicalFeeForm] = useState<{ enabled: boolean; amount: number }>({
+    enabled: clinicalFeeEnabled,
+    amount: clinicalFeeAmount
+  });
+  const [clinicalFeeMessage, setClinicalFeeMessage] = useState<string>('');
 
   const updateEmailSettings = (updates: Partial<EmailSettings>) => {
     setEmailSettingsMessage('');
@@ -176,6 +187,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     } catch (error: any) {
       console.error('Failed to save S3 settings:', error);
       setS3SettingsMessage(error?.message || 'Failed to save S3 settings.');
+    }
+  };
+
+  const handleSaveClinicalFee = async () => {
+    try {
+      setClinicalFeeMessage('');
+      const normalizedAmount = Math.max(0, Number(clinicalFeeForm.amount || 0));
+      await onSaveClinicalFeeSettings(clinicalFeeForm.enabled, normalizedAmount);
+      setClinicalFeeForm(prev => ({ ...prev, amount: normalizedAmount }));
+      setClinicalFeeMessage('Clinical fee settings saved successfully.');
+    } catch (error: any) {
+      console.error('Failed to save clinical fee settings:', error);
+      setClinicalFeeMessage(error?.message || 'Failed to save clinical fee settings.');
     }
   };
 
@@ -299,6 +323,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setTestEmail(primary?.email || managerContacts[0]?.email || '');
     }
   }, [managerContacts, testEmail]);
+
+  useEffect(() => {
+    setClinicalFeeForm({
+      enabled: clinicalFeeEnabled,
+      amount: clinicalFeeAmount
+    });
+  }, [clinicalFeeEnabled, clinicalFeeAmount]);
 
   const handleSendTestEmail = async () => {
     setTestMessage('');
@@ -450,6 +481,60 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Patient Registration Clinical Fee */}
+        {isAdmin && (
+          <div className="border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <DollarSign className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-lg font-semibold text-gray-800">Patient Registration Clinical Fee</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Configure a default fee that can be applied to newly registered patients.
+            </p>
+
+            <div className="space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={clinicalFeeForm.enabled}
+                  onChange={(e) => {
+                    setClinicalFeeMessage('');
+                    setClinicalFeeForm({ ...clinicalFeeForm, enabled: e.target.checked });
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Enable clinical fee for new patient registration by default</span>
+              </label>
+
+              <Input
+                label={`Clinical Fee Amount (${currencySymbols[currency]})`}
+                type="number"
+                min="0"
+                step="0.01"
+                value={clinicalFeeForm.amount}
+                onChange={(e: any) => {
+                  setClinicalFeeMessage('');
+                  setClinicalFeeForm({ ...clinicalFeeForm, amount: parseFloat(e.target.value) || 0 });
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={handleSaveClinicalFee}
+                className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+              >
+                Save Clinical Fee Settings
+              </button>
+
+              {clinicalFeeMessage && (
+                <p className={`text-xs ${clinicalFeeMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {clinicalFeeMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Location Management */}
         {isAdmin && (

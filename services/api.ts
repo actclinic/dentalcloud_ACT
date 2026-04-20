@@ -384,7 +384,7 @@ export const api = {
         address: data.address || null,
         city: data.city || null,
         township: data.township || null,
-        patient_type: data.patient_type || 'walk-in',
+        patient_type: data.patient_type || 'Walk-in',
         balance: data.balance ?? 0,
         loyalty_points: 0,
         medical_history: data.medicalHistory || null
@@ -1576,6 +1576,43 @@ export const api = {
       }
 
       storageConfigVersion += 1;
+    },
+    getClinicalFeeSettings: async (): Promise<{ enabled: boolean; amount: number }> => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('clinical_fee_enabled, clinical_fee_amount')
+          .eq('id', APP_SETTINGS_SINGLETON_ID)
+          .maybeSingle();
+
+        if (error || !data) {
+          return { enabled: false, amount: 0 };
+        }
+
+        return {
+          enabled: Boolean(data.clinical_fee_enabled),
+          amount: Number(data.clinical_fee_amount || 0)
+        };
+      } catch (error: any) {
+        console.warn('Failed to load clinical fee settings:', error?.message || error);
+        return { enabled: false, amount: 0 };
+      }
+    },
+    saveClinicalFeeSettings: async (settings: { enabled: boolean; amount: number }): Promise<void> => {
+      const payload = {
+        id: APP_SETTINGS_SINGLETON_ID,
+        clinical_fee_enabled: settings.enabled,
+        clinical_fee_amount: Number(settings.amount || 0),
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(payload);
+
+      if (error) {
+        throw new Error(error.message);
+      }
     }
   },
 
@@ -2338,9 +2375,11 @@ export const api = {
           name: m.name,
           description: m.description,
           unit: m.unit,
+          item_type: m.item_type || 'Medicine',
           price: m.price,
           stock: m.stock,
           min_stock: m.min_stock,
+          quantity_step: Number(m.quantity_step || 1),
           category: m.category,
           created_at: m.created_at,
           updated_at: m.updated_at
@@ -2367,9 +2406,11 @@ export const api = {
           name: data.name,
           description: data.description,
           unit: data.unit,
+          item_type: data.item_type || 'Medicine',
           price: data.price,
           stock: data.stock,
           min_stock: data.min_stock,
+          quantity_step: Number(data.quantity_step || 1),
           category: data.category,
           created_at: data.created_at,
           updated_at: data.updated_at
@@ -2385,9 +2426,11 @@ export const api = {
         name: data.name,
         description: data.description || null,
         unit: data.unit || 'pack',
+        item_type: data.item_type || 'Medicine',
         price: data.price || 0,
         stock: data.stock || 0,
         min_stock: data.min_stock || 0,
+        quantity_step: Number(data.quantity_step || 1),
         category: data.category || null
       };
 
@@ -2404,9 +2447,11 @@ export const api = {
         name: result.name,
         description: result.description,
         unit: result.unit,
+        item_type: result.item_type || 'Medicine',
         price: result.price,
         stock: result.stock,
         min_stock: result.min_stock,
+        quantity_step: Number(result.quantity_step || 1),
         category: result.category,
         created_at: result.created_at,
         updated_at: result.updated_at
@@ -2418,9 +2463,11 @@ export const api = {
       if (data.name !== undefined) payload.name = data.name;
       if (data.description !== undefined) payload.description = data.description;
       if (data.unit !== undefined) payload.unit = data.unit;
+      if (data.item_type !== undefined) payload.item_type = data.item_type;
       if (data.price !== undefined) payload.price = data.price;
       if (data.stock !== undefined) payload.stock = data.stock;
       if (data.min_stock !== undefined) payload.min_stock = data.min_stock;
+      if (data.quantity_step !== undefined) payload.quantity_step = data.quantity_step;
       if (data.category !== undefined) payload.category = data.category;
       
       payload.updated_at = new Date().toISOString();
@@ -2439,9 +2486,11 @@ export const api = {
         name: result.name,
         description: result.description,
         unit: result.unit,
+        item_type: result.item_type || 'Medicine',
         price: result.price,
         stock: result.stock,
         min_stock: result.min_stock,
+        quantity_step: Number(result.quantity_step || 1),
         category: result.category,
         created_at: result.created_at,
         updated_at: result.updated_at
@@ -2457,7 +2506,10 @@ export const api = {
     },
     sell: async (patientId: string, medicineId: string, quantity: number, locationId: string, treatmentId?: string): Promise<{ sale: MedicineSale; new_stock: number }> => {
       if (!locationId) throw new Error('locationId is required for medicine sales');
-      if (quantity <= 0) throw new Error('Quantity must be greater than 0');
+      const parsedQuantity = Number(quantity);
+      if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+        throw new Error('Quantity must be greater than 0');
+      }
 
       // 1. Get medicine and patient state (Planning/State Fetching)
       const { data: medicine, error: mError } = await supabase
@@ -2468,7 +2520,7 @@ export const api = {
         .single();
 
       if (mError || !medicine) throw new Error('Medicine not found in this location');
-      if (medicine.stock < quantity) {
+      if (Number(medicine.stock) < parsedQuantity) {
         throw new Error(`Insufficient stock. Available: ${medicine.stock} ${medicine.unit}`);
       }
 
@@ -2481,15 +2533,15 @@ export const api = {
 
       if (pError || !patient) throw new Error('Patient not found in this location');
 
-      const totalPrice = Number(medicine.price) * quantity;
-      const newStock = medicine.stock - quantity;
+      const totalPrice = Number(medicine.price) * parsedQuantity;
+      const newStock = Number(medicine.stock) - parsedQuantity;
 
       // 2. Create sale record
       const saleData = {
         location_id: locationId,
         patient_id: patientId,
         medicine_id: medicineId,
-        quantity: quantity,
+        quantity: parsedQuantity,
         unit_price: medicine.price,
         total_price: totalPrice,
         date: new Date().toISOString().split('T')[0],
@@ -2509,7 +2561,7 @@ export const api = {
         .from('medicines')
         .update({ stock: newStock })
         .eq('id', medicineId)
-        .gte('stock', quantity); // Atomicity check: ensure stock hasn't changed
+        .gte('stock', parsedQuantity); // Atomicity check: ensure stock hasn't changed
 
       if (stockError) throw new Error(`Stock update failed: ${stockError.message}`);
 
@@ -2542,7 +2594,7 @@ export const api = {
           location_id: locationId,
           points: earnedPoints,
           type: 'EARNED',
-          description: `Earned from medicine purchase: ${medicine.name} (Qty: ${quantity})`
+          description: `Earned from medicine purchase: ${medicine.name} (Qty: ${parsedQuantity})`
         });
       }
 
@@ -2912,7 +2964,7 @@ export const api = {
     getMedicineState: async (medicineId: string, locationId: string) => {
       const { data, error } = await supabase
         .from('medicines')
-        .select('id, name, stock, price, min_stock')
+        .select('id, name, stock, price, min_stock, quantity_step')
         .eq('id', medicineId)
         .eq('location_id', locationId)
         .single();

@@ -21,12 +21,24 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
 
   const availableMedicines = medicines.filter(m => m.stock > 0);
 
+  const formatQuantity = (value: number | undefined) => {
+    const num = Number(value || 0);
+    return Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.?0+$/, '');
+  };
+
+  const clampToStep = (value: number, max: number, step: number) => {
+    const safeStep = step > 0 ? step : 1;
+    const rounded = Math.round(value / safeStep) * safeStep;
+    return Math.max(0, Math.min(max, Number(rounded.toFixed(2))));
+  };
+
   const handleQuantityChange = (medicineId: string, change: number) => {
     const current = selectedMedicines.get(medicineId) || 0;
     const medicine = medicines.find(m => m.id === medicineId);
     if (!medicine) return;
+    const step = Number(medicine.quantity_step || 1);
 
-    const newQuantity = Math.max(0, Math.min(medicine.stock, current + change));
+    const newQuantity = clampToStep(current + change, Number(medicine.stock), step);
     
     if (newQuantity === 0) {
       const updated = new Map(selectedMedicines);
@@ -54,12 +66,12 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
   }, 0);
 
   return (
-    <Modal title="Select Medicines" onClose={onClose}>
+    <Modal title="Select Inventory Items" onClose={onClose}>
       <div className="space-y-4">
         {availableMedicines.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>No medicines available in stock.</p>
+            <p>No inventory items available in stock.</p>
           </div>
         ) : (
           <>
@@ -67,6 +79,7 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
               {availableMedicines.map((medicine) => {
                 const quantity = selectedMedicines.get(medicine.id) || 0;
                 const isLowStock = medicine.min_stock !== undefined && medicine.stock <= medicine.min_stock;
+                const step = Number(medicine.quantity_step || 1);
                 
                 return (
                   <div
@@ -96,7 +109,10 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
                             <span className="font-medium">{formatCurrency(medicine.price || 0, currency)}</span> per {medicine.unit}
                           </span>
                           <span className={`text-xs ${isLowStock ? 'text-yellow-600' : 'text-gray-500'}`}>
-                            Stock: {medicine.stock} {medicine.unit}
+                            Stock: {formatQuantity(medicine.stock)} {medicine.unit}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            Step: {formatQuantity(step)} {medicine.unit}
                           </span>
                         </div>
                       </div>
@@ -104,7 +120,7 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => handleQuantityChange(medicine.id, -1)}
+                        onClick={() => handleQuantityChange(medicine.id, -step)}
                         disabled={quantity === 0}
                         className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
@@ -114,10 +130,11 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
                         type="number"
                         min="0"
                         max={medicine.stock}
+                        step={step}
                         value={quantity}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          const clamped = Math.max(0, Math.min(medicine.stock, val));
+                          const val = parseFloat(e.target.value) || 0;
+                          const clamped = clampToStep(val, Number(medicine.stock), step);
                           if (clamped === 0) {
                             const updated = new Map(selectedMedicines);
                             updated.delete(medicine.id);
@@ -130,7 +147,7 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={() => handleQuantityChange(medicine.id, 1)}
+                        onClick={() => handleQuantityChange(medicine.id, step)}
                         disabled={quantity >= medicine.stock}
                         className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
@@ -157,7 +174,7 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
                   {Array.from(selectedMedicines.entries())
                     .map(([id, qty]) => {
                       const med = medicines.find(m => m.id === id);
-                      return med ? `${qty} ${med.unit} ${med.name}` : '';
+                      return med ? `${formatQuantity(qty)} ${med.unit} ${med.name}` : '';
                     })
                     .filter(Boolean)
                     .join(', ')}

@@ -137,9 +137,11 @@ export interface Medicine {
   name: string;
   description?: string;
   unit: string; // e.g., "pack", "bottle", "box"
+  item_type?: 'Medicine' | 'Retail' | 'Supply' | 'Other';
   price: number;
   stock: number; // Current stock quantity
   min_stock?: number; // Minimum stock level for alerts
+  quantity_step?: number; // Smallest allowed dispense increment (e.g., 0.5 card)
   category?: string; // e.g., "Pain Relief", "Antibiotics", "Supplements"
   created_at?: string;
   updated_at?: string;
@@ -161,6 +163,8 @@ export interface MedicineSale {
 
 export interface ClinicSettings {
   loyalty_enabled: boolean;
+  clinical_fee_enabled?: boolean;
+  clinical_fee_amount?: number;
 }
 
 export interface S3Settings {

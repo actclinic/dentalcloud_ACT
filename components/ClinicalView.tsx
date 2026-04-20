@@ -547,7 +547,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                    className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-purple-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20"
                    onClick={onAddMedicines}
                  >
-                   <Package size={16} /> Add Medicines
+                   <Package size={16} /> Add Items
                  </button>
                )}
 

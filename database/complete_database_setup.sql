@@ -65,6 +65,8 @@ CREATE TABLE app_settings (
   storage_anon_key TEXT,
   storage_service_key TEXT,
   storage_bucket TEXT,
+  clinical_fee_enabled BOOLEAN DEFAULT FALSE,
+  clinical_fee_amount DECIMAL(12,2) DEFAULT 0 CHECK (clinical_fee_amount >= 0),
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -189,9 +191,11 @@ CREATE TABLE medicines (
   name VARCHAR(255) NOT NULL,
   description TEXT,
   unit VARCHAR(50) DEFAULT 'pack',
+  item_type VARCHAR(20) DEFAULT 'Medicine' CHECK (item_type IN ('Medicine', 'Retail', 'Supply', 'Other')),
   price DECIMAL(12,2) DEFAULT 0,
-  stock INTEGER DEFAULT 0,
-  min_stock INTEGER DEFAULT 0,
+  stock DECIMAL(12,2) DEFAULT 0,
+  min_stock DECIMAL(12,2) DEFAULT 0,
+  quantity_step DECIMAL(12,2) DEFAULT 1 CHECK (quantity_step > 0),
   category VARCHAR(100),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -203,7 +207,7 @@ CREATE TABLE medicine_sales (
   location_id UUID REFERENCES locations(id),
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
   medicine_id UUID REFERENCES medicines(id) ON DELETE RESTRICT,
-  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  quantity DECIMAL(12,2) NOT NULL CHECK (quantity > 0),
   unit_price DECIMAL(12,2) NOT NULL,
   total_price DECIMAL(12,2) NOT NULL,
   date DATE DEFAULT CURRENT_DATE,
@@ -330,6 +334,7 @@ CREATE INDEX idx_appointments_location ON appointments(location_id);
 CREATE INDEX idx_medicines_location ON medicines(location_id);
 CREATE INDEX idx_medicines_name ON medicines(name);
 CREATE INDEX idx_medicines_category ON medicines(category);
+CREATE INDEX idx_medicines_item_type ON medicines(item_type);
 CREATE INDEX idx_medicine_sales_patient ON medicine_sales(patient_id);
 CREATE INDEX idx_medicine_sales_medicine ON medicine_sales(medicine_id);
 CREATE INDEX idx_medicine_sales_date ON medicine_sales(date);

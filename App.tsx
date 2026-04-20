@@ -241,6 +241,17 @@ const App: React.FC = () => {
     localStorage.setItem('messaging_enabled', String(enabled));
     api.messages.toggleMessagingFeature(enabled);
   };
+
+  const handleSaveClinicalFeeSettings = async (enabled: boolean, amount: number) => {
+    const normalizedAmount = Math.max(0, Number(amount || 0));
+    await api.appSettings.saveClinicalFeeSettings({
+      enabled,
+      amount: normalizedAmount
+    });
+    setClinicalFeeEnabled(enabled);
+    setClinicalFeeAmount(normalizedAmount);
+    setApplyClinicalFeeOnRegistration(enabled);
+  };
   
   const handleRemoveAllMessages = async () => {
     if (window.confirm('Are you sure you want to remove ALL messages and conversations? This action cannot be undone.')) {
@@ -273,6 +284,9 @@ const App: React.FC = () => {
       township: '',
       patient_type: 'Walk-in'
     });
+  const [clinicalFeeEnabled, setClinicalFeeEnabled] = useState(false);
+  const [clinicalFeeAmount, setClinicalFeeAmount] = useState(0);
+  const [applyClinicalFeeOnRegistration, setApplyClinicalFeeOnRegistration] = useState(false);
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: '', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
@@ -294,7 +308,17 @@ const App: React.FC = () => {
   const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', schedules: [] });
   const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });
+  const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({
+    name: '',
+    description: '',
+    unit: 'pack',
+    item_type: 'Medicine',
+    price: 0,
+    stock: 0,
+    min_stock: 0,
+    quantity_step: 1,
+    category: ''
+  });
   const [newExpenseData, setNewExpenseData] = useState<Partial<Expense>>(getDefaultExpenseFormData());
   const emailSettings = useMemo(() => loadEmailSettings(), []);
   const cityOptions = useMemo(
@@ -459,6 +483,24 @@ const App: React.FC = () => {
     
     return () => clearInterval(cleanupInterval);
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    let mounted = true;
+    api.appSettings.getClinicalFeeSettings()
+      .then((settings) => {
+        if (!mounted) return;
+        setClinicalFeeEnabled(settings.enabled);
+        setClinicalFeeAmount(settings.amount);
+        setApplyClinicalFeeOnRegistration(settings.enabled);
+      })
+      .catch((err) => {
+        console.warn('Failed to load clinical fee settings:', err);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleLoginSuccess = () => {
     const session = auth.getSession();
@@ -937,7 +979,12 @@ const App: React.FC = () => {
     setIsSubmitting(true);
     try {
       console.log('Creating patient with location_id:', currentLocationId);
-      await api.patients.create({ ...newPatientData, location_id: currentLocationId });
+      const registrationFee = applyClinicalFeeOnRegistration ? Math.max(0, Number(clinicalFeeAmount || 0)) : 0;
+      await api.patients.create({
+        ...newPatientData,
+        location_id: currentLocationId,
+        balance: registrationFee
+      });
       setShowPatientModal(false);
       fetchInitialData(); 
       setNewPatientData({ 
@@ -952,6 +999,14 @@ const App: React.FC = () => {
         township: '',
         patient_type: 'Walk-in'
       });
+      setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
+      if (registrationFee > 0) {
+        setToast({
+          message: `Patient registered with clinical fee: ${formatCurrency(registrationFee, currency)}.`,
+          type: 'success',
+          show: true
+        });
+      }
     } catch (err: any) {
       console.error('Patient creation error:', err);
       alert(`Error creating patient: ${err.message}`);
@@ -1198,7 +1253,7 @@ const App: React.FC = () => {
       }
       setShowMedicineModal(false);
       setEditingMedicine(null);
-      setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });
+      setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' });
       fetchMedicines();
     } catch (err: any) {
       alert(err.message);
@@ -1600,7 +1655,7 @@ const App: React.FC = () => {
       
       // Show success message
       setToast({
-        message: `Successfully added ${selectedMedicines.length} medicine(s) to patient's bill. Total: ${formatCurrency(medicineCost, currency)}`,
+        message: `Successfully added ${selectedMedicines.length} inventory item(s) to patient's bill. Total: ${formatCurrency(medicineCost, currency)}`,
         type: 'success',
         show: true
       });
@@ -1937,7 +1992,10 @@ const App: React.FC = () => {
                 loyaltyEnabled={loyaltyEnabled} 
                 loyaltyRules={loyaltyRules}
                 onSelectPatient={handlePatientSelect} 
-                onAddPatient={() => setShowPatientModal(true)} 
+                onAddPatient={() => {
+                  setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
+                  setShowPatientModal(true);
+                }} 
                 onExportPDF={async () => {
                    const freshPatients = await api.patients.getAll(currentLocationId || undefined);
                    const { exportPatientsToPDF } = await import('./utils/pdfExport');
@@ -1991,7 +2049,7 @@ const App: React.FC = () => {
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData(doc); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={handleDeleteAllRecords} currency={currency} />}
-            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
                 expenses={expenses}
@@ -2022,6 +2080,9 @@ const App: React.FC = () => {
                 messagingEnabled={messagingEnabled}
                 onToggleMessaging={handleToggleMessaging}
                 onRemoveAllMessages={handleRemoveAllMessages}
+                clinicalFeeEnabled={clinicalFeeEnabled}
+                clinicalFeeAmount={clinicalFeeAmount}
+                onSaveClinicalFeeSettings={handleSaveClinicalFeeSettings}
                 isAdmin={isAdmin} 
             />}
             {currentView === 'ai-assistant' && canAccessView('ai-assistant') && <AIAssistantView 
@@ -2152,6 +2213,38 @@ const App: React.FC = () => {
                   <option value="Tiktok Hotline">Tiktok Hotline</option>
                 </select>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+              <p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 mb-2">Clinical Fee on Registration</p>
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyClinicalFee"
+                    checked={applyClinicalFeeOnRegistration}
+                    onChange={() => setApplyClinicalFeeOnRegistration(true)}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                  />
+                  Apply
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="applyClinicalFee"
+                    checked={!applyClinicalFeeOnRegistration}
+                    onChange={() => setApplyClinicalFeeOnRegistration(false)}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                  />
+                  Skip
+                </label>
+                <span className="ml-auto text-xs font-semibold text-indigo-700">
+                  Amount: {formatCurrency(Math.max(0, Number(clinicalFeeAmount || 0)), currency)}
+                </span>
+              </div>
+              {!clinicalFeeEnabled && (
+                <p className="mt-2 text-xs text-amber-700">Global clinical fee is disabled in Settings. You can still keep this off for this patient.</p>
+              )}
             </div>
 
             <div>
@@ -2596,14 +2689,14 @@ const App: React.FC = () => {
       )}
 
       {showMedicineModal && (
-        <Modal title={editingMedicine ? "Edit Medicine" : "New Medicine"} onClose={() => {setShowMedicineModal(false); setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', price: 0, stock: 0, min_stock: 0, category: '' });}}>
+        <Modal title={editingMedicine ? "Edit Inventory Item" : "New Inventory Item"} onClose={() => {setShowMedicineModal(false); setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' });}}>
           <form onSubmit={handleCreateMedicine} className="space-y-5">
             <Input 
-              label="Medicine Name" 
+              label="Item Name" 
               required 
               value={newMedicineData.name} 
               onChange={(e: any) => setNewMedicineData({...newMedicineData, name: e.target.value})} 
-              placeholder="e.g., Pain Killer, Antibiotics"
+              placeholder="e.g., Amoxicillin, Toothbrush, Mouthwash"
             />
             <Input 
               label="Description" 
@@ -2612,6 +2705,19 @@ const App: React.FC = () => {
               placeholder="Optional description"
             />
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Item Type</label>
+                <select 
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
+                  value={newMedicineData.item_type || 'Medicine'} 
+                  onChange={(e: any) => setNewMedicineData({...newMedicineData, item_type: e.target.value as Medicine['item_type']})}
+                >
+                  <option value="Medicine">Medicine</option>
+                  <option value="Retail">Retail Item</option>
+                  <option value="Supply">Supply</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Unit</label>
                 <select 
@@ -2622,15 +2728,29 @@ const App: React.FC = () => {
                   <option value="pack">Pack</option>
                   <option value="bottle">Bottle</option>
                   <option value="box">Box</option>
+                  <option value="card">Card</option>
+                  <option value="strip">Strip</option>
+                  <option value="tube">Tube</option>
+                  <option value="piece">Piece</option>
                   <option value="unit">Unit</option>
                   <option value="tablet">Tablet</option>
                 </select>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <Input 
                 label="Category" 
                 value={newMedicineData.category || ''} 
                 onChange={(e: any) => setNewMedicineData({...newMedicineData, category: e.target.value})} 
-                placeholder="e.g., Pain Relief"
+                placeholder="e.g., Antibiotics, Oral Care"
+              />
+              <Input
+                label="Dispense Step"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={newMedicineData.quantity_step || 1}
+                onChange={(e: any) => setNewMedicineData({...newMedicineData, quantity_step: Math.max(0.01, parseFloat(e.target.value) || 1)})}
               />
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -2648,19 +2768,21 @@ const App: React.FC = () => {
                 type="number" 
                 required 
                 min="0"
+                step="0.01"
                 value={newMedicineData.stock || 0} 
-                onChange={(e: any) => setNewMedicineData({...newMedicineData, stock: parseInt(e.target.value) || 0})} 
+                onChange={(e: any) => setNewMedicineData({...newMedicineData, stock: parseFloat(e.target.value) || 0})} 
               />
               <Input 
                 label="Min Stock" 
                 type="number" 
                 min="0"
+                step="0.01"
                 value={newMedicineData.min_stock || 0} 
-                onChange={(e: any) => setNewMedicineData({...newMedicineData, min_stock: parseInt(e.target.value) || 0})} 
+                onChange={(e: any) => setNewMedicineData({...newMedicineData, min_stock: parseFloat(e.target.value) || 0})} 
               />
             </div>
             <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20">
-              {editingMedicine ? 'Update Medicine' : 'Create Medicine'}
+              {editingMedicine ? 'Update Item' : 'Create Item'}
             </button>
           </form>
         </Modal>

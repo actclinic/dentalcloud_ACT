@@ -50,6 +50,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
       medicine.name.toLowerCase().includes(term) ||
       medicine.description?.toLowerCase().includes(term) ||
       medicine.category?.toLowerCase().includes(term) ||
+      medicine.item_type?.toLowerCase().includes(term) ||
       medicine.unit.toLowerCase().includes(term)
     );
   }, [medicines, searchTerm]);
@@ -87,6 +88,11 @@ const InventoryView: React.FC<InventoryViewProps> = ({
     return { color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', icon: null };
   };
 
+  const formatQuantity = (value: number | undefined) => {
+    const num = Number(value || 0);
+    return Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.?0+$/, '');
+  };
+
   // Get low stock items for the chart
   const lowStockItems = useMemo(() => {
     return medicines
@@ -116,14 +122,14 @@ const InventoryView: React.FC<InventoryViewProps> = ({
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
     <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white sticky top-0 z-10">
       <div>
-        <h2 className="text-xl font-bold text-gray-800">Medicine Inventory</h2>
-        <p className="text-sm text-gray-500">Manage medicine stock and pricing</p>
+        <h2 className="text-xl font-bold text-gray-800">Inventory</h2>
+        <p className="text-sm text-gray-500">Manage medicines and retail inventory items</p>
       </div>
       <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
         <div className="relative flex-1 sm:flex-initial">
           <input
             type="text"
-            placeholder="Search medicines..."
+            placeholder="Search inventory items..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -146,7 +152,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
             onClick={onAdd}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
-            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Medicine</span>
+            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Item</span>
           </button>
         </div>
       </div>
@@ -165,7 +171,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-gray-800">Most Selling Items</h3>
-                    <p className="text-xs text-gray-500">Top medicines by sales quantity</p>
+                    <p className="text-xs text-gray-500">Top inventory items by sales quantity</p>
                   </div>
                 </div>
               </div>
@@ -190,9 +196,9 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                       />
                       <Tooltip 
                         formatter={(value: number | undefined, name: string | undefined, props: any) => [
-                          `${value ?? 0} units sold`,
-                          props.payload.medicine_name
-                        ]}
+                            `${formatQuantity(Number(value || 0))} units sold`,
+                            props.payload.medicine_name
+                          ]}
                         labelFormatter={() => ''}
                       />
                       <Bar dataKey="total_quantity" fill="#6366F1" radius={[0, 4, 4, 0]} barSize={20} />
@@ -266,7 +272,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
       ) : medicines.length === 0 ? (
         <div className="p-12 text-center text-gray-400 italic">
-          No medicines in inventory. Add your first medicine to begin.
+          No inventory items found. Add your first item to begin.
         </div>
       ) : (
         <>
@@ -275,7 +281,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Medicine</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Item</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Type</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Category</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Unit</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Price</th>
@@ -302,6 +309,11 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                         </div>
                       </td>
                       <td className="px-6 py-4">
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-indigo-50 text-indigo-700">
+                          {medicine.item_type || 'Medicine'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
                         {medicine.category ? (
                           <span className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
                             {medicine.category}
@@ -315,14 +327,14 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                       <td className="px-6 py-4">
                         <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border ${status.bg} ${status.color} ${status.border}`}>
                           {status.icon}
-                          {medicine.stock} {medicine.unit}
+                          {formatQuantity(medicine.stock)} {medicine.unit}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right space-x-2">
                         <button
                           onClick={() => onEdit(medicine)}
                           className="text-gray-400 hover:text-indigo-600 transition-colors p-1"
-                          title="Edit medicine"
+                          title="Edit item"
                         >
                           <Edit2 size={16} />
                         </button>
@@ -332,7 +344,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                             setDeleteConfirmOpen(true);
                           }}
                           className="text-gray-400 hover:text-red-600 transition-colors p-1"
-                          title="Delete medicine"
+                          title="Delete item"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -357,7 +369,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                       </div>
                       <div>
                         <div className="font-bold text-gray-900">{medicine.name}</div>
-                        <div className="text-xs text-gray-500">{medicine.category || 'No Category'}</div>
+                        <div className="text-xs text-gray-500">{medicine.item_type || 'Medicine'} - {medicine.category || 'No Category'}</div>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -379,7 +391,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({
                       <p className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${status.color}`}>Stock Level</p>
                       <div className={`text-sm font-black flex items-center gap-1.5 ${status.color}`}>
                         {status.icon}
-                        {medicine.stock} {medicine.unit}
+                        {formatQuantity(medicine.stock)} {medicine.unit}
                       </div>
                     </div>
                   </div>
@@ -403,9 +415,9 @@ const InventoryView: React.FC<InventoryViewProps> = ({
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
-        title="Delete Medicine"
+        title="Delete Item"
         message={`Are you sure you want to delete "${medicineToDelete?.name}"? This action cannot be undone.`}
-        confirmText="Delete Medicine"
+        confirmText="Delete Item"
         cancelText="Cancel"
         type="danger"
         onConfirm={() => {
