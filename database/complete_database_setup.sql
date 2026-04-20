@@ -93,7 +93,7 @@ CREATE TABLE patients (
   address TEXT,
   city VARCHAR(100),
   township VARCHAR(100),
-  patient_type VARCHAR(50) DEFAULT 'walk-in' CHECK (patient_type IN ('online', 'walk-in', 'phone call', 'hotline', 'tiktok', 'tiktok hotline')),
+  patient_type VARCHAR(50) DEFAULT 'Walk-in' CHECK (patient_type IN ('Walk-in', 'ONP', 'RNP', 'Hotline', 'Rec-ph call', 'Tiktok', 'Tiktok Hotline')),
   balance DECIMAL(12,2) DEFAULT 0,
   loyalty_points INTEGER DEFAULT 0,
   medical_history TEXT,
