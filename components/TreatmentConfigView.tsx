@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Edit2, Trash2, FileDown } from 'lucide-react';
 import { TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
+import { getColorForCategory } from '../utils/colorUtils';
 import Pagination from './Pagination';
 
 interface TreatmentConfigViewProps {
@@ -114,11 +115,7 @@ const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentType
           <tr key={t.id} className="hover:bg-gray-50 transition-colors">
             <td className="px-6 py-4 font-bold text-gray-900">{t.name}</td>
             <td className="px-6 py-4">
-              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                categoryKey === 'surgery' ? 'bg-red-50 text-red-700 border-red-100' :
-                categoryKey === 'preventative' ? 'bg-green-50 text-green-700 border-green-100' :
-                'bg-blue-50 text-blue-700 border-blue-100'
-              }`}>{categoryLabel}</span>
+              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getColorForCategory(categoryLabel)}`}>{categoryLabel}</span>
             </td>
             <td className="px-6 py-4 text-gray-900 font-black">{formatCurrency(t.cost || 0, currency)}</td>
             <td className="px-6 py-4 text-right space-x-2">
