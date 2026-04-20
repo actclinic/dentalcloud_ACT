@@ -105,6 +105,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [deleteModal, setDeleteModal] = React.useState(false);
   const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
   const [nextAppointmentFeedback, setNextAppointmentFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [nextAppointmentForm, setNextAppointmentForm] = React.useState<Partial<Appointment>>({
@@ -131,6 +132,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   }, [patientFiles.length]);
 
   useEffect(() => {
+    setShowNextAppointmentModal(false);
     setNextAppointmentFeedback(null);
     setNextAppointmentForm({
       date: getDefaultNextAppointmentDate(),
@@ -237,6 +239,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
         type: 'success',
         message: 'Next appointment created. It is now visible in the Appointments tab.'
       });
+      setShowNextAppointmentModal(false);
       setNextAppointmentForm({
         date: getDefaultNextAppointmentDate(),
         time: '',
@@ -544,110 +547,39 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                </button>
 
                {selectedPatient && onCreateAppointment && (
-                 <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 space-y-4">
-                   <div className="flex items-center justify-between gap-3">
-                     <div>
-                       <p className="text-[10px] text-indigo-600 uppercase font-bold tracking-wider mb-1">Next Appointment</p>
-                       <h4 className="text-sm font-bold text-indigo-950">Schedule directly from clinical focus</h4>
+                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                   <div className="flex items-center justify-between gap-2">
+                     <div className="min-w-0">
+                       <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Scheduling</p>
+                       <p className="text-sm font-bold text-gray-900">Next Appointment</p>
                      </div>
-                     {onOpenAppointments && (
-                       <button
-                         onClick={onOpenAppointments}
-                         className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
-                       >
-                         <Calendar size={13} /> Appointments
-                       </button>
-                     )}
-                   </div>
-
-                   <div className="flex flex-wrap gap-2">
-                     <button type="button" onClick={() => handleQuickDateApply(7)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Week</button>
-                     <button type="button" onClick={() => handleQuickDateApply(14)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+2 Weeks</button>
-                     <button type="button" onClick={() => handleQuickDateApply(30)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Month</button>
-                     <button type="button" onClick={() => handleQuickDateApply(180)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+6 Months</button>
-                   </div>
-
-                   <form onSubmit={handleCreateNextAppointment} className="space-y-3">
-                     <div className="grid grid-cols-2 gap-3">
-                       <Input
-                         label="Date"
-                         type="date"
-                         required
-                         value={nextAppointmentForm.date || ''}
-                         onChange={(e: any) => setNextAppointmentForm((prev) => ({ ...prev, date: e.target.value }))}
-                       />
-                       <Input
-                         label="Time"
-                         type="time"
-                         required
-                         value={nextAppointmentForm.time || ''}
-                         onChange={(e: any) => setNextAppointmentForm((prev) => ({ ...prev, time: e.target.value }))}
-                       />
-                     </div>
-
-                     <div className="grid grid-cols-2 gap-3">
-                       <div>
-                         <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Doctor (Optional)</label>
-                         <SearchableSelect
-                           value={nextAppointmentForm.doctor_id || ''}
-                           onChange={(doctorId) => setNextAppointmentForm((prev) => ({ ...prev, doctor_id: doctorId }))}
-                           options={[
-                             { value: '', label: 'No specific doctor' },
-                             ...doctors.map((doctor) => ({
-                               value: doctor.id,
-                               label: `Dr. ${doctor.name}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
-                             }))
-                           ]}
-                           placeholder="Select doctor"
-                           emptyMessage="No doctors found"
-                         />
-                       </div>
-                       <div>
-                         <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Type</label>
-                         <select
-                           value={nextAppointmentForm.type || 'Follow-up'}
-                           onChange={(e) => setNextAppointmentForm((prev) => ({ ...prev, type: e.target.value }))}
-                           className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+                     <div className="flex items-center gap-2">
+                       {onOpenAppointments && (
+                         <button
+                           onClick={onOpenAppointments}
+                           className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-100"
                          >
-                           <option value="Follow-up">Follow-up</option>
-                           <option value="Checkup">Checkup</option>
-                           <option value="Cleaning">Cleaning</option>
-                           <option value="Consultation">Consultation</option>
-                           <option value="Treatment">Treatment</option>
-                         </select>
-                       </div>
+                           <Calendar size={13} /> View
+                         </button>
+                       )}
+                       <button
+                         onClick={() => setShowNextAppointmentModal(true)}
+                         className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
+                       >
+                         <Calendar size={13} /> New
+                       </button>
                      </div>
-
-                     <div>
-                       <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Notes</label>
-                       <textarea
-                         rows={2}
-                         value={nextAppointmentForm.notes || ''}
-                         onChange={(e) => setNextAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
-                         className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all resize-none"
-                         placeholder="Optional notes for front desk or doctor..."
-                       />
+                   </div>
+                   {nextAppointmentFeedback && (
+                     <div className={`mt-3 rounded-lg border px-3 py-2 text-xs font-semibold flex items-start gap-2 ${
+                       nextAppointmentFeedback.type === 'success'
+                         ? 'border-green-200 bg-green-50 text-green-700'
+                         : 'border-red-200 bg-red-50 text-red-700'
+                     }`}>
+                       {nextAppointmentFeedback.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
+                       <span>{nextAppointmentFeedback.message}</span>
                      </div>
-
-                     {nextAppointmentFeedback && (
-                       <div className={`rounded-xl border p-3 text-xs font-semibold flex items-start gap-2 ${
-                         nextAppointmentFeedback.type === 'success'
-                           ? 'border-green-200 bg-green-50 text-green-700'
-                           : 'border-red-200 bg-red-50 text-red-700'
-                       }`}>
-                         {nextAppointmentFeedback.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
-                         <span>{nextAppointmentFeedback.message}</span>
-                       </div>
-                     )}
-
-                     <button
-                       type="submit"
-                       disabled={isSavingNextAppointment}
-                       className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                     >
-                       {isSavingNextAppointment ? 'Scheduling...' : 'Create Next Appointment'}
-                     </button>
-                   </form>
+                   )}
                  </div>
                )}
                {onUpdatePatient && selectedPatient && (
@@ -1150,6 +1082,112 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {showNextAppointmentModal && selectedPatient && onCreateAppointment && (
+        <Modal
+          title="Schedule Next Appointment"
+          onClose={() => setShowNextAppointmentModal(false)}
+        >
+          <form onSubmit={handleCreateNextAppointment} className="space-y-4">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+              <p className="text-[10px] text-indigo-600 uppercase font-bold tracking-wider">Patient</p>
+              <p className="text-sm font-bold text-indigo-900">{selectedPatient.name}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleQuickDateApply(7)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Week</button>
+              <button type="button" onClick={() => handleQuickDateApply(14)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+2 Weeks</button>
+              <button type="button" onClick={() => handleQuickDateApply(30)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Month</button>
+              <button type="button" onClick={() => handleQuickDateApply(180)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+6 Months</button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Date"
+                type="date"
+                required
+                value={nextAppointmentForm.date || ''}
+                onChange={(e: any) => setNextAppointmentForm((prev) => ({ ...prev, date: e.target.value }))}
+              />
+              <Input
+                label="Time"
+                type="time"
+                required
+                value={nextAppointmentForm.time || ''}
+                onChange={(e: any) => setNextAppointmentForm((prev) => ({ ...prev, time: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Doctor (Optional)</label>
+                <SearchableSelect
+                  value={nextAppointmentForm.doctor_id || ''}
+                  onChange={(doctorId) => setNextAppointmentForm((prev) => ({ ...prev, doctor_id: doctorId }))}
+                  options={[
+                    { value: '', label: 'No specific doctor' },
+                    ...doctors.map((doctor) => ({
+                      value: doctor.id,
+                      label: `Dr. ${doctor.name}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
+                    }))
+                  ]}
+                  placeholder="Select doctor"
+                  emptyMessage="No doctors found"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Type</label>
+                <select
+                  value={nextAppointmentForm.type || 'Follow-up'}
+                  onChange={(e) => setNextAppointmentForm((prev) => ({ ...prev, type: e.target.value }))}
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
+                >
+                  <option value="Follow-up">Follow-up</option>
+                  <option value="Checkup">Checkup</option>
+                  <option value="Cleaning">Cleaning</option>
+                  <option value="Consultation">Consultation</option>
+                  <option value="Treatment">Treatment</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">Notes</label>
+              <textarea
+                rows={3}
+                value={nextAppointmentForm.notes || ''}
+                onChange={(e) => setNextAppointmentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all resize-none"
+                placeholder="Optional notes for front desk or doctor..."
+              />
+            </div>
+
+            {nextAppointmentFeedback?.type === 'error' && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5" />
+                <span>{nextAppointmentFeedback.message}</span>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowNextAppointmentModal(false)}
+                className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingNextAppointment}
+                className="flex-1 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+              >
+                {isSavingNextAppointment ? 'Scheduling...' : 'Create Appointment'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   </div>
