@@ -830,15 +830,7 @@ export const api = {
       if (!data.location_id) throw new Error('location_id is required');
       if (!data.date) throw new Error('date is required');
       if (!data.time) throw new Error('time is required');
-
-      // 1. Validate Doctor Availability only when a doctor is selected
-      if (data.doctor_id) {
-        const availableTimes = await api.doctors.getAvailableTimes(data.doctor_id, data.date);
-        const requestedTime = data.time.slice(0, 5); // Ensure HH:MM
-        if (!availableTimes.includes(requestedTime)) {
-          throw new Error(`Doctor is not available at ${requestedTime} on ${data.date}. Available times: ${availableTimes.join(', ')}`);
-        }
-      }
+      if (!data.type) throw new Error('type is required');
 
       const payload = {
         location_id: data.location_id,

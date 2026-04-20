@@ -212,8 +212,6 @@ const App: React.FC = () => {
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
   const [selectedTreatmentsForReceipt, setSelectedTreatmentsForReceipt] = useState<ClinicalRecord[]>([]);
-  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
-  const [loadingAvailableTimes, setLoadingAvailableTimes] = useState(false);
   const [currency, setCurrency] = useState<'USD' | 'MMK'>(() => {
     const savedCurrency = localStorage.getItem('currency');
     return (savedCurrency === 'USD' || savedCurrency === 'MMK') ? savedCurrency : 'USD';
@@ -275,7 +273,7 @@ const App: React.FC = () => {
       township: '',
       patient_type: 'Walk-in'
     });
-  const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
+  const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: '', status: 'Scheduled', patient_id: '', doctor_id: '' });
   const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
   const doctorDropdownRef = useRef<HTMLDivElement>(null);
@@ -303,6 +301,17 @@ const App: React.FC = () => {
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
     []
   );
+  const appointmentTypeOptions = useMemo(() => {
+    const unique = [...new Set(treatmentTypes.map((type) => (type.name || '').trim()).filter(Boolean))];
+    return unique.sort((a, b) => a.localeCompare(b));
+  }, [treatmentTypes]);
+  const appointmentTypeOptionsForModal = useMemo(() => {
+    const currentType = (newAppointmentData.type || '').trim();
+    if (!currentType || appointmentTypeOptions.includes(currentType)) {
+      return appointmentTypeOptions;
+    }
+    return [...appointmentTypeOptions, currentType];
+  }, [appointmentTypeOptions, newAppointmentData.type]);
   const townshipOptionsForNewPatient = useMemo(
     () => getTownshipsForCity(newPatientData.city || '').map((township) => ({ value: township, label: township })),
     [newPatientData.city]
@@ -974,8 +983,7 @@ const App: React.FC = () => {
       setShowAppointmentModal(false);
       fetchInitialData();
       setEditingAppointment(null);
-      setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' });
-      setAvailableTimes([]);
+      setNewAppointmentData({ date: '', time: '', type: appointmentTypeOptions[0] || '', status: 'Scheduled', patient_id: '', doctor_id: '' });
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -990,6 +998,9 @@ const App: React.FC = () => {
     if (!data?.date || !data?.time) {
       throw new Error('Appointment date and time are required.');
     }
+    if (!data?.type) {
+      throw new Error('Please select a treatment type.');
+    }
     if (!currentLocationId) {
       throw new Error('Select a branch before creating appointments.');
     }
@@ -1003,37 +1014,12 @@ const App: React.FC = () => {
     await fetchInitialData();
   };
 
-  const handleDoctorChange = async (doctorId: string) => {
-    setNewAppointmentData({ ...newAppointmentData, doctor_id: doctorId, time: '' });
-    setAvailableTimes([]);
-    
-    if (doctorId && newAppointmentData.date) {
-      await fetchAvailableTimes(doctorId, newAppointmentData.date);
-    }
+  const handleDoctorChange = (doctorId: string) => {
+    setNewAppointmentData({ ...newAppointmentData, doctor_id: doctorId });
   };
 
-  const handleDateChange = async (date: string) => {
-    setNewAppointmentData({ ...newAppointmentData, date, time: '' });
-    setAvailableTimes([]);
-    
-    if (date && newAppointmentData.doctor_id) {
-      await fetchAvailableTimes(newAppointmentData.doctor_id, date);
-    }
-  };
-
-  const fetchAvailableTimes = async (doctorId: string, date: string) => {
-    if (!doctorId || !date) return;
-    
-    setLoadingAvailableTimes(true);
-    try {
-      const times = await api.doctors.getAvailableTimes(doctorId, date);
-      setAvailableTimes(times);
-    } catch (err: any) {
-      console.error('Error fetching available times:', err);
-      setAvailableTimes([]);
-    } finally {
-      setLoadingAvailableTimes(false);
-    }
+  const handleDateChange = (date: string) => {
+    setNewAppointmentData({ ...newAppointmentData, date });
   };
 
   const handleCreateDoctor = async (e: React.FormEvent) => {
@@ -1983,8 +1969,8 @@ const App: React.FC = () => {
             {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView 
                 appointments={appointments} 
                 loading={loading} 
-                onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: 'Checkup', status: 'Scheduled', patient_id: '', doctor_id: '' }); setAvailableTimes([]); setShowAppointmentModal(true)}} 
-                onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || 'Checkup', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); if (apt.doctor_id && apt.date) fetchAvailableTimes(apt.doctor_id, apt.date); setShowAppointmentModal(true)}} 
+                onAddAppointment={() => {setEditingAppointment(null); setNewAppointmentData({ date: '', time: '', type: appointmentTypeOptions[0] || '', status: 'Scheduled', patient_id: '', doctor_id: '' }); setShowAppointmentModal(true)}} 
+                onEditAppointment={(apt) => {setEditingAppointment(apt); setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || '', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes }); setShowAppointmentModal(true)}} 
                 onDeleteAppointment={handleDeleteAppointment} 
                 onUpdateStatus={handleUpdateAppointmentStatus} 
                 onExportPDF={async () => {
@@ -2231,7 +2217,7 @@ const App: React.FC = () => {
       )}
 
       {showAppointmentModal && (
-        <Modal title={editingAppointment ? "Edit Appointment" : "New Appointment"} onClose={() => {setShowAppointmentModal(false); setEditingAppointment(null); setAvailableTimes([]);}}>
+        <Modal title={editingAppointment ? "Edit Appointment" : "New Appointment"} onClose={() => {setShowAppointmentModal(false); setEditingAppointment(null);}}>
           <form onSubmit={handleCreateAppointment} className="space-y-5">
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient</label>
@@ -2332,49 +2318,27 @@ const App: React.FC = () => {
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Time</label>
-                {availableTimes.length > 0 ? (
-                  <select
-                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                    required
-                    value={newAppointmentData.time}
-                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, time: e.target.value})}
-                  >
-                    <option value="">Select available time</option>
-                    {availableTimes.map(time => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <div>
-                    <Input 
-                      type="time" 
-                      required 
-                      value={newAppointmentData.time} 
-                      onChange={(e: any) => setNewAppointmentData({...newAppointmentData, time: e.target.value})} 
-                    />
-                    {newAppointmentData.doctor_id && newAppointmentData.date && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {loadingAvailableTimes ? 'Loading available times...' : 'No schedule set for this day or all times booked'}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <Input 
+                  type="time" 
+                  required 
+                  value={newAppointmentData.time} 
+                  onChange={(e: any) => setNewAppointmentData({...newAppointmentData, time: e.target.value})} 
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Type</label>
-                <select 
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                  value={newAppointmentData.type} 
-                  onChange={(e: any) => setNewAppointmentData({...newAppointmentData, type: e.target.value})}
-                >
-                  <option value="Checkup">Checkup</option>
-                  <option value="Cleaning">Cleaning</option>
-                  <option value="Consultation">Consultation</option>
-                  <option value="Treatment">Treatment</option>
-                  <option value="Follow-up">Follow-up</option>
-                </select>
+                <SearchableSelect
+                  value={newAppointmentData.type || ''}
+                  onChange={(selectedType) => setNewAppointmentData({ ...newAppointmentData, type: selectedType })}
+                  options={appointmentTypeOptionsForModal.map((typeName) => ({ value: typeName, label: typeName }))}
+                  placeholder="Select treatment type"
+                  emptyMessage="No treatment type found"
+                />
+                {appointmentTypeOptions.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No treatment types configured yet. Add services in Treatment Config first.</p>
+                )}
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Status</label>

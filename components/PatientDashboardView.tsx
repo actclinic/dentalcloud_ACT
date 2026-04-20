@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { otpService } from '../services/otp';
 import { Patient, Appointment, ClinicalRecord, Doctor, PatientFile } from '../types';
 import { Modal, Input } from './Shared';
+import { SearchableSelect } from './SearchableSelect';
 import Receipt from './Receipt';
 import PatientMessagingView from './PatientMessagingView';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
@@ -32,16 +33,15 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   const [newAppointment, setNewAppointment] = useState({
     date: '',
     time: '',
-    type: 'Checkup',
+    type: '',
     status: 'Scheduled',
     notes: ''
   });
   
   // State for doctor selection and available times
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [treatmentTypeOptions, setTreatmentTypeOptions] = useState<string[]>([]);
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
-  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
-  const [loadingAvailableTimes, setLoadingAvailableTimes] = useState(false);
   
   // State for searchable doctor dropdown
   const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
@@ -144,6 +144,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       // Fetch doctors
       const allDoctors = await api.doctors.getAll(patientData.location_id);
       setDoctors(allDoctors);
+
+      // Fetch treatment types for appointment reason/type
+      const allTreatmentTypes = await api.treatments.getTypes(patientData.location_id);
+      const typeNames = [...new Set(allTreatmentTypes.map((type) => (type.name || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+      setTreatmentTypeOptions(typeNames);
       
     } catch (err: any) {
       setError(err.message || 'Failed to load patient data');
@@ -155,6 +161,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   const handleLogout = () => {
     auth.logout();
     onLogout();
+  };
+
+  const openCreateAppointmentModal = () => {
+    setNewAppointment((prev) => ({
+      ...prev,
+      type: prev.type || treatmentTypeOptions[0] || ''
+    }));
+    setShowCreateAppointment(true);
   };
   
   const handleCreateAppointment = async (e: React.FormEvent) => {
@@ -177,12 +191,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       setNewAppointment({
         date: '',
         time: '',
-        type: 'Checkup',
+        type: treatmentTypeOptions[0] || '',
         status: 'Scheduled',
         notes: ''
       });
       setSelectedDoctor('');
-      setAvailableTimes([]);
       
       // Refresh appointments
       fetchPatientData();
@@ -290,38 +303,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
     setShowTreatmentDetails(true);
   };
   
-  const handleDoctorChange = async (doctorId: string) => {
+  const handleDoctorChange = (doctorId: string) => {
     setSelectedDoctor(doctorId);
-    setNewAppointment({...newAppointment, time: ''});
-    setAvailableTimes([]);
-    
-    if (doctorId && newAppointment.date) {
-      await fetchAvailableTimes(doctorId, newAppointment.date);
-    }
   };
-  
-  const handleDateChange = async (date: string) => {
-    setNewAppointment({...newAppointment, date, time: ''});
-    setAvailableTimes([]);
-    
-    if (date && selectedDoctor) {
-      await fetchAvailableTimes(selectedDoctor, date);
-    }
-  };
-  
-  const fetchAvailableTimes = async (doctorId: string, date: string) => {
-    if (!doctorId || !date) return;
-    
-    setLoadingAvailableTimes(true);
-    try {
-      const times = await api.doctors.getAvailableTimes(doctorId, date);
-      setAvailableTimes(times);
-    } catch (err: any) {
-      console.error('Error fetching available times:', err);
-      setAvailableTimes([]);
-    } finally {
-      setLoadingAvailableTimes(false);
-    }
+
+  const handleDateChange = (date: string) => {
+    setNewAppointment({...newAppointment, date});
   };
   
   if (loading) {
@@ -489,7 +476,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                     <p className="text-white/90 text-sm">No upcoming appointment</p>
                     <p className="text-base font-bold text-white mt-1">Book your next check-up</p>
                     <button
-                      onClick={() => setShowCreateAppointment(true)}
+                      onClick={() => openCreateAppointmentModal()}
                       className="mt-4 px-4 py-2 rounded-xl bg-white text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors"
                     >
                       Schedule now
@@ -604,7 +591,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900 text-sm">My Appointments</h2>
                 <button
-                  onClick={() => setShowCreateAppointment(true)}
+                  onClick={() => openCreateAppointmentModal()}
                   className="flex items-center gap-1 bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
                 >
                   <Plus className="w-4 h-4" />
@@ -663,7 +650,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                     <h3 className="text-sm font-medium text-gray-900 mb-2">No Appointments</h3>
                     <p className="text-gray-500 text-sm">You don't have any appointments scheduled.</p>
                     <button
-                      onClick={() => setShowCreateAppointment(true)}
+                      onClick={() => openCreateAppointmentModal()}
                       className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
                     >
                       Schedule Appointment
@@ -1014,49 +1001,27 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Time</label>
-                {availableTimes.length > 0 ? (
-                  <select
-                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                    required
-                    value={newAppointment.time}
-                    onChange={(e: any) => setNewAppointment({...newAppointment, time: e.target.value})}
-                  >
-                    <option value="">Select available time</option>
-                    {availableTimes.map(time => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <div>
-                    <Input 
-                      type="time" 
-                      required 
-                      value={newAppointment.time} 
-                      onChange={(e: any) => setNewAppointment({...newAppointment, time: e.target.value})} 
-                    />
-                    {selectedDoctor && newAppointment.date && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {loadingAvailableTimes ? 'Loading available times...' : 'No schedule set for this day or all times booked'}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <Input 
+                  type="time" 
+                  required 
+                  value={newAppointment.time} 
+                  onChange={(e: any) => setNewAppointment({...newAppointment, time: e.target.value})} 
+                />
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Type</label>
-                <select 
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                  value={newAppointment.type} 
-                  onChange={(e: any) => setNewAppointment({...newAppointment, type: e.target.value})}
-                >
-                  <option value="Checkup">Checkup</option>
-                  <option value="Cleaning">Cleaning</option>
-                  <option value="Consultation">Consultation</option>
-                  <option value="Treatment">Treatment</option>
-                  <option value="Follow-up">Follow-up</option>
-                </select>
+                <SearchableSelect
+                  value={newAppointment.type || ''}
+                  onChange={(selectedType) => setNewAppointment({ ...newAppointment, type: selectedType })}
+                  options={treatmentTypeOptions.map((typeName) => ({ value: typeName, label: typeName }))}
+                  placeholder="Select treatment type"
+                  emptyMessage="No treatment type found"
+                />
+                {treatmentTypeOptions.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No treatment types configured by clinic yet.</p>
+                )}
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Status</label>
