@@ -2222,6 +2222,7 @@ const App: React.FC = () => {
             )}
             {currentView === 'patients' && canAccessView('patients') && <PatientsView 
                 patients={patients} 
+                appointments={appointments}
                 loading={loading} 
                 currency={currency} 
                 loyaltyEnabled={loyaltyEnabled} 

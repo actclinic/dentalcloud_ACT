@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit } from 'lucide-react';
-import { Patient, LoyaltyRule } from '../types';
+import { Patient, LoyaltyRule, Appointment } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import { exportPatientsToExcel } from '../utils/excelExport';
@@ -12,6 +12,7 @@ import { getMyanmarCities, getTownshipsForCity } from '../utils/myanmarCities';
 
 interface PatientsViewProps {
   patients: Patient[];
+  appointments: Appointment[];
   loading: boolean;
   currency: Currency;
   onSelectPatient: (patient: Patient) => void;
@@ -28,6 +29,7 @@ interface PatientsViewProps {
 
 const PatientsView: React.FC<PatientsViewProps> = ({ 
   patients, 
+  appointments,
   loading, 
   currency, 
   onSelectPatient, 
@@ -44,6 +46,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showTodaysNew, setShowTodaysNew] = useState(false);
   const [authModal, setAuthModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
   const [editModal, setEditModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
   const [redeemModal, setRedeemModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
@@ -65,17 +68,60 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const itemsPerPage = 10;
 
-  // Filtered data based on search term
+  const toLocalISODate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayISO = useMemo(() => toLocalISODate(new Date()), []);
+
+  const activeVisitAppointments = useMemo(
+    () => appointments.filter((appointment) => appointment.status !== 'Cancelled'),
+    [appointments]
+  );
+
+  const firstVisitDateByPatient = useMemo(() => {
+    const map = new Map<string, string>();
+
+    activeVisitAppointments.forEach((appointment) => {
+      const current = map.get(appointment.patient_id);
+      if (!current || appointment.date < current) {
+        map.set(appointment.patient_id, appointment.date);
+      }
+    });
+
+    return map;
+  }, [activeVisitAppointments]);
+
+  const todaysPatientIds = useMemo(() => {
+    const ids = new Set<string>();
+    activeVisitAppointments.forEach((appointment) => {
+      if (appointment.date === todayISO) {
+        ids.add(appointment.patient_id);
+      }
+    });
+    return ids;
+  }, [activeVisitAppointments, todayISO]);
+
+  const isNewPatientToday = (patientId: string) => firstVisitDateByPatient.get(patientId) === todayISO;
+
+  // Filtered data based on selected scope and search term
   const filteredPatients = useMemo(() => {
-    if (!searchTerm) return patients;
+    const scopedPatients = showTodaysNew
+      ? patients.filter((patient) => todaysPatientIds.has(patient.id))
+      : patients;
+
+    if (!searchTerm) return scopedPatients;
     const term = searchTerm.toLowerCase();
-    return patients.filter(patient => 
+    return scopedPatients.filter(patient => 
       (patient.name || '').toLowerCase().includes(term) ||
       (patient.email || '').toLowerCase().includes(term) ||
       (patient.phone || '').toLowerCase().includes(term) ||
       (patient.medicalHistory || '').toLowerCase().includes(term)
     );
-  }, [patients, searchTerm]);
+  }, [patients, searchTerm, showTodaysNew, todaysPatientIds]);
 
   const cityOptions = useMemo(
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
@@ -118,7 +164,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   // Reset to first page when patients change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [patients]);
+  }, [patients, showTodaysNew]);
 
   const [exporting, setExporting] = useState(false);
 
@@ -192,6 +238,19 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"/>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setShowTodaysNew((prev) => !prev);
+              setCurrentPage(1);
+            }}
+            className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+              showTodaysNew
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            Today's new
+          </button>
           <ExportMenu
             disabled={patients.length === 0 || exporting}
             onExportPDF={handleDownloadPDF}
@@ -226,13 +285,36 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginatedPatients.map((patient) => (
-                <tr key={patient.id} className="hover:bg-indigo-50/30 transition-colors group cursor-pointer" onClick={() => onSelectPatient(patient)}>
+                <tr
+                  key={patient.id}
+                  className={`transition-colors group cursor-pointer ${
+                    showTodaysNew
+                      ? isNewPatientToday(patient.id)
+                        ? 'bg-emerald-50/70 hover:bg-emerald-100/70'
+                        : 'bg-amber-50/70 hover:bg-amber-100/70'
+                      : 'hover:bg-indigo-50/30'
+                  }`}
+                  onClick={() => onSelectPatient(patient)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3">
                         {patient.name?.charAt(0) || '?'}
                       </div>
-                      <div className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700">{patient.name}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700">{patient.name}</div>
+                        {showTodaysNew && (
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                              isNewPatientToday(patient.id)
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : 'bg-amber-100 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            {isNewPatientToday(patient.id) ? 'New' : 'Old'}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -324,7 +406,13 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           {paginatedPatients.map((patient) => (
             <div 
               key={patient.id} 
-              className="p-4 hover:bg-gray-50 active:bg-indigo-50 transition-colors"
+              className={`p-4 transition-colors ${
+                showTodaysNew
+                  ? isNewPatientToday(patient.id)
+                    ? 'bg-emerald-50/70 hover:bg-emerald-100/70'
+                    : 'bg-amber-50/70 hover:bg-amber-100/70'
+                  : 'hover:bg-gray-50 active:bg-indigo-50'
+              }`}
               onClick={() => onSelectPatient(patient)}
             >
               <div className="flex items-start justify-between mb-3">
@@ -335,6 +423,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <div className="font-bold text-gray-900">{patient.name}</div>
+                      {showTodaysNew && (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                            isNewPatientToday(patient.id)
+                              ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-100 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {isNewPatientToday(patient.id) ? 'New' : 'Old'}
+                        </span>
+                      )}
                       {patient.has_account ? (
                         <ShieldCheck size={12} className="text-green-500" />
                       ) : (
@@ -422,7 +521,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     {!loading && patients.length > 0 && (
       <div className="sticky bottom-0 bg-white border-t border-gray-100">
         <Pagination
-          totalItems={patients.length}
+          totalItems={filteredPatients.length}
           itemsPerPage={itemsPerPage}
           currentPage={currentPage}
           onPageChange={setCurrentPage}
