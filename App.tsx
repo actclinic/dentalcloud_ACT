@@ -210,6 +210,7 @@ const App: React.FC = () => {
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showTreatmentSelection, setShowTreatmentSelection] = useState(false);
+  const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [showMedicineModal, setShowMedicineModal] = useState(false);
   const [showMedicineSelectionModal, setShowMedicineSelectionModal] = useState(false);
@@ -1807,12 +1808,25 @@ const App: React.FC = () => {
       setSelectedTreatmentsForReceipt([]);
       setSelectedMedicineSalesForReceipt([]);
       setShowPaymentModal(false);
-      // Show treatment selection first, then receipt
-      setShowTreatmentSelection(true);
+      // Ask whether to generate a receipt after posting payment.
+      setShowReceiptPrompt(true);
       fetchInitialData(); 
     } catch (err: any) {
       alert(err.message);
     }
+  };
+
+  const handleReceiptPromptYes = () => {
+    setShowReceiptPrompt(false);
+    // Show treatment selection first, then receipt.
+    setShowTreatmentSelection(true);
+  };
+
+  const handleReceiptPromptNo = () => {
+    setShowReceiptPrompt(false);
+    setSelectedTreatmentsForReceipt([]);
+    setSelectedMedicineSalesForReceipt([]);
+    setLastPaymentAmount(0);
   };
 
   const handleGenerateReceipt = () => {
@@ -3201,6 +3215,17 @@ const App: React.FC = () => {
       )}
 
       {/* Service Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showReceiptPrompt}
+        title="Generate Receipt"
+        message="Do you want to generate a receipt for this payment?"
+        confirmText="Yes"
+        cancelText="No"
+        type="info"
+        onConfirm={handleReceiptPromptYes}
+        onCancel={handleReceiptPromptNo}
+      />
+
       <ConfirmDialog
         isOpen={deleteServiceConfirmOpen}
         title="Delete Service"
