@@ -84,6 +84,24 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     return toLocalISODate(createdAt) === todayISO;
   };
 
+  const formatCreatedDate = (createdAt?: string) => {
+    if (!createdAt) return 'N/A';
+
+    const isoDateMatch = createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoDateMatch) {
+      const [, year, month, day] = isoDateMatch;
+      return `${day}/${month}/${year.slice(-2)}`;
+    }
+
+    const parsedDate = new Date(createdAt);
+    if (Number.isNaN(parsedDate.getTime())) return 'N/A';
+
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const year = String(parsedDate.getFullYear()).slice(-2);
+    return `${day}/${month}/${year}`;
+  };
+
   // Filtered data based on selected scope and search term
   const filteredPatients = useMemo(() => {
     const scopedPatients = showTodaysNew
@@ -252,6 +270,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Patient Name</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Portal Access</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact Info</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Medical Status</th>
@@ -293,6 +312,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                         )}
                       </div>
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
+                    {formatCreatedDate(patient.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {patient.has_account ? (
@@ -418,6 +440,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       )}
                     </div>
                     <div className="text-xs text-gray-500">{patient.phone}</div>
+                    <div className="text-[11px] text-gray-400 mt-1">Date: {formatCreatedDate(patient.created_at)}</div>
                   </div>
                 </div>
                 <ChevronRight size={18} className="text-gray-300" />
