@@ -29,7 +29,7 @@ interface PatientsViewProps {
 
 const PatientsView: React.FC<PatientsViewProps> = ({ 
   patients, 
-  appointments,
+  appointments: _appointments,
   loading, 
   currency, 
   onSelectPatient, 
@@ -77,40 +77,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 
   const todayISO = useMemo(() => toLocalISODate(new Date()), []);
 
-  const activeVisitAppointments = useMemo(
-    () => appointments.filter((appointment) => appointment.status !== 'Cancelled'),
-    [appointments]
-  );
-
-  const firstVisitDateByPatient = useMemo(() => {
-    const map = new Map<string, string>();
-
-    activeVisitAppointments.forEach((appointment) => {
-      const current = map.get(appointment.patient_id);
-      if (!current || appointment.date < current) {
-        map.set(appointment.patient_id, appointment.date);
-      }
-    });
-
-    return map;
-  }, [activeVisitAppointments]);
-
-  const todaysPatientIds = useMemo(() => {
-    const ids = new Set<string>();
-    activeVisitAppointments.forEach((appointment) => {
-      if (appointment.date === todayISO) {
-        ids.add(appointment.patient_id);
-      }
-    });
-    return ids;
-  }, [activeVisitAppointments, todayISO]);
-
-  const isNewPatientToday = (patientId: string) => firstVisitDateByPatient.get(patientId) === todayISO;
+  const isNewPatientToday = (patient: Patient) => {
+    if (!patient.created_at) return false;
+    const createdAt = new Date(patient.created_at);
+    if (Number.isNaN(createdAt.getTime())) return false;
+    return toLocalISODate(createdAt) === todayISO;
+  };
 
   // Filtered data based on selected scope and search term
   const filteredPatients = useMemo(() => {
     const scopedPatients = showTodaysNew
-      ? patients.filter((patient) => todaysPatientIds.has(patient.id))
+      ? patients.filter((patient) => isNewPatientToday(patient))
       : patients;
 
     if (!searchTerm) return scopedPatients;
@@ -121,7 +98,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       (patient.phone || '').toLowerCase().includes(term) ||
       (patient.medicalHistory || '').toLowerCase().includes(term)
     );
-  }, [patients, searchTerm, showTodaysNew, todaysPatientIds]);
+  }, [patients, searchTerm, showTodaysNew, todayISO]);
 
   const cityOptions = useMemo(
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
@@ -289,7 +266,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   key={patient.id}
                   className={`transition-colors group cursor-pointer ${
                     showTodaysNew
-                      ? isNewPatientToday(patient.id)
+                      ? isNewPatientToday(patient)
                         ? 'bg-emerald-50/70 hover:bg-emerald-100/70'
                         : 'bg-amber-50/70 hover:bg-amber-100/70'
                       : 'hover:bg-indigo-50/30'
@@ -306,12 +283,12 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                         {showTodaysNew && (
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
-                              isNewPatientToday(patient.id)
+                              isNewPatientToday(patient)
                                 ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                                 : 'bg-amber-100 text-amber-700 border-amber-200'
                             }`}
                           >
-                            {isNewPatientToday(patient.id) ? 'New' : 'Old'}
+                            {isNewPatientToday(patient) ? 'New' : 'Old'}
                           </span>
                         )}
                       </div>
@@ -408,7 +385,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               key={patient.id} 
               className={`p-4 transition-colors ${
                 showTodaysNew
-                  ? isNewPatientToday(patient.id)
+                  ? isNewPatientToday(patient)
                     ? 'bg-emerald-50/70 hover:bg-emerald-100/70'
                     : 'bg-amber-50/70 hover:bg-amber-100/70'
                   : 'hover:bg-gray-50 active:bg-indigo-50'
@@ -426,12 +403,12 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       {showTodaysNew && (
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
-                            isNewPatientToday(patient.id)
+                            isNewPatientToday(patient)
                               ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                               : 'bg-amber-100 text-amber-700 border-amber-200'
                           }`}
                         >
-                          {isNewPatientToday(patient.id) ? 'New' : 'Old'}
+                          {isNewPatientToday(patient) ? 'New' : 'Old'}
                         </span>
                       )}
                       {patient.has_account ? (
@@ -806,3 +783,4 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 };
 
 export default PatientsView;
+
