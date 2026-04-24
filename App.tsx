@@ -1032,26 +1032,19 @@ const App: React.FC = () => {
   const handlePatientSelect = async (patient: Patient) => {
     setSelectedPatient(patient);
     setSelectedDoctorId('');
-    setSelectedTeeth([]); 
-    try {
-      const history = await api.treatments.getHistory(patient.id);
-      setTreatmentHistory(history);
-    } catch (e) {
-      setTreatmentHistory([]);
-    }
-    try {
-      const txs = await api.loyalty.getTransactions(patient.id, currentLocationId || patient.location_id);
-      setLoyaltyTransactions(txs);
-    } catch (e) {
-      setLoyaltyTransactions([]);
-    }
-    try {
-      const files = await api.files.list(patient.id);
-      setPatientFiles(files);
-    } catch (e) {
-      setPatientFiles([]);
-    }
+    setSelectedTeeth([]);
     setCurrentView('finance');
+
+    const locationId = currentLocationId || patient.location_id;
+    const [historyResult, loyaltyResult, filesResult] = await Promise.allSettled([
+      api.treatments.getHistory(patient.id),
+      api.loyalty.getTransactions(patient.id, locationId),
+      api.files.list(patient.id)
+    ]);
+
+    setTreatmentHistory(historyResult.status === 'fulfilled' ? historyResult.value : []);
+    setLoyaltyTransactions(loyaltyResult.status === 'fulfilled' ? loyaltyResult.value : []);
+    setPatientFiles(filesResult.status === 'fulfilled' ? filesResult.value : []);
   };
 
   const fetchGlobalRecords = async () => {
@@ -2259,8 +2252,8 @@ const App: React.FC = () => {
       </aside>
       )}
 
-      <main className={isDoctor ? "flex min-w-0 flex-1 flex-col p-0 pb-28" : isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 md:h-screen" : "flex-1 min-w-0 p-4 md:p-10"}>
-        <div className={isDoctor || isWorkspaceView ? "flex min-h-0 flex-1 flex-col" : "max-w-6xl mx-auto"}>
+      <main className={isDoctor ? "flex min-w-0 flex-1 flex-col p-0 pb-28" : isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 md:h-screen" : "flex-1 min-w-0 p-3 md:p-5"}>
+        <div className={isDoctor || isWorkspaceView ? "flex min-h-0 flex-1 flex-col" : "w-full"}>
           <Suspense fallback={<div className="flex justify-center p-20"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>}>
             {currentView === 'dashboard' && canAccessView('dashboard') && (
               isDoctor ? (

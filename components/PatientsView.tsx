@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit } from 'lucide-react';
-import { Patient, LoyaltyRule, Appointment } from '../types';
+import React, { useState, useMemo, useRef } from 'react';
+import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft } from 'lucide-react';
+import { Patient, LoyaltyRule, Appointment, ClinicalRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import { exportPatientsToExcel } from '../utils/excelExport';
@@ -9,6 +9,7 @@ import { Modal, Input, ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
 import { SearchableSelect } from './SearchableSelect';
 import { getMyanmarCities, getTownshipsForCity } from '../utils/myanmarCities';
+import { api } from '../services/api';
 
 interface PatientsViewProps {
   patients: Patient[];
@@ -66,6 +67,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [detailPatient, setDetailPatient] = useState<Patient | null>(null);
+  const [openActionMenuPatientId, setOpenActionMenuPatientId] = useState<string | null>(null);
+  const [treatmentRecordsByPatientId, setTreatmentRecordsByPatientId] = useState<Record<string, ClinicalRecord[]>>({});
+  const [treatmentRecordsLoadingForPatientId, setTreatmentRecordsLoadingForPatientId] = useState<string | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const itemsPerPage = 10;
 
   const toLocalISODate = (date: Date) => {
@@ -110,12 +116,25 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 
     if (!searchTerm) return scopedPatients;
     const term = searchTerm.toLowerCase();
-    return scopedPatients.filter(patient => 
-      (patient.name || '').toLowerCase().includes(term) ||
-      (patient.email || '').toLowerCase().includes(term) ||
-      (patient.phone || '').toLowerCase().includes(term) ||
-      (patient.medicalHistory || '').toLowerCase().includes(term)
-    );
+    return scopedPatients.filter((patient) => {
+      const searchableCreatedDate = formatCreatedDate(patient.created_at).toLowerCase();
+      const searchableRawCreatedDate = (patient.created_at || '').toLowerCase();
+      const searchableAddress = [patient.address, patient.city, patient.township]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const searchableAge = patient.age !== undefined && patient.age !== null ? String(patient.age) : '';
+
+      return (
+        (patient.name || '').toLowerCase().includes(term) ||
+        (patient.email || '').toLowerCase().includes(term) ||
+        (patient.phone || '').toLowerCase().includes(term) ||
+        searchableAddress.includes(term) ||
+        searchableAge.includes(term) ||
+        searchableCreatedDate.includes(term) ||
+        searchableRawCreatedDate.includes(term)
+      );
+    });
   }, [patients, searchTerm, showTodaysNew, todayISO]);
 
   const cityOptions = useMemo(
@@ -191,9 +210,61 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 
   const canRedeem = (patient: Patient) => (patient.loyalty_points || 0) > 0;
 
+  React.useEffect(() => {
+    if (!openActionMenuPatientId) return;
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setOpenActionMenuPatientId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => document.removeEventListener('mousedown', handleDocumentClick);
+  }, [openActionMenuPatientId]);
+
+  const getPatientAddress = (patient: Patient) => {
+    const fullAddress = [patient.address, patient.township, patient.city].filter(Boolean).join(', ');
+    return fullAddress || 'N/A';
+  };
+
+  const getPatientContact = (patient: Patient) => {
+    if (patient.phone && patient.email) return `${patient.phone} / ${patient.email}`;
+    return patient.phone || patient.email || 'N/A';
+  };
+
   const handleRedeemClick = (patient: Patient) => {
     setRedeemModal({ open: true, patient });
     setRedeemPointsInput(Math.min(patient.loyalty_points || 0, 1000).toString());
+  };
+
+  const openPatientDetails = async (patient: Patient) => {
+    setDetailPatient(patient);
+
+    if (Object.prototype.hasOwnProperty.call(treatmentRecordsByPatientId, patient.id)) {
+      return;
+    }
+
+    setTreatmentRecordsLoadingForPatientId(patient.id);
+    try {
+      const history = await api.treatments.getHistory(patient.id);
+      const sortedHistory = [...history].sort((a, b) => {
+        const aTime = new Date(a.date || 0).getTime();
+        const bTime = new Date(b.date || 0).getTime();
+        return bTime - aTime;
+      });
+      setTreatmentRecordsByPatientId((prev) => ({
+        ...prev,
+        [patient.id]: sortedHistory
+      }));
+    } catch (error) {
+      setTreatmentRecordsByPatientId((prev) => ({
+        ...prev,
+        [patient.id]: []
+      }));
+    } finally {
+      setTreatmentRecordsLoadingForPatientId((prev) => (prev === patient.id ? null : prev));
+    }
   };
 
   const handleRedeemSubmit = () => {
@@ -258,7 +329,108 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         </div>
       </div>
     </div>
-    {loading ? (
+    {detailPatient ? (
+      <div className="flex-1 overflow-y-auto p-6 bg-slate-50/40">
+        {(() => {
+          const treatmentRecords = treatmentRecordsByPatientId[detailPatient.id] || [];
+          const isTreatmentRecordsLoading = treatmentRecordsLoadingForPatientId === detailPatient.id;
+          return (
+        <div className="mx-auto w-full max-w-6xl space-y-5">
+          <button
+            onClick={() => setDetailPatient(null)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <ArrowLeft size={16} />
+            Back to Patient List
+          </button>
+
+          <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-sky-500 px-6 py-6 text-white">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-2xl font-bold">
+                    {detailPatient.name?.charAt(0) || '?'}
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-indigo-100 font-semibold">Patient Profile</p>
+                    <h3 className="text-2xl font-bold leading-tight">{detailPatient.name || 'N/A'}</h3>
+                    <p className="mt-1 text-sm text-indigo-100">
+                      Created: {formatCreatedDate(detailPatient.created_at)} • Operator: {detailPatient.patient_type || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+                <div className="ml-auto grid grid-cols-1 gap-3 min-w-0">
+                  <div className="rounded-xl border border-white/25 bg-white/15 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-wider text-indigo-100 font-semibold">Portal Access</p>
+                    <p className="mt-1 text-sm font-bold">{detailPatient.has_account ? 'Active' : 'No Access'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Contact</p>
+                  <p className="mt-2 text-sm font-semibold text-gray-900">{getPatientContact(detailPatient)}</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Loyalty Point</p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900">{detailPatient.loyalty_points || 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Balance</p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900">{formatCurrency(detailPatient.balance || 0, currency)}</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4 lg:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Treatment and Diagnosis</p>
+                  {isTreatmentRecordsLoading ? (
+                    <p className="mt-2 text-sm leading-6 text-gray-900">Loading treatment records...</p>
+                  ) : treatmentRecords.length === 0 ? (
+                    <p className="mt-2 text-sm leading-6 text-gray-900">No Treatment and Diagnosis records available.</p>
+                  ) : (
+                    <div className="mt-3 space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {treatmentRecords.map((record) => (
+                        <div key={record.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                          <p className="text-sm font-semibold text-gray-900">{record.description || 'Treatment'}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Date: {formatCreatedDate(record.date)}{typeof record.cost === 'number' ? ` • Charge: ${formatCurrency(record.cost, currency)}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Doctor: {record.doctor_name?.trim() || '-'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Address</p>
+                  <p className="mt-2 text-sm text-gray-900">{getPatientAddress(detailPatient)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Patient Meta</p>
+                  <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-gray-500">Age</p>
+                      <p className="font-semibold text-gray-900">{detailPatient.age ?? 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500">Date</p>
+                      <p className="font-semibold text-gray-900">{formatCreatedDate(detailPatient.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+          );
+        })()}
+      </div>
+    ) : loading ? (
       <div className="flex-1 flex items-center justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>
     ) : patients.length === 0 ? (
       <div className="flex-1 flex items-center justify-center p-12 text-center text-gray-400 italic">No patients found. Add your first patient to begin.</div>
@@ -269,18 +441,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Patient Name</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">No</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Portal Access</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact Info</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Medical Status</th>
-                {loyaltyEnabled && <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Loyalty Points</th>}
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Current Balance</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Age</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Address</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                 <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {paginatedPatients.map((patient) => (
+              {paginatedPatients.map((patient, index) => (
                 <tr
                   key={patient.id}
                   className={`transition-colors group cursor-pointer ${
@@ -292,6 +464,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   }`}
                   onClick={() => onSelectPatient(patient)}
                 >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
+                    {showAll ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3">
@@ -316,38 +491,15 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
                     {formatCreatedDate(patient.created_at)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {patient.has_account ? (
-                      <div className="flex items-center gap-1.5 text-green-600 bg-green-50 px-2 py-1 rounded-md border border-green-100 w-fit">
-                        <ShieldCheck size={14} />
-                        <span className="text-[10px] font-bold uppercase">Active</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-gray-400 bg-gray-50 px-2 py-1 rounded-md border border-gray-100 w-fit">
-                        <ShieldAlert size={14} />
-                        <span className="text-[10px] font-bold uppercase">No Access</span>
-                      </div>
-                    )}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    {patient.age ?? 'N/A'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex flex-col">
-                      <span className="font-medium text-gray-700">{patient.email}</span>
-                      <span className="text-xs text-gray-400">{patient.phone}</span>
-                    </div>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    {getPatientContact(patient)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`px-2 py-0.5 rounded text-xs ${patient.medicalHistory ? 'bg-orange-50 text-orange-700 border border-orange-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
-                      {patient.medicalHistory ? 'Review Required' : 'No Alerts'}
-                    </span>
+                  <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={getPatientAddress(patient)}>
+                    {getPatientAddress(patient)}
                   </td>
-                  {loyaltyEnabled && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center gap-1.5 text-amber-600 font-bold">
-                        <Award size={14} />
-                        {patient.loyalty_points || 0}
-                      </div>
-                    </td>
-                  )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {patient.balance > 0 ? (
                       <span className="text-red-600 font-bold bg-red-50 px-2 py-1 rounded border border-red-100">{formatCurrency(patient.balance || 0, currency)}</span>
@@ -356,18 +508,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end gap-2">
-                      {loyaltyEnabled && onRedeemPoints && canRedeem(patient) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRedeemClick(patient);
-                          }}
-                          className="text-amber-600 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                        >
-                          <Award size={14} /> Redeem
-                        </button>
-                      )}
+                    <div className="relative inline-flex items-center justify-end gap-2" ref={openActionMenuPatientId === patient.id ? actionMenuRef : undefined}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -389,9 +530,39 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       >
                         <Edit size={14} /> Edit
                       </button>
-                      <button className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectPatient(patient);
+                        }}
+                        className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1"
+                      >
                         View Chart <ChevronRight size={14} />
                       </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenActionMenuPatientId((prev) => (prev === patient.id ? null : patient.id));
+                        }}
+                        className="inline-flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+                        title="Open actions"
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+                      {openActionMenuPatientId === patient.id && (
+                        <div className="absolute right-0 top-10 z-20 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPatientDetails(patient);
+                              setOpenActionMenuPatientId(null);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -443,7 +614,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     <div className="text-[11px] text-gray-400 mt-1">Date: {formatCreatedDate(patient.created_at)}</div>
                   </div>
                 </div>
-                <ChevronRight size={18} className="text-gray-300" />
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openPatientDetails(patient);
+                    }}
+                    className="text-xs font-semibold text-indigo-600 px-2 py-1 rounded-md hover:bg-indigo-50"
+                  >
+                    Details
+                  </button>
+                  <ChevronRight size={18} className="text-gray-300" />
+                </div>
               </div>
               
               <div className={`grid ${loyaltyEnabled ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mt-4`}>
@@ -518,7 +700,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         </div>
       </>
     )}
-    {!loading && patients.length > 0 && (
+    {!detailPatient && !loading && patients.length > 0 && (
       <div className="sticky bottom-0 bg-white border-t border-gray-100">
         <Pagination
           totalItems={filteredPatients.length}
@@ -806,4 +988,5 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 };
 
 export default PatientsView;
+
 
