@@ -301,7 +301,7 @@ const App: React.FC = () => {
       }
     }
   };
-  const [sidebarWidth, setSidebarWidth] = useState(220);
+  const [sidebarWidth, setSidebarWidth] = useState(190);
   const [isResizing, setIsResizing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isTabPending, startTabTransition] = useTransition();
@@ -644,7 +644,7 @@ const App: React.FC = () => {
   const handleMouseMove = React.useCallback((e: MouseEvent) => {
     if (!isResizing) return;
     const newWidth = e.clientX;
-    if (newWidth >= 200 && newWidth <= 400) {
+    if (newWidth >= 190 && newWidth <= 400) {
       setSidebarWidth(newWidth);
     }
   }, [isResizing]);
