@@ -127,9 +127,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   );
 };
 
-export const Input = ({ label, ...props }: any) => (
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  label?: string;
+};
+
+export const Input = ({ label, ...props }: InputProps) => (
   <div>
-    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">{label}</label>
+    {label && (
+      <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">{label}</label>
+    )}
     <input 
       {...props} 
       className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-gray-300" 

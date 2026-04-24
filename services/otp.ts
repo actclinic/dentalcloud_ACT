@@ -158,7 +158,7 @@ export const otpService = {
       }
 
       // Check if user needs email confirmation
-      const needsVerification = data.user && !data.user.email_confirmed_at;
+      const needsVerification = !!data.user && !data.user.email_confirmed_at;
       
       return { 
         success: true, 

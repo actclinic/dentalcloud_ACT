@@ -3394,6 +3394,7 @@ I can provide guidance on:
             openBraces.push(i);
           } else if (aiResponse[i] === '}' && openBraces.length > 0) {
             const start = openBraces.pop();
+            if (start === undefined) continue;
             const potentialJson = aiResponse.substring(start, i + 1);
             if (potentialJson.includes('"action"')) {
               allActionMatches = [potentialJson];
@@ -3570,13 +3571,17 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for medicine sale.");
+                if (!params.mid) throw new Error("Medicine ID is required for medicine sale.");
+                if (!locationId) throw new Error("A branch/location is required for medicine sale.");
+                const resolvedPatientId = String(patientId);
+                const medicineId = String(params.mid);
                 
                 // --- PLANNING STEP ---
-                const medState = await api.planning.getMedicineState(params.mid, locationId);
-                const patState = await api.planning.getPatientState(patientId, locationId);
+                const medState = await api.planning.getMedicineState(medicineId, locationId);
+                const patState = await api.planning.getPatientState(resolvedPatientId, locationId);
                 console.log('Planning State for Medicine Sale:', { medState, patState });
 
-                result = await api.medicines.sell(patientId, params.mid, params.qty, locationId, params.tid);
+                result = await api.medicines.sell(resolvedPatientId, medicineId, params.qty, locationId, params.tid);
                 currentActionResult = `✅ Sold ${params.qty} ${result.sale.medicine_name} to ${result.sale.patient_name} for ${result.sale.total_price} MMK.
 📦 Stock Level: ${medState?.stock} -> ${result.new_stock}
 💰 Patient Balance: ${patState?.balance} -> ${Number(patState?.balance) + result.sale.total_price} MMK.`;
@@ -3635,8 +3640,10 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for loyalty redemption.");
+                if (!locationId) throw new Error("A branch/location is required for loyalty redemption.");
+                const resolvedPatientId = String(patientId);
                 
-                result = await api.loyalty.redeemPoints(patientId, locationId, params.points, params.amount);
+                result = await api.loyalty.redeemPoints(resolvedPatientId, locationId, params.points, params.amount);
                 currentActionResult = `✅ Redeemed ${params.points} points for ${params.amount} MMK discount. New balance: ${result.new_balance} MMK, Points: ${result.new_points}`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to redeem loyalty points: ${err.message}`;
@@ -3666,9 +3673,10 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   if (found) patientId = found.id;
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required.");
+                const resolvedPatientId = String(patientId);
                 
-                const transactions = await api.loyalty.getTransactions(patientId, locationId);
-                const pName = getScopedPatientById(patientId)?.name || patientId;
+                const transactions = await api.loyalty.getTransactions(resolvedPatientId, locationId);
+                const pName = getScopedPatientById(resolvedPatientId)?.name || resolvedPatientId;
                 
                 if (transactions.length === 0) {
                   currentActionResult = `📋 No loyalty transactions found for ${pName}.`;
@@ -4310,21 +4318,23 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 }
                 
                 if (!patientId) throw new Error("Patient ID or Name is required for treatment recording.");
+                if (!locationId) throw new Error("A branch/location is required for treatment recording.");
+                const resolvedPatientId = String(patientId);
 
                 // --- PLANNING STEP ---
-                const currentState = await api.planning.getPatientState(patientId, locationId);
+                const currentState = await api.planning.getPatientState(resolvedPatientId, locationId);
                 console.log('Planning State for Treatment:', currentState);
 
                 result = await api.treatments.record({
                   location_id: locationId,
-                  patient_id: patientId,
+                  patient_id: resolvedPatientId,
                   teeth: params.teeth || [],
                   description: params.desc,
                   cost: params.cost || 0,
                   medications: params.meds // Pass medications directly to service
                 });
                 
-                const pName = currentState?.name || patientId;
+                const pName = currentState?.name || resolvedPatientId;
                 currentActionResult = `✅ Treatment recorded successfully for ${pName}. 
 💰 Previous Balance: ${currentState?.balance} MMK
 📈 New Balance: ${result.new_balance} MMK.`;

@@ -358,7 +358,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                       tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
                     />
                     <Tooltip 
-                      formatter={(value: number) => formatCurrency(value, currency)}
+                      formatter={(value: number | undefined) => formatCurrency(value ?? 0, currency)}
                       contentStyle={{ 
                         backgroundColor: '#fff',
                         border: '1px solid #E5E7EB',
@@ -408,7 +408,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
                         width={90}
                       />
                       <Tooltip 
-                        formatter={(value: number) => formatCurrency(value, currency)}
+                        formatter={(value: number | undefined) => formatCurrency(value ?? 0, currency)}
                         contentStyle={{ 
                           backgroundColor: '#fff',
                           border: '1px solid #E5E7EB',

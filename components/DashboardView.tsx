@@ -487,10 +487,11 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 11}} />
               <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 11}} />
               <Tooltip
-                formatter={(value: number, name: string) => {
-                  if (name === 'revenue') return [formatCurrency(value, currency), 'Revenue'];
-                  if (name === 'expenses') return [formatCurrency(value, currency), 'Expenses'];
-                  return [formatCurrency(value, currency), 'Profit'];
+                formatter={(value: number | undefined, name?: string) => {
+                  const amount = value ?? 0;
+                  if (name === 'revenue') return [formatCurrency(amount, currency), 'Revenue'];
+                  if (name === 'expenses') return [formatCurrency(amount, currency), 'Expenses'];
+                  return [formatCurrency(amount, currency), 'Profit'];
                 }}
               />
               <Legend />
@@ -580,9 +581,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 />
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
                 <Tooltip
-                  formatter={(value: number, name: string) => {
-                    if (name === 'revenue') return [formatCurrency(value, currency), 'Revenue'];
-                    return [value, 'Appointments'];
+                  formatter={(value: number | undefined, name?: string) => {
+                    const amount = value ?? 0;
+                    if (name === 'revenue') return [formatCurrency(amount, currency), 'Revenue'];
+                    return [amount, 'Appointments'];
                   }}
                 />
                 <Legend />
@@ -610,7 +612,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                   width={120}
                 />
                 <Tooltip 
-                  formatter={(value: number) => [formatCurrency(value, currency), 'Revenue']}
+                  formatter={(value: number | undefined) => [formatCurrency(value ?? 0, currency), 'Revenue']}
                 />
                 <Bar dataKey="revenue" fill="#10B981" radius={[0, 8, 8, 0]} />
               </BarChart>
@@ -649,7 +651,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number, name: string) => [`${value} appointments`, name]}
+                    formatter={(value: number | undefined, name?: string) => [`${value ?? 0} appointments`, name || 'Appointments']}
                   />
                   <Legend />
                 </PieChart>
@@ -677,7 +679,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                     tick={{ fill: '#6B7280', fontSize: 11 }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [`${value} procedures`, 'Count']}
+                    formatter={(value: number | undefined) => [`${value ?? 0} procedures`, 'Count']}
                   />
                   <Bar dataKey="count" fill="#6366F1" radius={[0, 8, 8, 0]} />
                 </BarChart>
@@ -709,7 +711,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                       <Cell key={`expense-cell-${index}`} fill={expenseCategoryColors[index % expenseCategoryColors.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number, name: string) => [formatCurrency(value, currency), name]} />
+                  <Tooltip formatter={(value: number | undefined, name?: string) => [formatCurrency(value ?? 0, currency), name || 'Expense']} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -727,10 +729,11 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
                 <Tooltip
-                  formatter={(value: number, name: string) => {
-                    if (name === 'profit') return [formatCurrency(value, currency), 'Net Profit'];
-                    if (name === 'revenue') return [formatCurrency(value, currency), 'Revenue'];
-                    return [formatCurrency(value, currency), 'Expenses'];
+                  formatter={(value: number | undefined, name?: string) => {
+                    const amount = value ?? 0;
+                    if (name === 'profit') return [formatCurrency(amount, currency), 'Net Profit'];
+                    if (name === 'revenue') return [formatCurrency(amount, currency), 'Revenue'];
+                    return [formatCurrency(amount, currency), 'Expenses'];
                   }}
                 />
                 <Legend />
@@ -757,7 +760,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} />
               <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
-              <Tooltip formatter={(value: number) => [`${value} patients`, 'New Patients']} />
+              <Tooltip formatter={(value: number | undefined) => [`${value ?? 0} patients`, 'New Patients']} />
               <Area
                 type="monotone"
                 dataKey="count"
@@ -817,9 +820,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 />
                 <Tooltip
                   contentStyle={{ borderRadius: 12, borderColor: '#E5E7EB' }}
-                  formatter={(value: number, name: string) => {
-                    if (name === 'patients') return [`${value}`, 'Patients'];
-                    return [formatCurrency(value, currency), 'Revenue'];
+                  formatter={(value: number | undefined, name?: string) => {
+                    const amount = value ?? 0;
+                    if (name === 'patients') return [`${amount}`, 'Patients'];
+                    return [formatCurrency(amount, currency), 'Revenue'];
                   }}
                   labelFormatter={(label) => `Service: ${label}`}
                 />
