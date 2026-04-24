@@ -351,7 +351,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
         </div>
         
         <div className={`flex justify-start md:justify-center w-full overflow-x-auto custom-scrollbar ${compactToothSelector ? 'pb-2' : 'pb-4'}`}>
-          <div className={`${doctorMobileView ? 'w-full min-w-full' : compactToothSelector ? 'min-w-[320px] md:min-w-[420px]' : 'min-w-[400px] md:min-w-[600px]'} max-w-full`}>
+          <div className={`${doctorMobileView ? 'w-full min-w-full' : compactToothSelector ? 'min-w-[300px] md:min-w-[390px]' : 'min-w-[400px] md:min-w-[600px]'} max-w-full`}>
             <ToothSelector 
               selectedTeeth={selectedTeeth} 
               onToggleTooth={onToggleTooth} 
