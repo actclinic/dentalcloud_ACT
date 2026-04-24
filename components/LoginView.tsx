@@ -34,6 +34,13 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [confirmedEmail, setConfirmedEmail] = useState('');
 
+  useEffect(() => {
+    document.documentElement.classList.add('auth-screen');
+    return () => {
+      document.documentElement.classList.remove('auth-screen');
+    };
+  }, []);
+
   const hasPendingSignup = (value: string | null | undefined) => {
     if (!value) return false;
 
