@@ -62,7 +62,7 @@ export const ToothSelector: React.FC<SelectorProps> = ({
     }
   };
 
-  const diagramMaxWidth = doctorCompact ? '100%' : (compact ? '320px' : '380px');
+  const diagramMaxWidth = doctorCompact ? '100%' : (compact ? '280px' : '380px');
 
   return (
     <div 

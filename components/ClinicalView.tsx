@@ -342,16 +342,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   return (
   <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 animate-fade-in max-w-full">
     <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
-      <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-6">
+      <div className={`bg-white rounded-xl shadow-sm border border-gray-100 ${compactToothSelector ? 'p-3 md:p-4' : 'p-4 md:p-6'}`}>
+        <div className={`flex justify-between items-center ${compactToothSelector ? 'mb-3' : 'mb-6'}`}>
           <div>
             <h2 className="text-xl font-bold text-gray-800">Odontogram Interface</h2>
             <p className="text-sm text-gray-500">Interactive tooth mapping and service delivery</p>
           </div>
         </div>
         
-        <div className="flex justify-start md:justify-center w-full overflow-x-auto pb-4 custom-scrollbar">
-          <div className={`${doctorMobileView ? 'w-full min-w-full' : 'min-w-[400px] md:min-w-[600px]'} max-w-full`}>
+        <div className={`flex justify-start md:justify-center w-full overflow-x-auto custom-scrollbar ${compactToothSelector ? 'pb-2' : 'pb-4'}`}>
+          <div className={`${doctorMobileView ? 'w-full min-w-full' : compactToothSelector ? 'min-w-[320px] md:min-w-[420px]' : 'min-w-[400px] md:min-w-[600px]'} max-w-full`}>
             <ToothSelector 
               selectedTeeth={selectedTeeth} 
               onToggleTooth={onToggleTooth} 
