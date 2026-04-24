@@ -301,7 +301,7 @@ const App: React.FC = () => {
       }
     }
   };
-  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const [sidebarWidth, setSidebarWidth] = useState(220);
   const [isResizing, setIsResizing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isTabPending, startTabTransition] = useTransition();
