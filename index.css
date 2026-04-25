@@ -4,14 +4,10 @@ body,
   min-height: 100%;
 }
 
-/* Desktop dashboard scale-down (~70%) to match browser zoomed-out layout */
+/* Desktop app scale-down (~70%) to match browser zoomed-out layout */
 @media (min-width: 1024px) {
   html {
     font-size: 70%;
-  }
-
-  html.auth-screen {
-    font-size: 100%;
   }
 }
 
