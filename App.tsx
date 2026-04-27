@@ -2497,26 +2497,22 @@ const App: React.FC = () => {
 
       {isDoctor && (
         <nav
-          className="fixed bottom-2 inset-x-3 z-40 rounded-2xl border border-gray-200/80 bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-md"
+          className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white px-2 py-2"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          {isTabPending && <div className="h-0.5 w-full bg-indigo-100 rounded-t-2xl"><div className="h-full w-1/3 bg-indigo-500 animate-pulse" /></div>}
-          <div className={`grid p-1.5 gap-1 ${doctorMobileTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+          {isTabPending && <div className="h-0.5 w-full bg-indigo-100"><div className="h-full w-1/3 bg-indigo-500 animate-pulse" /></div>}
+          <div className="mx-auto flex max-w-md justify-around">
             {doctorMobileTabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => handleDoctorTabChange(tab.key)}
-                className={`relative flex flex-col items-center justify-center gap-1 rounded-xl py-2.5 text-[11px] font-semibold transition-all duration-200 ${
-                  tab.isActive ? 'text-indigo-700 bg-indigo-50 shadow-sm' : 'text-gray-500 hover:text-indigo-600 hover:bg-gray-50'
+                className={`flex max-w-[80px] flex-1 flex-col items-center rounded-xl px-2 py-2 text-[10px] transition-colors ${
+                  tab.isActive ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:text-gray-700'
                 }`}
+                aria-label={tab.label}
               >
-                <span
-                  className={`absolute top-0 left-4 right-4 h-0.5 rounded-full transition-opacity duration-200 ${
-                    tab.isActive ? 'opacity-100 bg-indigo-500' : 'opacity-0'
-                  }`}
-                />
-                {tab.icon}
+                <span className="mb-1 flex h-6 w-6 items-center justify-center">{tab.icon}</span>
                 <span>{tab.label}</span>
               </button>
             ))}

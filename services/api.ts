@@ -611,19 +611,32 @@ export const api = {
       try {
         const trimmedIdentifier = identifier.trim();
         const normalizedIdentifier = trimmedIdentifier.toLowerCase();
-        const safeIdentifier = trimmedIdentifier.replace(/"/g, '');
-        const safeNormalized = normalizedIdentifier.replace(/"/g, '');
         
         // 1. Try to find patient_auth by email, phone, or username
-        const { data: authMatch, error: authMatchError } = await supabase
-          .from('patient_auth')
-          .select('patient_id, password')
-          .or(`email.eq."${safeNormalized}",phone.eq."${safeIdentifier}",username.eq."${safeNormalized}"`)
-          .maybeSingle();
+        const lookupAuthMatch = async (
+          column: 'email' | 'phone' | 'username',
+          value: string
+        ): Promise<{ patient_id: string; password: string | null } | null> => {
+          if (!value) return null;
 
-        if (authMatchError) {
-          console.warn('Patient auth lookup error:', authMatchError.message);
-        }
+          const { data, error } = await supabase
+            .from('patient_auth')
+            .select('patient_id, password')
+            .eq(column, value)
+            .maybeSingle();
+
+          if (error) {
+            console.warn(`Patient auth lookup error (${column}):`, error.message);
+            return null;
+          }
+
+          return data;
+        };
+
+        const authMatch =
+          await lookupAuthMatch('email', normalizedIdentifier) ||
+          await lookupAuthMatch('username', normalizedIdentifier) ||
+          await lookupAuthMatch('phone', trimmedIdentifier);
 
         if (authMatch?.patient_id) {
           if (authMatch.password !== password) {

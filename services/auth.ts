@@ -36,6 +36,33 @@ const loadPendingPatientSignup = (email: string): { username?: string; phone?: s
   }
 };
 
+const lookupPatientAuthEmailByIdentifier = async (identifier: string): Promise<string | null> => {
+  const trimmedIdentifier = identifier.trim();
+  const normalizedIdentifier = trimmedIdentifier.toLowerCase();
+
+  const lookupByColumn = async (column: 'phone' | 'username', value: string): Promise<string | null> => {
+    if (!value) return null;
+
+    const { data, error } = await supabase
+      .from('patient_auth')
+      .select('email')
+      .eq(column, value)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`Patient auth lookup error (${column}):`, error.message);
+      return null;
+    }
+
+    return data?.email || null;
+  };
+
+  return (
+    await lookupByColumn('username', normalizedIdentifier) ||
+    await lookupByColumn('phone', trimmedIdentifier)
+  );
+};
+
 export interface AuthSession {
   userId: string;
   username: string;
@@ -178,8 +205,6 @@ export const auth = {
     try {
       const trimmedIdentifier = identifier.trim();
       const normalizedIdentifier = trimmedIdentifier.toLowerCase();
-      const safeIdentifier = trimmedIdentifier.replace(/\"/g, '');
-      const safeNormalized = normalizedIdentifier.replace(/\"/g, '');
 
       const trySupabaseLogin = async (email: string): Promise<AuthSession | null> => {
         const normalizedEmail = email.toLowerCase().trim();
@@ -278,18 +303,9 @@ export const auth = {
         const session = await trySupabaseLogin(normalizedIdentifier);
         if (session) return session;
       } else {
-        const { data: identifierAuth, error: identifierAuthError } = await supabase
-          .from('patient_auth')
-          .select('email')
-          .or(`phone.eq.\"${safeIdentifier}\",username.eq.\"${safeNormalized}\"`)
-          .maybeSingle();
-
-        if (identifierAuthError) {
-          console.warn('Patient auth lookup error (phone/username):', identifierAuthError.message);
-        }
-
-        if (identifierAuth?.email) {
-          const session = await trySupabaseLogin(identifierAuth.email);
+        const identifierEmail = await lookupPatientAuthEmailByIdentifier(trimmedIdentifier);
+        if (identifierEmail) {
+          const session = await trySupabaseLogin(identifierEmail);
           if (session) return session;
         }
       }
