@@ -97,32 +97,10 @@ const mapPatient = (row: any): Patient => ({
   username: Array.isArray(row?.patient_auth) ? (row.patient_auth[0]?.username ?? null) : (row?.patient_auth?.username ?? null)
 });
 
-const normalizePhoneForLookup = (value?: string | null): string => (value || '').replace(/\D/g, '');
-
-const getPhoneLookupVariants = (value: string): string[] => {
-  const trimmed = value.trim();
-  const digits = normalizePhoneForLookup(trimmed);
-  const variants = new Set<string>();
-
-  if (trimmed) variants.add(trimmed);
-  if (digits) {
-    variants.add(digits);
-    variants.add(`+${digits}`);
-
-    if (digits.startsWith('959')) {
-      variants.add(`0${digits.slice(2)}`);
-      variants.add(`+${digits}`);
-    } else if (digits.startsWith('09')) {
-      variants.add(`95${digits.slice(1)}`);
-      variants.add(`+95${digits.slice(1)}`);
-    } else if (digits.startsWith('9')) {
-      variants.add(`0${digits}`);
-      variants.add(`95${digits}`);
-      variants.add(`+95${digits}`);
-    }
-  }
-
-  return Array.from(variants);
+const normalizeMyanmarPhoneForLookup = (value?: string | null): string | null => {
+  const digits = (value || '').replace(/\D/g, '');
+  const localDigits = digits.length === 10 && digits.startsWith('9') ? `0${digits}` : digits;
+  return /^09\d{9}$/.test(localDigits) ? localDigits : null;
 };
 
 const isValidEmailAddress = (email?: string | null) => {
@@ -663,7 +641,7 @@ export const api = {
         };
 
         const lookupPhoneByNormalizedDigits = async (): Promise<{ patient_id: string; password: string | null } | null> => {
-          const normalizedPhone = normalizePhoneForLookup(trimmedIdentifier);
+          const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
           if (!normalizedPhone) return null;
 
           const { data, error } = await supabase
@@ -675,14 +653,14 @@ export const api = {
             return null;
           }
 
-          return (data || []).find((record: any) => normalizePhoneForLookup(record.phone) === normalizedPhone) || null;
+          return (data || []).find((record: any) => normalizeMyanmarPhoneForLookup(record.phone) === normalizedPhone) || null;
         };
 
-        const phoneVariants = getPhoneLookupVariants(trimmedIdentifier);
+        const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
         const authMatch =
           await lookupAuthMatch('email', normalizedIdentifier) ||
           await lookupAuthMatch('username', normalizedIdentifier) ||
-          (await Promise.all(phoneVariants.map((variant) => lookupAuthMatch('phone', variant)))).find(Boolean) ||
+          await lookupAuthMatch('phone', normalizedPhone || '') ||
           await lookupPhoneByNormalizedDigits();
 
         if (authMatch?.patient_id) {
@@ -708,7 +686,7 @@ export const api = {
 
         // 2. Fallback: allow phone login when patient_auth.phone is missing but patients.phone is present.
         const lookupPatientByNormalizedPhone = async (): Promise<Patient | null> => {
-          const normalizedPhone = normalizePhoneForLookup(trimmedIdentifier);
+          const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
           if (!normalizedPhone) return null;
 
           const { data: patientRows, error: patientRowsError } = await supabase
@@ -720,7 +698,7 @@ export const api = {
             return null;
           }
 
-          const phonePatient = (patientRows || []).find((record: any) => normalizePhoneForLookup(record.phone) === normalizedPhone);
+          const phonePatient = (patientRows || []).find((record: any) => normalizeMyanmarPhoneForLookup(record.phone) === normalizedPhone);
           if (!phonePatient?.id) return null;
 
           const { data: phoneAuthData, error: phoneAuthError } = await supabase
