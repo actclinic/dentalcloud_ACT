@@ -43,18 +43,164 @@ const customStyles = `
     }
   }
   
+  @keyframes fade-in-right {
+    0% {
+      opacity: 0;
+      transform: translateX(40px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  @keyframes slide-in-right {
+    0% {
+      transform: translateX(100%);
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+  
+  @keyframes slide-out-right {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
     75% { transform: translateX(5px); }
   }
   
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 5px rgba(99, 102, 241, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.6);
+    }
+  }
+  
+  @keyframes gradient-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  
+  @keyframes typing-dot {
+    0%, 60%, 100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+    30% {
+      transform: translateY(-6px);
+      opacity: 1;
+    }
+  }
+  
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+  
+  @keyframes border-glow {
+    0%, 100% {
+      border-color: rgba(99, 102, 241, 0.2);
+    }
+    50% {
+      border-color: rgba(99, 102, 241, 0.6);
+    }
+  }
+  
   .animate-fade-in-up {
     animation: fade-in-up 0.3s ease-out forwards;
   }
   
+  .animate-fade-in-right {
+    animation: fade-in-right 0.35s ease-out forwards;
+  }
+  
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out forwards;
+  }
+  
+  .animate-slide-out-right {
+    animation: slide-out-right 0.3s ease-in forwards;
+  }
+  
   .animate-shake {
     animation: shake 0.5s ease-in-out;
+  }
+  
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  .animate-gradient-shift {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  .animate-shimmer {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  
+  .animate-border-glow {
+    animation: border-glow 2s ease-in-out infinite;
+  }
+  
+  .typing-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #6366f1;
+    animation: typing-dot 1.4s ease-in-out infinite;
+  }
+  
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  
+  /* Sidebar overlay backdrop blur */
+  .sidebar-backdrop {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
   }
   
   /* Markdown styling for AI responses */
@@ -178,6 +324,7 @@ const customStyles = `
     color: #64748b;
   }
 `;
+
 
 // Inject styles
 if (typeof document !== 'undefined') {
@@ -5018,8 +5165,25 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1">
-        <div className="flex min-h-0 flex-col bg-slate-50">
-          <div className="border-b border-gray-200 bg-white px-4 py-3 lg:px-6">
+        <div className="relative flex min-h-0 flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 animate-gradient-shift">
+          {/* Floating particles background */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            {particles.map((particle) => (
+              <div
+                key={particle.id}
+                className="absolute rounded-full bg-indigo-200/20 animate-float"
+                style={{
+                  left: `${particle.x}%`,
+                  top: `${particle.y}%`,
+                  width: `${particle.size}px`,
+                  height: `${particle.size}px`,
+                  animationDelay: `${particle.id * 0.5}s`,
+                  animationDuration: `${3 + particle.id * 0.3}s`
+                }}
+              />
+            ))}
+          </div>
+          <div className="border-b border-gray-200 bg-white/80 backdrop-blur-sm px-4 py-3 lg:px-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-gray-900">{activeSession?.title || 'New chat'}</p>
@@ -5206,13 +5370,17 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
                   {isLoading && (
                     <div className="flex justify-start gap-3 animate-fade-in-up">
-                      <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white text-indigo-600 shadow-sm">
+                      <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg animate-pulse-glow">
                         <Bot className="h-4 w-4" />
                       </div>
-                      <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                          <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
-                          Thinking through your request...
+                      <div className="rounded-2xl border border-indigo-100 bg-white px-5 py-4 shadow-md animate-border-glow">
+                        <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
+                          <div className="flex items-center gap-1.5">
+                            <span className="typing-dot"></span>
+                            <span className="typing-dot"></span>
+                            <span className="typing-dot"></span>
+                          </div>
+                          <span className="text-indigo-600">Loli is thinking...</span>
                         </div>
                       </div>
                     </div>
@@ -5335,14 +5503,14 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       </div>
 
       {showChatSidebar && (
-        <div className="fixed inset-0 z-50 flex">
+        <div className="fixed inset-0 z-50 flex flex-row-reverse">
           <button
             type="button"
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/40 sidebar-backdrop"
             onClick={() => setShowChatSidebar(false)}
             aria-label="Close chat history"
           />
-          <aside className="relative z-10 flex h-full w-full max-w-sm flex-col bg-white shadow-2xl">
+          <aside className="relative z-10 flex h-full w-full max-w-sm flex-col bg-white shadow-2xl animate-slide-in-right">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">AI Chats</h3>
