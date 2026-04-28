@@ -32,6 +32,8 @@ interface SettingsViewProps {
   onSaveReceiptInfo: (info: { email: string; phone: string }) => Promise<void>;
   receiptSize: ReceiptSize;
   onReceiptSizeChange: (size: ReceiptSize) => void;
+  hoverTheme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
+  onHoverThemeChange: (theme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark') => void;
 }
 
 interface ManagerContact {
@@ -70,8 +72,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   receiptInfo,
   onSaveReceiptInfo,
   receiptSize,
-  onReceiptSizeChange
+  onReceiptSizeChange,
+  hoverTheme,
+  onHoverThemeChange
 }) => {
+  const themeOptions: Array<{ value: 'blue' | 'green' | 'yellow' | 'brown' | 'dark'; label: string }> = [
+    { value: 'blue', label: 'Blue' },
+    { value: 'green', label: 'Green' },
+    { value: 'yellow', label: 'Yellow' },
+    { value: 'brown', label: 'Brown' },
+    { value: 'dark', label: 'Dark' }
+  ];
   const [appNameInput, setAppNameInput] = useState<string>(appName);
   const [appNameMessage, setAppNameMessage] = useState<string | null>(null);
   const [receiptEmailInput, setReceiptEmailInput] = useState<string>(receiptInfo.email);
@@ -416,13 +427,30 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
       <div className="p-6 border-b border-gray-100">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="bg-indigo-100 p-2 rounded-lg">
-            <SettingsIcon className="w-6 h-6 text-indigo-600" />
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-100 p-2 rounded-lg">
+              <SettingsIcon className="w-6 h-6 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">System Settings</h2>
+              <p className="text-sm text-gray-500">Customize your clinic management system</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">System Settings</h2>
-            <p className="text-sm text-gray-500">Customize your clinic management system</p>
+          <div className="min-w-[140px]">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">Theme</p>
+            <select
+              value={hoverTheme}
+              onChange={(event) => onHoverThemeChange(event.target.value as 'blue' | 'green' | 'yellow' | 'brown' | 'dark')}
+              className="theme-select theme-accent-text w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold focus:outline-none"
+              aria-label="Select hover color"
+            >
+              {themeOptions.map((themeOption) => (
+                <option key={themeOption.value} value={themeOption.value}>
+                  {themeOption.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

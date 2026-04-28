@@ -507,7 +507,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                         className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors gap-4"
                       >
                         <div className="flex items-center gap-4 flex-1 w-full">
-                          <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 bg-indigo-100 rounded-xl flex flex-col items-center justify-center">
+                          <div className="theme-accent-soft-bg flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex flex-col items-center justify-center">
                             <span className="text-xs font-bold text-indigo-700">
                               {new Date(appointment.date).toLocaleDateString('en-US', { day: 'numeric' })}
                             </span>

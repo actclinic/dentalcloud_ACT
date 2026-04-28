@@ -146,11 +146,11 @@ export const Input = ({ label, ...props }: InputProps) => (
 export const NavItem = ({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) => (
   <button 
     onClick={onClick}
-    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${
-      active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+    className={`theme-hover-icon w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${
+      active ? 'theme-active-bg text-white shadow-lg theme-active-shadow' : 'text-gray-400 theme-hover-bg theme-hover-text'
     }`}
   >
-    <span className={active ? 'text-white' : 'text-gray-500'}>{icon}</span>
+    <span className={`theme-hover-icon-target ${active ? 'text-white' : 'text-gray-500'}`}>{icon}</span>
     {label}
   </button>
 );

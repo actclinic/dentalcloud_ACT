@@ -469,7 +469,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3">
+                      <div className="theme-accent-soft-bg theme-accent-text h-9 w-9 rounded-full flex items-center justify-center font-bold mr-3">
                         {patient.name?.charAt(0) || '?'}
                       </div>
                       <div className="flex items-center gap-2">
@@ -587,7 +587,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                  <div className="theme-accent-soft-bg theme-accent-text h-10 w-10 rounded-full flex items-center justify-center font-bold">
                     {patient.name?.charAt(0) || '?'}
                   </div>
                   <div>
@@ -803,7 +803,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           className="space-y-5"
         >
           <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
-            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl">
+            <div className="theme-accent-soft-bg theme-accent-text w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
               {editModal.patient.name.charAt(0)}
             </div>
             <div>

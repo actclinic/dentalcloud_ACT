@@ -95,6 +95,17 @@ const DoctorHomeView = React.lazy(() => import('./components/DoctorHomeView'));
 
 const ALL_BRANCHES_VALUE = '__all_branches__';
 const PAYMENT_RECORDS_STORAGE_KEY = 'dentalcloud_payment_records_v1';
+const THEME_STORAGE_KEY = 'dentalcloud_hover_theme_v1';
+
+type HoverTheme = 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
+
+const THEME_OPTIONS: Array<{ value: HoverTheme; label: string }> = [
+  { value: 'blue', label: 'Blue' },
+  { value: 'green', label: 'Green' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'brown', label: 'Brown' },
+  { value: 'dark', label: 'Dark' }
+];
 
 const toLocalISODate = (date: Date): string => {
   const year = date.getFullYear();
@@ -163,6 +174,13 @@ const App: React.FC = () => {
   const [currentLocationId, setCurrentLocationId] = useState<string>(() => {
     return localStorage.getItem('currentLocationId') || '';
   });
+  const [hoverTheme, setHoverTheme] = useState<HoverTheme>(() => {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as HoverTheme | null;
+    if (savedTheme && THEME_OPTIONS.some(option => option.value === savedTheme)) {
+      return savedTheme;
+    }
+    return 'blue';
+  });
   
   // State for mobile device detection
   const [isMobileDevice, setIsMobileDevice] = useState(window.innerWidth < 768);
@@ -179,6 +197,12 @@ const App: React.FC = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', 'blue');
+    document.documentElement.setAttribute('data-hover-theme', hoverTheme);
+    localStorage.setItem(THEME_STORAGE_KEY, hoverTheme);
+  }, [hoverTheme]);
   
   // -- Data State --
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -2179,6 +2203,18 @@ const App: React.FC = () => {
               <p className="text-xs text-gray-500 truncate">{currentUser}</p>
             </div>
             <div className="flex items-center gap-2">
+              <select
+                value={hoverTheme}
+                onChange={(event) => setHoverTheme(event.target.value as HoverTheme)}
+                className="theme-select theme-accent-text rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold focus:outline-none"
+                aria-label="Select hover color"
+              >
+                {THEME_OPTIONS.map((themeOption) => (
+                  <option key={themeOption.value} value={themeOption.value}>
+                    {themeOption.label}
+                  </option>
+                ))}
+              </select>
               {currentView === 'finance' && (
                 <button
                   onClick={() => setCurrentView('appointments')}
@@ -2201,11 +2237,11 @@ const App: React.FC = () => {
       
       {/* Mobile Header */}
       {!isDoctor && (
-      <header className="md:hidden bg-gray-900 text-white p-4 flex items-center justify-between sticky top-0 z-50">
+      <header className="md:hidden theme-nav-bg theme-nav-text p-4 flex items-center justify-between sticky top-0 z-50">
         <span className="text-lg font-black tracking-tight bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">{appName}</span>
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+          className="p-2 theme-nav-soft rounded-lg transition-colors"
         >
           {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -2224,7 +2260,7 @@ const App: React.FC = () => {
       {!isDoctor && (
       <aside 
         style={{ width: `${sidebarWidth}px` }}
-        className={`bg-gray-900 fixed md:sticky top-0 h-screen z-50 md:z-40 border-r border-gray-800 flex flex-col overflow-hidden transition-transform duration-300 md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`theme-nav-bg fixed md:sticky top-0 h-screen z-50 md:z-40 border-r theme-nav-border flex flex-col overflow-hidden transition-transform duration-300 md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="p-8 flex items-center justify-center flex-shrink-0">
           <span className="text-xl font-black tracking-tight text-center bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">{appName}</span>
@@ -2237,7 +2273,7 @@ const App: React.FC = () => {
           {canAccessView('doctors') && <NavItem icon={<UserCheck size={18} />} label="Doctors" active={currentView === 'doctors'} onClick={() => { setCurrentView('doctors'); setIsMobileMenuOpen(false); }} />}
           
           <div className="pt-8 pb-2">
-             <p className="px-3 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Operations</p>
+             <p className="px-3 text-[10px] font-black theme-nav-muted uppercase tracking-[0.2em] mb-4">Operations</p>
              {canAccessView('treatments') && (
                <NavItem icon={<Stethoscope size={18} />} label="Service Menu" active={currentView === 'treatments'} onClick={() => { setCurrentView('treatments'); setIsMobileMenuOpen(false); }} />
              )}
@@ -2261,7 +2297,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="pt-8 pb-2">
-             <p className="px-3 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">System</p>
+             <p className="px-3 text-[10px] font-black theme-nav-muted uppercase tracking-[0.2em] mb-4">System</p>
              {canAccessView('users') && (
                <NavItem icon={<Shield size={18} />} label="Users" active={currentView === 'users'} onClick={() => { setCurrentView('users'); setIsMobileMenuOpen(false); }} />
              )}
@@ -2271,18 +2307,18 @@ const App: React.FC = () => {
           </div>
         </nav>
 
-        <div className="p-8 pt-4 flex-shrink-0 border-t border-gray-800">
-           <div className="p-4 bg-gray-800 rounded-2xl border border-gray-700">
-              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Logged in as</p>
+        <div className="p-8 pt-4 flex-shrink-0 border-t theme-nav-border">
+           <div className="p-4 theme-nav-soft rounded-2xl border theme-nav-border">
+              <p className="text-[10px] theme-nav-muted font-bold uppercase tracking-wider mb-2">Logged in as</p>
               <div className="flex items-center justify-between">
-                 <span className="text-xs text-gray-300 font-medium">{currentUser}</span>
+                 <span className="text-xs theme-nav-text font-medium">{currentUser}</span>
                  {isAdmin && (
                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 uppercase">Admin</span>
                  )}
               </div>
               <button
                 onClick={handleLogout}
-                className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs font-medium transition-colors"
+                className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 theme-nav-bg hover:opacity-90 theme-nav-text rounded-lg text-xs font-medium transition-colors"
               >
                 <LogOut size={14} />
                 Logout
@@ -2457,6 +2493,8 @@ const App: React.FC = () => {
                     onSaveReceiptInfo={handleSaveReceiptInfo}
                     receiptSize={receiptSize}
                     onReceiptSizeChange={handleReceiptSizeChange}
+                    hoverTheme={hoverTheme}
+                    onHoverThemeChange={(theme) => setHoverTheme(theme)}
                 />
               )
             )}
