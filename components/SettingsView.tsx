@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw } from 'lucide-react';
-import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings } from '../types';
+import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer } from 'lucide-react';
+import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
 import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings as persistEmailSettings } from '../utils/emailSettings';
@@ -30,6 +30,8 @@ interface SettingsViewProps {
   onSaveAppName: (name: string) => Promise<void>;
   receiptInfo: { email: string; phone: string };
   onSaveReceiptInfo: (info: { email: string; phone: string }) => Promise<void>;
+  receiptSize: ReceiptSize;
+  onReceiptSizeChange: (size: ReceiptSize) => void;
 }
 
 interface ManagerContact {
@@ -66,7 +68,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   appName,
   onSaveAppName,
   receiptInfo,
-  onSaveReceiptInfo
+  onSaveReceiptInfo,
+  receiptSize,
+  onReceiptSizeChange
 }) => {
   const [appNameInput, setAppNameInput] = useState<string>(appName);
   const [appNameMessage, setAppNameMessage] = useState<string | null>(null);
@@ -1216,6 +1220,64 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
             <p className="text-xs text-indigo-700">
               <strong>Note:</strong> Changes will be applied to all new receipts and invoices generated after saving.
+            </p>
+          </div>
+        </div>
+
+        {/* Receipt Size Selection */}
+        <div className="border border-gray-200 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Printer className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Receipt Format</h3>
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-4">
+            Select the default receipt output format. A4 is suitable for standard document printing. 55mm Thermal is optimized for thermal receipt printers.
+          </p>
+          
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+              style={{ borderColor: receiptSize === 'A4' ? '#4F46E5' : '#E5E7EB' }}>
+              <input
+                type="radio"
+                name="receiptSize"
+                value="A4"
+                checked={receiptSize === 'A4'}
+                onChange={() => onReceiptSizeChange('A4')}
+                className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-gray-900">A4 Receipt</div>
+                <div className="text-sm text-gray-500">Standard 210mm × 297mm format for document printers</div>
+              </div>
+              {receiptSize === 'A4' && (
+                <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+              )}
+            </label>
+
+            <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+              style={{ borderColor: receiptSize === 'THERMAL_55MM' ? '#4F46E5' : '#E5E7EB' }}>
+              <input
+                type="radio"
+                name="receiptSize"
+                value="THERMAL_55MM"
+                checked={receiptSize === 'THERMAL_55MM'}
+                onChange={() => onReceiptSizeChange('THERMAL_55MM')}
+                className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-gray-900">55mm Thermal Receipt</div>
+                <div className="text-sm text-gray-500">Optimized for 58mm wide thermal receipt printers (48-56mm printable width)</div>
+              </div>
+              {receiptSize === 'THERMAL_55MM' && (
+                <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+              )}
+            </label>
+          </div>
+
+          <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+            <p className="text-xs text-indigo-700">
+              <strong>Note:</strong> The selected format will be used when generating receipts. Thermal format uses condensed layout, smaller fonts, and monospace styling suitable for thermal roll paper.
             </p>
           </div>
         </div>

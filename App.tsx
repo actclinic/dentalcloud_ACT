@@ -48,7 +48,8 @@ import {
   LoyaltyTransaction,
   Expense,
   Recall,
-  ScheduledTask
+  ScheduledTask,
+  ReceiptSize
 } from './types';
 import {
   TREATMENT_CATEGORIES,
@@ -265,6 +266,10 @@ const App: React.FC = () => {
     email: 'info@dentflowpro.com',
     phone: '(555) 123-4567'
   });
+  const [receiptSize, setReceiptSize] = useState<ReceiptSize>(() => {
+    const saved = localStorage.getItem('receiptSize');
+    return (saved === 'A4' || saved === 'THERMAL_55MM') ? saved : 'A4';
+  });
 
   // Sync browser tab title with app name in real-time
   useEffect(() => {
@@ -306,6 +311,11 @@ const App: React.FC = () => {
   const handleSaveReceiptInfo = async (info: { email: string; phone: string }) => {
     await api.appSettings.saveReceiptInfo(info);
     setReceiptInfo(info);
+  };
+
+  const handleReceiptSizeChange = (size: ReceiptSize) => {
+    setReceiptSize(size);
+    localStorage.setItem('receiptSize', size);
   };
   
   const handleRemoveAllMessages = async () => {
@@ -2445,6 +2455,8 @@ const App: React.FC = () => {
                     onSaveAppName={handleSaveAppName}
                     receiptInfo={receiptInfo}
                     onSaveReceiptInfo={handleSaveReceiptInfo}
+                    receiptSize={receiptSize}
+                    onReceiptSizeChange={handleReceiptSizeChange}
                 />
               )
             )}
@@ -3290,6 +3302,7 @@ const App: React.FC = () => {
             currency={currency}
             appName={appName}
             receiptInfo={receiptInfo}
+            receiptSize={receiptSize}
             onClose={() => {
               setShowReceipt(false);
               setSelectedTreatmentsForReceipt([]);

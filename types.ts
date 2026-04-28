@@ -279,3 +279,5 @@ export interface ScheduledTask {
   created_at?: string;
   updated_at?: string;
 }
+
+export type ReceiptSize = 'A4' | 'THERMAL_55MM';
