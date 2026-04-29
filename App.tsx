@@ -2201,7 +2201,7 @@ const App: React.FC = () => {
           alt={`${appName} logo`}
           className={variant === 'mobile'
             ? 'max-h-12 max-w-[200px] object-contain'
-            : 'max-h-28 max-w-full object-contain'
+            : 'max-h-[6.25rem] max-w-full object-contain'
           }
         />
       );
