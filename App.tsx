@@ -290,6 +290,7 @@ const App: React.FC = () => {
     return saved === null ? true : saved === 'true';
   });
   const [appName, setAppName] = useState<string>('DentalCloud Pro');
+  const [appLogoUrl, setAppLogoUrl] = useState<string>('');
   const [receiptInfo, setReceiptInfo] = useState<{ email: string; phone: string }>({
     email: 'info@dentflowpro.com',
     phone: '(555) 123-4567'
@@ -331,9 +332,9 @@ const App: React.FC = () => {
     setApplyClinicalFeeOnRegistration(enabled);
   };
 
-  const handleSaveAppName = async (name: string) => {
-    await api.appSettings.saveAppName(name);
-    setAppName(name);
+  const handleUploadAppLogo = async (file: File) => {
+    const logo = await api.appSettings.uploadAppLogo(file);
+    setAppLogoUrl(logo.url);
   };
 
   const handleSaveReceiptInfo = async (info: { email: string; phone: string }) => {
@@ -652,6 +653,15 @@ const App: React.FC = () => {
       })
       .catch((err) => {
         console.warn('Failed to load receipt info:', err);
+      });
+
+    api.appSettings.getAppLogo()
+      .then((logo) => {
+        if (!mounted) return;
+        setAppLogoUrl(logo?.url || '');
+      })
+      .catch((err) => {
+        console.warn('Failed to load app logo:', err);
       });
 
     return () => {
@@ -2148,6 +2158,27 @@ const App: React.FC = () => {
     setUseFlatRate(false); // Reset flat rate when closing patient
   };
 
+  const renderAppBrand = (variant: 'mobile' | 'sidebar') => {
+    if (appLogoUrl) {
+      return (
+        <img
+          src={appLogoUrl}
+          alt={`${appName} logo`}
+          className={variant === 'mobile'
+            ? 'max-h-10 max-w-[180px] object-contain'
+            : 'max-h-16 max-w-full object-contain'
+          }
+        />
+      );
+    }
+
+    return (
+      <span className={`${variant === 'mobile' ? 'text-lg' : 'text-xl text-center'} font-black tracking-tight bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent`}>
+        {appName}
+      </span>
+    );
+  };
+
   // Password recovery must stay on the login/reset screen even if this device
   // still has an older local auth session saved.
   if (isRecoveryFlowActive()) {
@@ -2301,7 +2332,7 @@ const App: React.FC = () => {
       {/* Mobile Header */}
       {!isDoctor && (
       <header className="md:hidden theme-nav-bg theme-nav-text p-4 flex items-center justify-between sticky top-0 z-50">
-        <span className="text-lg font-black tracking-tight bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">{appName}</span>
+        {renderAppBrand('mobile')}
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 theme-nav-soft rounded-lg transition-colors"
@@ -2326,7 +2357,7 @@ const App: React.FC = () => {
         className={`theme-nav-bg fixed md:sticky top-0 h-screen z-50 md:z-40 border-r theme-nav-border flex flex-col overflow-hidden transition-transform duration-300 md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="p-8 flex items-center justify-center flex-shrink-0">
-          <span className="text-xl font-black tracking-tight text-center bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">{appName}</span>
+          {renderAppBrand('sidebar')}
         </div>
         
         <nav className="sidebar-scrollbar mt-2 px-6 space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pb-4">
@@ -2553,7 +2584,8 @@ const App: React.FC = () => {
                     onSaveClinicalFeeSettings={handleSaveClinicalFeeSettings}
                     isAdmin={isAdmin}
                     appName={appName}
-                    onSaveAppName={handleSaveAppName}
+                    appLogoUrl={appLogoUrl}
+                    onUploadAppLogo={handleUploadAppLogo}
                     receiptInfo={receiptInfo}
                     onSaveReceiptInfo={handleSaveReceiptInfo}
                     receiptSize={receiptSize}

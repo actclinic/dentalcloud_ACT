@@ -268,6 +268,7 @@ const completeScheduledAppointmentForTreatment = async (params: {
 
 // Storage bucket for patient uploads
 const PATIENT_FILES_BUCKET = 'patient_files';
+const APP_LOGOS_BUCKET = 'app_logos';
 const APP_SETTINGS_SINGLETON_ID = 1;
 let cachedS3Settings: S3Settings | null = null;
 
@@ -1998,25 +1999,74 @@ export const api = {
       }
     },
 
-    saveAppName: async (name: string): Promise<void> => {
-      const trimmed = name.trim();
-      if (!trimmed) {
-        throw new Error('App name cannot be empty.');
+    getAppLogo: async (): Promise<{ url: string; path: string } | null> => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('app_logo_url, app_logo_path')
+          .eq('id', APP_SETTINGS_SINGLETON_ID)
+          .maybeSingle();
+
+        if (error || !data?.app_logo_url) {
+          return null;
+        }
+
+        return {
+          url: data.app_logo_url,
+          path: data.app_logo_path || ''
+        };
+      } catch (error: any) {
+        console.warn('Failed to load app logo:', error?.message || error);
+        return null;
+      }
+    },
+
+    uploadAppLogo: async (file: File): Promise<{ url: string; path: string }> => {
+      const fileName = file.name || '';
+      const isPng = file.type === 'image/png' && fileName.toLowerCase().endsWith('.png');
+      if (!isPng) {
+        throw new Error('Only PNG logo files are allowed.');
       }
 
-      const payload = {
-        id: APP_SETTINGS_SINGLETON_ID,
-        app_name: trimmed,
-        updated_at: new Date().toISOString()
-      };
+      const currentLogo = await api.appSettings.getAppLogo();
+      const path = `logos/app-logo-${Date.now()}.png`;
 
-      const { error } = await supabase
+      const { error: uploadError } = await supabase.storage
+        .from(APP_LOGOS_BUCKET)
+        .upload(path, file, {
+          cacheControl: '3600',
+          contentType: 'image/png',
+          upsert: false
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const { data: publicData } = supabase.storage.from(APP_LOGOS_BUCKET).getPublicUrl(path);
+      const publicUrl = publicData.publicUrl;
+
+      const { error: settingsError } = await supabase
         .from('app_settings')
-        .upsert(payload);
+        .upsert({
+          id: APP_SETTINGS_SINGLETON_ID,
+          app_logo_url: publicUrl,
+          app_logo_path: path,
+          updated_at: new Date().toISOString()
+        });
 
-      if (error) {
-        throw new Error(error.message);
+      if (settingsError) {
+        await supabase.storage.from(APP_LOGOS_BUCKET).remove([path]);
+        throw new Error(settingsError.message);
       }
+
+      if (currentLogo?.path && currentLogo.path !== path) {
+        supabase.storage.from(APP_LOGOS_BUCKET).remove([currentLogo.path]).catch((error) => {
+          console.warn('Failed to remove previous app logo:', error);
+        });
+      }
+
+      return { url: publicUrl, path };
     },
 
     getReceiptInfo: async (): Promise<{ email: string; phone: string }> => {

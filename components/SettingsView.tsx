@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer } from 'lucide-react';
+import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload } from 'lucide-react';
 import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
@@ -27,7 +27,8 @@ interface SettingsViewProps {
   onSaveClinicalFeeSettings: (enabled: boolean, amount: number) => Promise<void>;
   isAdmin: boolean;
   appName: string;
-  onSaveAppName: (name: string) => Promise<void>;
+  appLogoUrl: string;
+  onUploadAppLogo: (file: File) => Promise<void>;
   receiptInfo: { email: string; phone: string };
   onSaveReceiptInfo: (info: { email: string; phone: string }) => Promise<void>;
   receiptSize: ReceiptSize;
@@ -68,7 +69,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveClinicalFeeSettings,
   isAdmin,
   appName,
-  onSaveAppName,
+  appLogoUrl,
+  onUploadAppLogo,
   receiptInfo,
   onSaveReceiptInfo,
   receiptSize,
@@ -83,8 +85,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     { value: 'brown', label: 'Brown' },
     { value: 'dark', label: 'Dark' }
   ];
-  const [appNameInput, setAppNameInput] = useState<string>(appName);
-  const [appNameMessage, setAppNameMessage] = useState<string | null>(null);
+  const [appLogoMessage, setAppLogoMessage] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [receiptEmailInput, setReceiptEmailInput] = useState<string>(receiptInfo.email);
   const [receiptPhoneInput, setReceiptPhoneInput] = useState<string>(receiptInfo.phone);
   const [receiptInfoMessage, setReceiptInfoMessage] = useState<string | null>(null);
@@ -228,6 +230,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     } catch (error: any) {
       console.error('Failed to save clinical fee settings:', error);
       setClinicalFeeMessage(error?.message || 'Failed to save clinical fee settings.');
+    }
+  };
+
+  const handleAppLogoUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    setAppLogoMessage(null);
+    if (file.type !== 'image/png' || !file.name.toLowerCase().endsWith('.png')) {
+      setAppLogoMessage('Only PNG logo files are allowed.');
+      return;
+    }
+
+    try {
+      setIsUploadingLogo(true);
+      await onUploadAppLogo(file);
+      setAppLogoMessage('Logo uploaded successfully.');
+    } catch (error: any) {
+      console.error('Failed to upload app logo:', error);
+      setAppLogoMessage(error?.message || 'Failed to upload logo.');
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -1140,49 +1163,45 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         {/* App Branding Section */}
         <div className="border border-gray-200 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-4">
-            <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <h3 className="text-lg font-semibold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">App Branding</h3>
+            <ImageIcon className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Clinic Logo</h3>
           </div>
           
           <p className="text-sm text-gray-600 mb-4">
-            Customize the application name displayed in the header, sidebar, and receipts.
+            Upload a PNG logo to replace the app name in the header and sidebar. Browser tab names, receipts, and other document text stay unchanged.
           </p>
           
-          <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
-            <div className="flex-1 w-full">
-              <Input
-                label="Application Name"
-                value={appNameInput}
-                onChange={(e: any) => {
-                  setAppNameInput(e.target.value);
-                  setAppNameMessage(null);
-                }}
-                placeholder="DentalCloud Pro"
-              />
+          <div className="flex flex-col md:flex-row gap-4 md:items-center">
+            <div className="flex h-24 w-full md:w-56 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 p-4">
+              {appLogoUrl ? (
+                <img src={appLogoUrl} alt={`${appName} logo`} className="max-h-full max-w-full object-contain" />
+              ) : (
+                <div className="text-center text-xs font-semibold text-gray-400">No logo uploaded</div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await onSaveAppName(appNameInput);
-                  setAppNameMessage('App name saved successfully!');
-                } catch (err: any) {
-                  setAppNameMessage('Failed to save app name: ' + (err?.message || 'Unknown error'));
-                }
-              }}
-              className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-            >
-              Save App Name
-            </button>
+            <div className="flex-1">
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition ${isUploadingLogo ? 'bg-indigo-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                <Upload size={16} />
+                {isUploadingLogo ? 'Uploading Logo...' : 'Upload PNG Logo'}
+                <input
+                  type="file"
+                  accept="image/png,.png"
+                  disabled={isUploadingLogo}
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleAppLogoUpload(event.target.files?.[0]);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              <p className="mt-2 text-xs text-gray-500">PNG only. Transparent-background logos work best.</p>
+              {appLogoMessage && (
+                <p className={`mt-2 text-xs ${appLogoMessage.toLowerCase().includes('failed') || appLogoMessage.toLowerCase().includes('only png') ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {appLogoMessage}
+                </p>
+              )}
+            </div>
           </div>
-          {appNameMessage && (
-            <p className={`mt-2 text-xs ${appNameMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-              {appNameMessage}
-            </p>
-          )}
         </div>
 
         {/* Receipt Info Section */}
