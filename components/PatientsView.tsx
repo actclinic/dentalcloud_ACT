@@ -435,20 +435,20 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     ) : (
       <>
         {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto overflow-y-auto flex-1 min-h-0 p-6 pt-0">
-          <div className="rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+        <div className="hidden md:block flex-1 min-h-0 p-6 pt-0 overflow-hidden">
+          <div className="h-full rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
+            <div className="h-full overflow-auto">
               <table className="min-w-[960px] w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-indigo-50 border-b border-indigo-200">
+                <thead className="bg-indigo-50 border-b border-indigo-200">
                   <tr className="text-indigo-700">
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No</th>
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Name</th>
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Age</th>
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Contact</th>
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Address</th>
-                    <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Balance</th>
-                    <th className="px-3 py-3 text-right font-bold uppercase text-xs tracking-wide">Actions</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Name</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Age</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Contact</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Address</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Balance</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-right font-bold uppercase text-xs tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

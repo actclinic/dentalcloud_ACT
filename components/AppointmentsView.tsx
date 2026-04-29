@@ -460,18 +460,18 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
                 return (
                   <div className="rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="max-h-[calc(100vh-260px)] overflow-auto">
                       <table className="min-w-[960px] w-full text-sm">
-                        <thead className="sticky top-0 z-10 bg-indigo-50 border-b border-indigo-200">
+                        <thead className="bg-indigo-50 border-b border-indigo-200">
                           <tr className="text-indigo-700">
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No.</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Dr. Name</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Time</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Pt Name</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Tx</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Status</th>
-                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Actions</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No.</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Dr. Name</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Time</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Pt Name</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Tx</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Status</th>
+                            <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
