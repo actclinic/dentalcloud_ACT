@@ -150,7 +150,7 @@ export const NavItem = ({ icon, label, active, onClick }: { icon: React.ReactNod
       active ? 'theme-active-bg text-white shadow-lg theme-active-shadow' : 'text-gray-400 theme-hover-bg theme-hover-text'
     }`}
   >
-    <span className={`theme-hover-icon-target ${active ? 'text-white' : 'text-gray-500'}`}>{icon}</span>
+    <span className="theme-hover-icon-target shrink-0 text-current">{icon}</span>
     {label}
   </button>
 );

@@ -284,7 +284,7 @@ body {
 }
 
 .theme-hover-icon:hover .theme-hover-icon-target {
-  color: var(--hover-600) !important;
+  color: inherit !important;
 }
 
 .theme-active-bg {

@@ -308,15 +308,20 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = 'Dental
   }
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-blue-100">
       {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-6 flex-col justify-between">
+      <div
+        className="hidden lg:flex lg:w-1/2 p-6 flex-col justify-between"
+        style={{
+          background: 'linear-gradient(135deg, var(--hover-700, #1d4ed8) 0%, var(--hover-600, #2563eb) 45%, #0f172a 100%)'
+        }}
+      >
         <div>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-14 h-14 bg-white overflow-hidden rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
               <img src="/assets/WinterArcLogo.png" alt="WinterArc Logo" className="w-full h-full object-cover" />
             </div>
-            <h1 className="text-xl font-black tracking-tight bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">{appName}</h1>
+            <h1 className="text-xl font-black tracking-tight bg-gradient-to-r from-blue-200 via-cyan-200 to-sky-300 bg-clip-text text-transparent">{appName}</h1>
           </div>
           
           <div className="max-w-xs">
@@ -533,7 +538,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = 'Dental
                 <button
                   type="submit"
                   disabled={loading || isPreparingRecovery}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
+                  className="w-full bg-[var(--hover-600)] hover:bg-[var(--hover-700)] text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-black/10 text-sm"
                 >
                   {loading || isPreparingRecovery ? (
                     <>
@@ -617,7 +622,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = 'Dental
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
+                  className="w-full bg-[var(--hover-600)] hover:bg-[var(--hover-700)] text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-black/10 text-sm"
                 >
                   {loading ? (
                     <>
@@ -752,7 +757,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = 'Dental
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 text-sm"
+                  className="w-full bg-[var(--hover-600)] hover:bg-[var(--hover-700)] text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-black/10 text-sm"
                 >
                   {loading ? (
                     <>
