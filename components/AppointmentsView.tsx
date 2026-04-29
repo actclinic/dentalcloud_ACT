@@ -363,7 +363,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center p-12">
-          <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
+          <Loader2 className="animate-spin text-[var(--hover-600)] w-10 h-10" />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0 p-6">

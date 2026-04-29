@@ -433,7 +433,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                   {selectedLocationName}
                 </div>
               )}
-              {loading && <p className="mt-2 text-xs text-indigo-600">Refreshing dashboard data...</p>}
+              {loading && <p className="mt-2 text-xs text-[var(--hover-600)]">Refreshing dashboard data...</p>}
             </div>
           </div>
         </div>

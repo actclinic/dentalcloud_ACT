@@ -369,7 +369,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
   if (loading) {
     return (
       <div className="flex h-full min-h-[420px] items-center justify-center bg-white">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-indigo-600" />
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[var(--hover-600)]" />
       </div>
     );
   }
@@ -511,7 +511,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
                   </div>
                   <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
                     {startingConversation === patient.id ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-indigo-600" />
+                      <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-[var(--hover-600)]" />
                     ) : (
                       <Plus className="h-4 w-4" />
                     )}

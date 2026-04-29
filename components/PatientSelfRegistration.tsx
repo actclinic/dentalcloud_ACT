@@ -393,7 +393,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
               <button
                 type="submit"
                 disabled={loading || password.length < 6 || password !== confirmPassword}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full bg-[var(--hover-600)] hover:bg-[var(--hover-700)] text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? (
                   <>
@@ -494,7 +494,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
               {loading ? (
                 <>
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                    <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-8 h-8 border-3 border-[var(--hover-600)] border-t-transparent rounded-full animate-spin"></div>
                   </div>
                   <h2 className="text-xl font-bold text-gray-900">Setting up your account...</h2>
                   <p className="text-gray-600">Please wait while we complete your registration.</p>

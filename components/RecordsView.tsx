@@ -120,7 +120,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
       </div>
 
       {loading ? (
-        <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>
+        <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-[var(--hover-600)]" /></div>
       ) : (
         <>
           <div className="hidden md:block overflow-x-auto">

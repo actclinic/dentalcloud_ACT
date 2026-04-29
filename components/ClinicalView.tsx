@@ -952,8 +952,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 Browse files
               </button>
               {(uploadingFiles || isUploadingWithProgress) && (
-                <span className="text-xs text-indigo-600 font-semibold flex items-center gap-1">
-                  <span className="animate-spin inline-block w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full" />
+                <span className="text-xs text-[var(--hover-600)] font-semibold flex items-center gap-1">
+                  <span className="animate-spin inline-block w-3 h-3 border-2 border-[var(--hover-600)] border-t-transparent rounded-full" />
                   Uploading...
                 </span>
               )}

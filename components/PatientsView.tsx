@@ -429,7 +429,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         })()}
       </div>
     ) : loading ? (
-      <div className="flex-1 flex items-center justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>
+      <div className="flex-1 flex items-center justify-center p-12"><Loader2 className="animate-spin text-[var(--hover-600)] w-10 h-10" /></div>
     ) : patients.length === 0 ? (
       <div className="flex-1 flex items-center justify-center p-12 text-center text-gray-400 italic">No patients found. Add your first patient to begin.</div>
     ) : (

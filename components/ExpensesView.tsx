@@ -432,7 +432,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
         {loading ? (
           <div className="p-16 flex flex-col items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--hover-600)]" />
             <p className="mt-3 text-sm text-gray-500">Loading expenses...</p>
           </div>
         ) : (

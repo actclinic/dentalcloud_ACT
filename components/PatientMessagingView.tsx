@@ -312,7 +312,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
   if (loading) {
     return (
       <div className="flex h-full min-h-[420px] items-center justify-center rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-indigo-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[var(--hover-600)]"></div>
       </div>
     );
   }

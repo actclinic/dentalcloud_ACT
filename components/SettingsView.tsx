@@ -1200,7 +1200,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
             <div className="flex-1">
-              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition ${isUploadingLogo ? 'bg-indigo-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[var(--hover-600)]/20 transition ${isUploadingLogo ? 'bg-[var(--hover-600)] cursor-wait opacity-70' : 'bg-[var(--hover-600)] hover:bg-[var(--hover-700)]'}`}>
                 <Upload size={16} />
                 {isUploadingLogo ? 'Uploading Logo...' : 'Upload PNG Logo'}
                 <input

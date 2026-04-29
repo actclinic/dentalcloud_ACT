@@ -5470,7 +5470,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     <button
                       onClick={() => handleSendMessage()}
                       disabled={!inputMessage.trim() || isLoading}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--hover-600)] px-4 py-3 text-sm font-medium text-white transition hover:bg-[var(--hover-700)] focus:outline-none focus:ring-2 focus:ring-[var(--hover-600)] disabled:cursor-not-allowed disabled:bg-gray-300"
                       title="Send message"
                     >
                       {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

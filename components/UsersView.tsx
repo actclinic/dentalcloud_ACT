@@ -138,7 +138,7 @@ const UsersView: React.FC<UsersViewProps> = ({
 
       {loading ? (
         <div className="p-12 flex justify-center">
-          <Loader2 className="animate-spin text-indigo-600" />
+          <Loader2 className="animate-spin text-[var(--hover-600)]" />
         </div>
       ) : users.length === 0 ? (
         <div className="p-12 text-center text-gray-400 italic">
