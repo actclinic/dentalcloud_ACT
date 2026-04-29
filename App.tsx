@@ -1875,6 +1875,29 @@ const App: React.FC = () => {
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
       
       setTreatmentHistory([res.record, ...treatmentHistory]);
+      if (res.completed_appointment_ids?.length) {
+        const completedAppointmentIds = new Set(res.completed_appointment_ids);
+        setAppointments(prev => prev.map(appointment =>
+          completedAppointmentIds.has(appointment.id)
+            ? { ...appointment, status: 'Completed' }
+            : appointment
+        ));
+        setDashboardAppointments(prev => prev.map(appointment =>
+          completedAppointmentIds.has(appointment.id)
+            ? { ...appointment, status: 'Completed' }
+            : appointment
+        ));
+        setAssistantAppointments(prev => prev.map(appointment =>
+          completedAppointmentIds.has(appointment.id)
+            ? { ...appointment, status: 'Completed' }
+            : appointment
+        ));
+        setToast({
+          message: 'Treatment recorded and today\'s appointment was marked completed.',
+          type: 'success',
+          show: true
+        });
+      }
       setSelectedTeeth([]);
       setUseFlatRate(false); // Reset flat rate after treatment
     } catch (err: any) {

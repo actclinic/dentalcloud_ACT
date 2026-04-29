@@ -208,6 +208,64 @@ const syncRecallStatusFromAppointment = async (params: {
   }
 };
 
+const getLocalISODate = (date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const completeScheduledAppointmentForTreatment = async (params: {
+  locationId: string;
+  patientId: string;
+  doctorId?: string | null;
+  treatmentDate: string;
+}): Promise<string[]> => {
+  const { locationId, patientId, doctorId, treatmentDate } = params;
+  if (!locationId || !patientId || !treatmentDate) return [];
+
+  const { data: scheduledAppointments, error: fetchError } = await supabase
+    .from('appointments')
+    .select('id, patient_id, location_id, doctor_id, time, status')
+    .eq('location_id', locationId)
+    .eq('patient_id', patientId)
+    .eq('date', treatmentDate)
+    .eq('status', 'Scheduled')
+    .order('time', { ascending: true });
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!scheduledAppointments || scheduledAppointments.length === 0) return [];
+
+  const normalizedDoctorId = doctorId && String(doctorId).trim() !== '' ? String(doctorId) : null;
+  const appointmentToComplete =
+    (normalizedDoctorId
+      ? scheduledAppointments.find((appointment: any) => appointment.doctor_id === normalizedDoctorId)
+      : undefined) ||
+    scheduledAppointments.find((appointment: any) => !appointment.doctor_id) ||
+    scheduledAppointments[0];
+
+  const { error: updateError } = await supabase
+    .from('appointments')
+    .update({ status: 'Completed' })
+    .eq('id', appointmentToComplete.id)
+    .eq('status', 'Scheduled');
+
+  if (updateError) throw new Error(updateError.message);
+
+  try {
+    await syncRecallStatusFromAppointment({
+      appointmentId: appointmentToComplete.id,
+      patientId,
+      locationId,
+      status: 'Completed'
+    });
+  } catch (syncErr) {
+    console.warn('Recall automation sync failed on treatment appointment completion:', syncErr);
+  }
+
+  return [appointmentToComplete.id];
+};
+
 // Storage bucket for patient uploads
 const PATIENT_FILES_BUCKET = 'patient_files';
 const APP_SETTINGS_SINGLETON_ID = 1;
@@ -1241,6 +1299,7 @@ export const api = {
       }
 
       // 4. Insert Treatment Record
+      const treatmentDate = getLocalISODate();
       const treatmentData = {
         location_id: data.location_id,
         patient_id: data.patient_id,
@@ -1248,7 +1307,7 @@ export const api = {
         teeth: data.teeth,
         description: data.description,
         cost: data.cost,
-        date: new Date().toISOString().split('T')[0]
+        date: treatmentDate
       };
       
       const { data: result, error: insertError } = await supabase
@@ -1301,6 +1360,18 @@ export const api = {
           description: `Earned from treatment: ${data.description}`
         });
       }
+
+      let completedAppointmentIds: string[] = [];
+      try {
+        completedAppointmentIds = await completeScheduledAppointmentForTreatment({
+          locationId: data.location_id,
+          patientId: data.patient_id,
+          doctorId: data.doctor_id || null,
+          treatmentDate
+        });
+      } catch (appointmentCompletionError) {
+        console.warn('Appointment auto-completion failed after treatment recording:', appointmentCompletionError);
+      }
       
       // Fetch final state for return
       const { data: finalPatient } = await supabase.from('patients').select('balance').eq('id', data.patient_id).single();
@@ -1318,6 +1389,7 @@ export const api = {
       return {
         status: "success",
         new_balance: finalPatient?.balance,
+        completed_appointment_ids: completedAppointmentIds,
         record: {
           ...result,
           doctor_name: doctorName
