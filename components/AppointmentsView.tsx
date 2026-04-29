@@ -101,7 +101,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
       case 'Completed':
         return 'bg-emerald-100 text-emerald-800 border-emerald-300';
       case 'Cancelled':
-        return 'bg-red-50 text-red-700 border-red-100';
+        return 'bg-red-100 text-red-800 border-red-300';
       default:
         return 'bg-gray-50 text-gray-700 border-gray-100';
     }
@@ -475,7 +475,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                             tableRows.map((appointment, index) => {
                               const rowNo = index + 1;
                               const rowStyle = appointment.status === 'Cancelled'
-                                ? 'bg-red-50/40'
+                                ? 'bg-red-100/80 border-l-4 border-l-red-500'
                                 : appointment.status === 'Completed'
                                 ? 'bg-emerald-100/80 border-l-4 border-l-emerald-500'
                                 : 'bg-white';
