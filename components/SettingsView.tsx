@@ -29,6 +29,7 @@ interface SettingsViewProps {
   appName: string;
   appLogoUrl: string;
   onUploadAppLogo: (file: File) => Promise<void>;
+  onDeleteAppLogo: () => Promise<void>;
   receiptInfo: { email: string; phone: string };
   onSaveReceiptInfo: (info: { email: string; phone: string }) => Promise<void>;
   receiptSize: ReceiptSize;
@@ -71,6 +72,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   appName,
   appLogoUrl,
   onUploadAppLogo,
+  onDeleteAppLogo,
   receiptInfo,
   onSaveReceiptInfo,
   receiptSize,
@@ -87,6 +89,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   ];
   const [appLogoMessage, setAppLogoMessage] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const [receiptEmailInput, setReceiptEmailInput] = useState<string>(receiptInfo.email);
   const [receiptPhoneInput, setReceiptPhoneInput] = useState<string>(receiptInfo.phone);
   const [receiptInfoMessage, setReceiptInfoMessage] = useState<string | null>(null);
@@ -251,6 +254,23 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setAppLogoMessage(error?.message || 'Failed to upload logo.');
     } finally {
       setIsUploadingLogo(false);
+    }
+  };
+
+  const handleDeleteAppLogo = async () => {
+    if (!appLogoUrl) return;
+    if (!window.confirm('Remove the uploaded clinic logo? The app name will show again in the header and sidebar.')) return;
+
+    try {
+      setIsDeletingLogo(true);
+      setAppLogoMessage(null);
+      await onDeleteAppLogo();
+      setAppLogoMessage('Logo removed successfully.');
+    } catch (error: any) {
+      console.error('Failed to remove app logo:', error);
+      setAppLogoMessage(error?.message || 'Failed to remove logo.');
+    } finally {
+      setIsDeletingLogo(false);
     }
   };
 
@@ -1195,6 +1215,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </label>
               <p className="mt-2 text-xs text-gray-500">PNG only. Transparent-background logos work best.</p>
+              {appLogoUrl && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteAppLogo()}
+                  disabled={isDeletingLogo}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-70"
+                >
+                  <Trash2 size={14} />
+                  {isDeletingLogo ? 'Removing Logo...' : 'Remove Logo'}
+                </button>
+              )}
               {appLogoMessage && (
                 <p className={`mt-2 text-xs ${appLogoMessage.toLowerCase().includes('failed') || appLogoMessage.toLowerCase().includes('only png') ? 'text-red-600' : 'text-emerald-600'}`}>
                   {appLogoMessage}

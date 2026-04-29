@@ -2069,6 +2069,33 @@ export const api = {
       return { url: publicUrl, path };
     },
 
+    deleteAppLogo: async (): Promise<void> => {
+      const currentLogo = await api.appSettings.getAppLogo();
+
+      const { error: settingsError } = await supabase
+        .from('app_settings')
+        .upsert({
+          id: APP_SETTINGS_SINGLETON_ID,
+          app_logo_url: null,
+          app_logo_path: null,
+          updated_at: new Date().toISOString()
+        });
+
+      if (settingsError) {
+        throw new Error(settingsError.message);
+      }
+
+      if (currentLogo?.path) {
+        const { error: removeError } = await supabase.storage
+          .from(APP_LOGOS_BUCKET)
+          .remove([currentLogo.path]);
+
+        if (removeError) {
+          console.warn('Failed to remove app logo file:', removeError.message);
+        }
+      }
+    },
+
     getReceiptInfo: async (): Promise<{ email: string; phone: string }> => {
       try {
         const { data, error } = await supabase

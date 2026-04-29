@@ -337,6 +337,11 @@ const App: React.FC = () => {
     setAppLogoUrl(logo.url);
   };
 
+  const handleDeleteAppLogo = async () => {
+    await api.appSettings.deleteAppLogo();
+    setAppLogoUrl('');
+  };
+
   const handleSaveReceiptInfo = async (info: { email: string; phone: string }) => {
     await api.appSettings.saveReceiptInfo(info);
     setReceiptInfo(info);
@@ -2165,8 +2170,8 @@ const App: React.FC = () => {
           src={appLogoUrl}
           alt={`${appName} logo`}
           className={variant === 'mobile'
-            ? 'max-h-10 max-w-[180px] object-contain'
-            : 'max-h-16 max-w-full object-contain'
+            ? 'max-h-12 max-w-[200px] object-contain'
+            : 'max-h-20 max-w-full object-contain'
           }
         />
       );
@@ -2586,6 +2591,7 @@ const App: React.FC = () => {
                     appName={appName}
                     appLogoUrl={appLogoUrl}
                     onUploadAppLogo={handleUploadAppLogo}
+                    onDeleteAppLogo={handleDeleteAppLogo}
                     receiptInfo={receiptInfo}
                     onSaveReceiptInfo={handleSaveReceiptInfo}
                     receiptSize={receiptSize}
