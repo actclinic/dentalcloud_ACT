@@ -107,6 +107,10 @@ const THEME_OPTIONS: Array<{ value: HoverTheme; label: string }> = [
   { value: 'dark', label: 'Dark' }
 ];
 
+const isHoverTheme = (value: unknown): value is HoverTheme => {
+  return value === 'blue' || value === 'green' || value === 'yellow' || value === 'brown' || value === 'dark';
+};
+
 const toLocalISODate = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -335,6 +339,15 @@ const App: React.FC = () => {
   const handleSaveReceiptInfo = async (info: { email: string; phone: string }) => {
     await api.appSettings.saveReceiptInfo(info);
     setReceiptInfo(info);
+  };
+
+  const handleHoverThemeChange = async (theme: HoverTheme) => {
+    setHoverTheme(theme);
+    try {
+      await api.appSettings.saveHoverTheme(theme);
+    } catch (error) {
+      console.warn('Failed to persist hover theme:', error);
+    }
   };
 
   const handleReceiptSizeChange = (size: ReceiptSize) => {
@@ -645,6 +658,45 @@ const App: React.FC = () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let mounted = true;
+
+    const loadTheme = async () => {
+      try {
+        const theme = await api.appSettings.getHoverTheme();
+        if (mounted && theme) setHoverTheme(theme);
+      } catch (error) {
+        console.warn('Failed to refresh hover theme:', error);
+      }
+    };
+
+    loadTheme();
+
+    const themeChannel = supabase
+      .channel(`app-settings-theme-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'app_settings' },
+        (payload) => {
+          const nextTheme = (payload.new as { hover_theme?: unknown } | null)?.hover_theme;
+          if (isHoverTheme(nextTheme)) {
+            setHoverTheme(nextTheme);
+          }
+        }
+      )
+      .subscribe();
+
+    const fallbackPoll = window.setInterval(loadTheme, 10000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(fallbackPoll);
+      supabase.removeChannel(themeChannel);
+    };
+  }, [isAuthenticated]);
 
   const handleLoginSuccess = () => {
     const session = auth.getSession();
@@ -2095,7 +2147,7 @@ const App: React.FC = () => {
           <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
         </div>
       }>
-        <PatientDashboardView onLogout={handleLogout} messagingEnabled={messagingEnabled} />
+        <PatientDashboardView onLogout={handleLogout} messagingEnabled={messagingEnabled} hoverTheme={hoverTheme} />
       </Suspense>
     );
   }
@@ -2203,18 +2255,6 @@ const App: React.FC = () => {
               <p className="text-xs text-gray-500 truncate">{currentUser}</p>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={hoverTheme}
-                onChange={(event) => setHoverTheme(event.target.value as HoverTheme)}
-                className="theme-select theme-accent-text rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold focus:outline-none"
-                aria-label="Select hover color"
-              >
-                {THEME_OPTIONS.map((themeOption) => (
-                  <option key={themeOption.value} value={themeOption.value}>
-                    {themeOption.label}
-                  </option>
-                ))}
-              </select>
               {currentView === 'finance' && (
                 <button
                   onClick={() => setCurrentView('appointments')}
@@ -2430,6 +2470,7 @@ const App: React.FC = () => {
                 canDelete={!isDoctor}
                 canViewChart={true}
                 canExport={!isDoctor}
+                uiStyle={isDoctor ? 'cards' : 'table'}
                 onExportPDF={async () => {
                    const freshAppointments = await api.appointments.getAll(currentLocationId || undefined);
                    const { exportAppointmentsToPDF } = await import('./utils/pdfExport');
@@ -2464,6 +2505,7 @@ const App: React.FC = () => {
                   doctor={currentDoctor}
                   loading={loading}
                   onSave={handleUpdateDoctorProfile}
+                  hoverTheme={hoverTheme}
                 />
               ) : (
                 <SettingsView
@@ -2494,7 +2536,7 @@ const App: React.FC = () => {
                     receiptSize={receiptSize}
                     onReceiptSizeChange={handleReceiptSizeChange}
                     hoverTheme={hoverTheme}
-                    onHoverThemeChange={(theme) => setHoverTheme(theme)}
+                    onHoverThemeChange={handleHoverThemeChange}
                 />
               )
             )}

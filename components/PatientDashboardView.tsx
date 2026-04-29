@@ -13,9 +13,10 @@ import { formatTeethWithPosition } from '../utils/toothNumbering';
 interface PatientDashboardProps {
   onLogout: () => void;
   messagingEnabled?: boolean;
+  hoverTheme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 }
 
-const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messagingEnabled = true }) => {
+const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messagingEnabled = true, hoverTheme }) => {
   const [activeTab, setActiveTab] = useState<'home' | 'appointments' | 'records' | 'profile' | 'messages'>('home');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -718,12 +719,17 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 className="font-semibold text-gray-900 text-sm">My Profile</h2>
-                <button
-                  onClick={() => setEditingProfile(true)}
-                  className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
-                >
-                  Edit
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="theme-accent-soft-bg theme-accent-text rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap">
+                    Theme: {hoverTheme}
+                  </span>
+                  <button
+                    onClick={() => setEditingProfile(true)}
+                    className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
               <div className="p-4 space-y-4">
                 <div className="flex items-center gap-4">

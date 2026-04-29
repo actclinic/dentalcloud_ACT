@@ -23,6 +23,7 @@ interface AppointmentsViewProps {
   canDelete?: boolean;
   canViewChart?: boolean;
   canExport?: boolean;
+  uiStyle?: 'table' | 'cards';
 }
 
 const AppointmentsView: React.FC<AppointmentsViewProps> = ({
@@ -39,7 +40,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   canEdit = true,
   canDelete = true,
   canViewChart = true,
-  canExport = true
+  canExport = true,
+  uiStyle = 'table'
 }) => {
   const [viewMode, setViewMode] = useState<'current' | 'calendar'>('current');
   const [upcomingPage, setUpcomingPage] = useState(1);
@@ -47,7 +49,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow' | 'today_new'>('all');
+  const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow' | 'today'>('today');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -72,6 +74,14 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const formatDateDDMMYYYY = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   const formatTime = (timeString: string) => {
@@ -135,7 +145,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
       if (!matchesSearch) return false;
       if (dateQuickFilter === 'tomorrow') return apt.date === tomorrowISO;
-      if (dateQuickFilter === 'today_new') return apt.date === todayLocalISO && apt.status !== 'Cancelled';
+      if (dateQuickFilter === 'today') return apt.date === todayLocalISO;
       return true;
     });
   }, [appointments, searchTerm, dateQuickFilter, tomorrowISO, todayLocalISO]);
@@ -337,15 +347,15 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           </button>
           <button
             onClick={() => {
-              setDateQuickFilter('today_new');
+              setDateQuickFilter('today');
               setUpcomingPage(1);
               setPastPage(1);
             }}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
-              dateQuickFilter === 'today_new' ? 'bg-white text-emerald-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+              dateQuickFilter === 'today' ? 'bg-white text-emerald-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            Today's new
+            Today
           </button>
         </div>
       </div>
@@ -359,250 +369,185 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         <div className="flex-1 overflow-y-auto min-h-0 p-6">
           {viewMode === 'current' ? (
             <>
-              {dateQuickFilter === 'today_new' ? (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-emerald-600" />
-                    Today's Patients
-                  </h3>
-                  {filteredAppointments.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400 italic text-sm">
-                      No active patient visits found for today.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {filteredAppointments
-                        .slice()
-                        .sort((a, b) => a.time.localeCompare(b.time))
-                        .map((appointment) => {
-                          const clinicalPlan = parseAppointmentClinicalFocus(appointment.notes);
-                          const isNew = isNewPatientToday(appointment.patient_id);
-                          return (
-                            <div
-                              key={appointment.id}
-                              className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-xl transition-colors gap-4 ${
-                                isNew
-                                  ? 'border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/60'
-                                  : 'border-amber-200 bg-amber-50/70 hover:bg-amber-100/60'
-                              }`}
-                            >
-                              <div className="flex items-center gap-4 flex-1 w-full">
-                                <div className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex flex-col items-center justify-center ${isNew ? 'bg-emerald-100' : 'bg-amber-100'}`}>
-                                  <span className={`text-xs font-bold ${isNew ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                    {new Date(appointment.date).toLocaleDateString('en-US', { day: 'numeric' })}
-                                  </span>
-                                  <span className={`text-[10px] sm:text-xs uppercase ${isNew ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                    {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short' })}
-                                  </span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    <h4 className="font-semibold text-gray-900 truncate">{appointment.patient_name || 'Unknown Patient'}</h4>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${isNew ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
-                                      {isNew ? 'New' : 'Old'}
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getStatusColor(appointment.status)}`}>
-                                      {appointment.status}
-                                    </span>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-3 h-3" />
-                                      {formatTime(appointment.time)}
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                      <FileText className="w-3 h-3" />
-                                      {appointment.type || 'Checkup'}
-                                    </span>
-                                    {appointment.doctor_name && (
-                                      <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                                        <User className="w-3 h-3" />
-                                        Dr. {appointment.doctor_name}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {(clinicalPlan.clinicalFocus || clinicalPlan.targetTeeth.length > 0) && (
-                                    <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-2">
-                                      {clinicalPlan.clinicalFocus && (
-                                        <p className="text-xs font-medium text-indigo-700">Clinical Focus: {clinicalPlan.clinicalFocus}</p>
-                                      )}
-                                      {clinicalPlan.targetTeeth.length > 0 && (
-                                        <p className="mt-1 text-xs text-indigo-600">Target Teeth: {clinicalPlan.targetTeeth.join(', ')}</p>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+              {uiStyle === 'cards' ? (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-indigo-600" />
+                      Upcoming Appointments
+                    </h3>
+                    {paginatedUpcoming.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400 italic text-sm">No upcoming appointments.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {paginatedUpcoming.map((appointment) => (
+                          <div key={appointment.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-gray-900">{appointment.patient_name || 'Unknown Patient'}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Dr. {appointment.doctor_name || '-'} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
+                                </p>
+                                <p className="text-xs text-gray-600 mt-1">{appointment.type || 'Checkup'}</p>
                               </div>
-                              <div className="flex items-center justify-between w-full sm:w-auto gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-                                {canViewChart && (
-                                  <button
-                                    onClick={() => onViewChart(appointment)}
-                                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
-                                    title="Open patient chart"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                    View Chart
-                                  </button>
-                                )}
-                                <select
-                                  value={appointment.status}
-                                  onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)}
-                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white flex-1 sm:flex-initial"
-                                >
-                                  <option value="Scheduled">Scheduled</option>
-                                  <option value="Completed">Completed</option>
-                                  <option value="Cancelled">Cancelled</option>
-                                </select>
-                                {(canEdit || canDelete) && (
-                                  <div className="flex gap-1">
-                                    {canEdit && (
-                                      <button
-                                        onClick={() => onEditAppointment(appointment)}
-                                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                        title="Edit appointment"
-                                      >
-                                        <Edit2 className="w-4 h-4" />
-                                      </button>
-                                    )}
-                                    {canDelete && (
-                                      <button
-                                        onClick={() => {
-                                          setAppointmentToDelete(appointment.id);
-                                          setDeleteConfirmOpen(true);
-                                        }}
-                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Delete appointment"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-              {/* Upcoming Appointments */}
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-indigo-600" />
-                  Upcoming Appointments
-                </h3>
-                {upcomingAppointments.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 italic text-sm">
-                    No upcoming appointments scheduled.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {paginatedUpcoming.map((appointment) => {
-                      const clinicalPlan = parseAppointmentClinicalFocus(appointment.notes);
-                      return (
-                      <div
-                        key={appointment.id}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-4 flex-1 w-full">
-                          <div className="theme-accent-soft-bg flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex flex-col items-center justify-center">
-                            <span className="text-xs font-bold text-indigo-700">
-                              {new Date(appointment.date).toLocaleDateString('en-US', { day: 'numeric' })}
-                            </span>
-                            <span className="text-[10px] sm:text-xs text-indigo-600 uppercase">
-                              {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short' })}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-gray-900 truncate">{appointment.patient_name || 'Unknown Patient'}</h4>
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getStatusColor(appointment.status)}`}>
                                 {appointment.status}
                               </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatTime(appointment.time)}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <FileText className="w-3 h-3" />
-                                {appointment.type || 'Checkup'}
-                              </span>
-                              {appointment.doctor_name && (
-                                <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                                  <User className="w-3 h-3" />
-                                  Dr. {appointment.doctor_name}
-                                </span>
+                            <div className="mt-3 flex items-center gap-2">
+                              {canViewChart && (
+                                <button onClick={() => onViewChart(appointment)} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors">
+                                  <Eye className="w-3.5 h-3.5" />
+                                  View Chart
+                                </button>
                               )}
+                              <select value={appointment.status} onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)} className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                                <option value="Scheduled">Scheduled</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
                             </div>
-                            {(clinicalPlan.clinicalFocus || clinicalPlan.targetTeeth.length > 0) && (
-                              <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-2">
-                                {clinicalPlan.clinicalFocus && (
-                                  <p className="text-xs font-medium text-indigo-700">Clinical Focus: {clinicalPlan.clinicalFocus}</p>
-                                )}
-                                {clinicalPlan.targetTeeth.length > 0 && (
-                                  <p className="mt-1 text-xs text-indigo-600">Target Teeth: {clinicalPlan.targetTeeth.join(', ')}</p>
-                                )}
-                              </div>
-                            )}
                           </div>
-                        </div>
-                        <div className="flex items-center justify-between w-full sm:w-auto gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-                          {canViewChart && (
-                            <button
-                              onClick={() => onViewChart(appointment)}
-                              className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
-                              title="Open patient chart"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              View Chart
-                            </button>
-                          )}
-                          <select
-                            value={appointment.status}
-                            onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)}
-                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white flex-1 sm:flex-initial"
-                          >
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="Completed">Completed</option>
-                            <option value="Cancelled">Cancelled</option>
-                          </select>
-                          {(canEdit || canDelete) && (
-                            <div className="flex gap-1">
-                              {canEdit && (
-                                <button
-                                  onClick={() => onEditAppointment(appointment)}
-                                  className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                  title="Edit appointment"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                              )}
-                              {canDelete && (
-                                <button
-                                  onClick={() => {
-                                    setAppointmentToDelete(appointment.id);
-                                    setDeleteConfirmOpen(true);
-                                  }}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Delete appointment"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                        ))}
                       </div>
-                      );
-                    })}
+                    )}
                   </div>
-                )}
-                {upcomingAppointments.length > 0 && (
-                  <div className="sticky bottom-0 bg-white pt-3 border-t border-gray-100">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-gray-600" />
+                      Past Appointments
+                    </h3>
+                    {paginatedPast.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400 italic text-sm">No past appointments.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {paginatedPast.map((appointment) => (
+                          <div key={appointment.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-90">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-gray-800">{appointment.patient_name || 'Unknown Patient'}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Dr. {appointment.doctor_name || '-'} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
+                                </p>
+                                <p className="text-xs text-gray-600 mt-1">{appointment.type || 'Checkup'}</p>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getStatusColor(appointment.status)}`}>
+                                {appointment.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (() => {
+                const tableRows = dateQuickFilter === 'today'
+                  ? filteredAppointments
+                      .slice()
+                      .sort((a, b) => a.time.localeCompare(b.time))
+                  : [...paginatedUpcoming, ...paginatedPast];
+
+                return (
+                  <div className="rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[960px] w-full text-sm">
+                        <thead className="bg-indigo-50 border-b border-indigo-200">
+                          <tr className="text-indigo-700">
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No.</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Dr. Name</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Time</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Pt Name</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Tx</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Status</th>
+                            <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tableRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="px-3 py-8 text-center text-gray-400 italic">
+                                No appointments found.
+                              </td>
+                            </tr>
+                          ) : (
+                            tableRows.map((appointment, index) => {
+                              const rowNo = index + 1;
+                              const rowStyle = appointment.status === 'Cancelled'
+                                ? 'bg-red-50/40'
+                                : appointment.status === 'Completed'
+                                ? 'bg-emerald-50/40'
+                                : 'bg-white';
+                              return (
+                                <tr key={appointment.id} className={`${rowStyle} border-b border-gray-100 last:border-b-0`}>
+                                  <td className="px-3 py-3 align-top font-semibold text-gray-700">{rowNo}</td>
+                                  <td className="px-3 py-3 align-top text-gray-800">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
+                                  <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">{formatDateDDMMYYYY(appointment.date)}</td>
+                                  <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">{formatTime(appointment.time)}</td>
+                                  <td className="px-3 py-3 align-top font-medium text-gray-900">{appointment.patient_name || 'Unknown Patient'}</td>
+                                  <td className="px-3 py-3 align-top text-gray-700">{appointment.type || 'Checkup'}</td>
+                                  <td className="px-3 py-3 align-top">
+                                    <select
+                                      value={appointment.status}
+                                      onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)}
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                    >
+                                      <option value="Scheduled">Scheduled</option>
+                                      <option value="Completed">Completed</option>
+                                      <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-3 align-top">
+                                    <div className="flex items-center gap-1.5">
+                                      {canViewChart && (
+                                        <button
+                                          onClick={() => onViewChart(appointment)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                          title="Open patient chart"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          Chart
+                                        </button>
+                                      )}
+                                      {canEdit && (
+                                        <button
+                                          onClick={() => onEditAppointment(appointment)}
+                                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                                          title="Edit appointment"
+                                        >
+                                          <Edit2 className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          onClick={() => {
+                                            setAppointmentToDelete(appointment.id);
+                                            setDeleteConfirmOpen(true);
+                                          }}
+                                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                          title="Delete appointment"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {dateQuickFilter !== 'today' && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-gray-100 bg-white p-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Upcoming Pagination</p>
                     <Pagination
                       totalItems={upcomingAppointments.length}
                       itemsPerPage={itemsPerPage}
@@ -612,122 +557,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                       onToggleShowAll={() => setShowAllUpcoming(!showAllUpcoming)}
                     />
                   </div>
-                )}
-              </div>
-
-              {/* Past Appointments */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-gray-600" />
-                  Past Appointments
-                </h3>
-                {pastAppointments.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 italic text-sm">
-                    No past appointments found.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {paginatedPast.map((appointment) => {
-                      const clinicalPlan = parseAppointmentClinicalFocus(appointment.notes);
-                      return (
-                      <div
-                        key={appointment.id}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors opacity-75 gap-4"
-                      >
-                        <div className="flex items-center gap-4 flex-1 w-full">
-                          <div className="flex-shrink-0 w-16 h-16 bg-gray-100 rounded-xl flex flex-col items-center justify-center">
-                            <span className="text-xs font-bold text-gray-700">
-                              {new Date(appointment.date).toLocaleDateString('en-US', { day: 'numeric' })}
-                            </span>
-                            <span className="text-xs text-gray-600">
-                              {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short' })}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-gray-700">{appointment.patient_name || 'Unknown Patient'}</h4>
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(appointment.status)}`}>
-                                {appointment.status}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatTime(appointment.time)}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <FileText className="w-3 h-3" />
-                                {appointment.type || 'Checkup'}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {formatDate(appointment.date)}
-                              </span>
-                            </div>
-                            {clinicalPlan.notes && (
-                              <p className="text-xs text-gray-600 mt-2 italic">{clinicalPlan.notes}</p>
-                            )}
-                            {(clinicalPlan.clinicalFocus || clinicalPlan.targetTeeth.length > 0) && (
-                              <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-2">
-                                {clinicalPlan.clinicalFocus && (
-                                  <p className="text-xs font-medium text-indigo-700">Clinical Focus: {clinicalPlan.clinicalFocus}</p>
-                                )}
-                                {clinicalPlan.targetTeeth.length > 0 && (
-                                  <p className="mt-1 text-xs text-indigo-600">Target Teeth: {clinicalPlan.targetTeeth.join(', ')}</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between w-full sm:w-auto gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-                          {canViewChart && (
-                            <button
-                              onClick={() => onViewChart(appointment)}
-                              className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
-                              title="Open patient chart"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              View Chart
-                            </button>
-                          )}
-                          <select
-                            value={appointment.status}
-                            onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)}
-                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white flex-1 sm:flex-initial"
-                          >
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="Completed">Completed</option>
-                            <option value="Cancelled">Cancelled</option>
-                          </select>
-                          {canEdit && (
-                            <button
-                              onClick={() => onEditAppointment(appointment)}
-                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                              title="Edit appointment"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => {
-                                setAppointmentToDelete(appointment.id);
-                                setDeleteConfirmOpen(true);
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete appointment"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {pastAppointments.length > 0 && (
-                  <div className="sticky bottom-0 bg-white pt-3 border-t border-gray-100">
+                  <div className="rounded-xl border border-gray-100 bg-white p-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Past Pagination</p>
                     <Pagination
                       totalItems={pastAppointments.length}
                       itemsPerPage={itemsPerPage}
@@ -737,9 +568,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                       onToggleShowAll={() => setShowAllPast(!showAllPast)}
                     />
                   </div>
-                )}
-              </div>
-                </>
+                </div>
               )}
             </>
           ) : (

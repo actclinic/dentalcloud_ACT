@@ -5,9 +5,10 @@ interface DoctorProfileViewProps {
   doctor: Doctor | null;
   loading: boolean;
   onSave: (data: Partial<Doctor>) => Promise<void>;
+  hoverTheme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 }
 
-const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ doctor, loading, onSave }) => {
+const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ doctor, loading, onSave, hoverTheme }) => {
   const [formData, setFormData] = useState<Partial<Doctor>>({
     name: '',
     email: '',
@@ -68,9 +69,14 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ doctor, loading, 
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
-      <div className="p-6 border-b border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800">Doctor Profile</h2>
-        <p className="text-sm text-gray-500">Update your account details and login password.</p>
+      <div className="p-6 border-b border-gray-100 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Doctor Profile</h2>
+          <p className="text-sm text-gray-500">Update your account details and login password.</p>
+        </div>
+        <span className="theme-accent-soft-bg theme-accent-text rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap">
+          Theme: {hoverTheme}
+        </span>
       </div>
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         <div>

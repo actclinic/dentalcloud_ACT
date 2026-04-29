@@ -70,6 +70,9 @@ CREATE TABLE app_settings (
   
   -- Custom app name (defaults to "DentalCloud Pro")
   app_name VARCHAR(255) DEFAULT 'DentalCloud Pro',
+  receipt_email TEXT,
+  receipt_phone TEXT,
+  hover_theme TEXT NOT NULL DEFAULT 'blue' CHECK (hover_theme IN ('blue', 'green', 'yellow', 'brown', 'dark')),
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -313,6 +316,28 @@ CREATE TABLE scheduled_tasks (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- ============================================================================
+-- 3.1 COMPATIBILITY UPDATES (KEEP THIS FILE SELF-CONTAINED)
+-- ============================================================================
+-- If this file is edited over time, these idempotent statements help ensure
+-- newer app_settings columns exist even if table definitions drift.
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_email TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_phone TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS hover_theme TEXT NOT NULL DEFAULT 'blue';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'app_settings_hover_theme_check'
+  ) THEN
+    ALTER TABLE app_settings
+    ADD CONSTRAINT app_settings_hover_theme_check
+    CHECK (hover_theme IN ('blue', 'green', 'yellow', 'brown', 'dark'));
+  END IF;
+END $$;
 
 -- ============================================================================
 -- 4. INDEXES FOR PERFORMANCE

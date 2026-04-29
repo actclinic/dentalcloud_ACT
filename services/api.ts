@@ -1984,6 +1984,46 @@ export const api = {
       if (error) {
         throw new Error(error.message);
       }
+    },
+
+    getHoverTheme: async (): Promise<'blue' | 'green' | 'yellow' | 'brown' | 'dark' | null> => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('hover_theme')
+          .eq('id', APP_SETTINGS_SINGLETON_ID)
+          .maybeSingle();
+
+        if (error || !data?.hover_theme) {
+          return null;
+        }
+
+        const theme = String(data.hover_theme).toLowerCase();
+        if (theme === 'blue' || theme === 'green' || theme === 'yellow' || theme === 'brown' || theme === 'dark') {
+          return theme;
+        }
+
+        return null;
+      } catch (error: any) {
+        console.warn('Failed to load hover theme:', error?.message || error);
+        return null;
+      }
+    },
+
+    saveHoverTheme: async (theme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark'): Promise<void> => {
+      const payload = {
+        id: APP_SETTINGS_SINGLETON_ID,
+        hover_theme: theme,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(payload);
+
+      if (error) {
+        throw new Error(error.message);
+      }
     }
   },
 
