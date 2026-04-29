@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Activity, Loader2, Download } from 'lucide-react';
-import { ClinicalRecord } from '../types';
+import { Activity, Loader2, Download, CalendarDays, Stethoscope } from 'lucide-react';
+import { Appointment, ClinicalRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportClinicalRecordsToPDF } from '../utils/pdfExport';
 import { exportClinicalRecordsToExcel } from '../utils/excelExport';
@@ -10,40 +10,108 @@ import ExportMenu from './ExportMenu';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
+  appointments?: Appointment[];
   loading: boolean;
   onRefresh: () => void;
   onDeleteAll: () => void;
   currency: Currency;
   isDoctor?: boolean;
+  initialFilter?: AuditFilter;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, onDeleteAll, currency, isDoctor = false }) => {
+type AuditFilter = 'all' | 'appointments' | 'treatments';
+
+type AuditRow =
+  | { kind: 'treatment'; sortDate: string; record: ClinicalRecord }
+  | { kind: 'appointment'; sortDate: string; appointment: Appointment };
+
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all' }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [auditFilter, setAuditFilter] = useState<AuditFilter>(initialFilter);
   const itemsPerPage = 10;
 
-  const filteredRecords = useMemo(() => {
-    if (!searchTerm) return records;
-    const term = searchTerm.toLowerCase();
-    return records.filter((record) =>
-      (record.patient_name || '').toLowerCase().includes(term) ||
-      (record.doctor_name || '').toLowerCase().includes(term) ||
-      record.description.toLowerCase().includes(term) ||
-      record.date.toLowerCase().includes(term) ||
-      record.teeth.some((tooth) => tooth.toString().includes(term))
-    );
-  }, [records, searchTerm]);
+  const formatCreatedAt = (value?: string | null) => {
+    if (!value) return 'Unknown';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
 
-  const paginatedRecords = useMemo(() => {
-    if (showAll) return filteredRecords;
+  const auditRows = useMemo<AuditRow[]>(() => {
+    const treatmentRows: AuditRow[] = records.map((record) => ({
+      kind: 'treatment',
+      sortDate: `${record.date || ''}T23:59:59`,
+      record
+    }));
+
+    const appointmentRows: AuditRow[] = isDoctor
+      ? []
+      : appointments.map((appointment) => ({
+          kind: 'appointment',
+          sortDate: appointment.created_at || `${appointment.date || ''}T${appointment.time || '00:00:00'}`,
+          appointment
+        }));
+
+    return [...treatmentRows, ...appointmentRows].sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+  }, [records, appointments, isDoctor]);
+
+  const filteredRows = useMemo(() => {
+    const scopedRows = auditRows.filter((row) => {
+      if (auditFilter === 'appointments') return row.kind === 'appointment';
+      if (auditFilter === 'treatments') return row.kind === 'treatment';
+      return true;
+    });
+
+    if (!searchTerm) return scopedRows;
+    const term = searchTerm.toLowerCase();
+    return scopedRows.filter((row) => {
+      if (row.kind === 'treatment') {
+        const record = row.record;
+        return (
+          (record.patient_name || '').toLowerCase().includes(term) ||
+          (record.doctor_name || '').toLowerCase().includes(term) ||
+          record.description.toLowerCase().includes(term) ||
+          record.date.toLowerCase().includes(term) ||
+          record.teeth.some((tooth) => tooth.toString().includes(term))
+        );
+      }
+
+      const appointment = row.appointment;
+      return (
+        (appointment.patient_name || '').toLowerCase().includes(term) ||
+        (appointment.doctor_name || '').toLowerCase().includes(term) ||
+        (appointment.created_by_user_name || '').toLowerCase().includes(term) ||
+        (appointment.type || '').toLowerCase().includes(term) ||
+        (appointment.status || '').toLowerCase().includes(term) ||
+        (appointment.date || '').toLowerCase().includes(term) ||
+        (appointment.time || '').toLowerCase().includes(term) ||
+        (appointment.created_at || '').toLowerCase().includes(term)
+      );
+    });
+  }, [auditRows, auditFilter, searchTerm]);
+
+  const paginatedRows = useMemo(() => {
+    if (showAll) return filteredRows;
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredRecords.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredRecords, currentPage, showAll]);
+    return filteredRows.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredRows, currentPage, showAll]);
 
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [records]);
+  }, [records, appointments, auditFilter]);
+
+  React.useEffect(() => {
+    setAuditFilter(initialFilter);
+    setCurrentPage(1);
+  }, [initialFilter]);
 
   const handleDownloadPDF = () => {
     exportClinicalRecordsToPDF(records, currency);
@@ -77,10 +145,31 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
       <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between md:items-center gap-3 bg-white sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold text-gray-800">{isDoctor ? 'Patient Treatment Records' : 'Clinic Registry Audit'}</h2>
-          <p className="text-sm text-gray-500">{isDoctor ? 'Your completed treatments and history.' : 'Master log of all performed clinical treatments'}</p>
+          <p className="text-sm text-gray-500">{isDoctor ? 'Your completed treatments and history.' : 'Master log of appointments and performed clinical treatments'}</p>
         </div>
         {!isDoctor && (
           <div className="flex flex-col sm:flex-row gap-2 md:gap-3 w-full md:w-auto">
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+              {[
+                { value: 'all', label: 'All logs' },
+                { value: 'appointments', label: 'Appointment log' },
+                { value: 'treatments', label: 'Treatment log' }
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => {
+                    setAuditFilter(item.value as AuditFilter);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    auditFilter === item.value ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
             <div className="relative w-full sm:w-auto">
               <input
                 type="text"
@@ -127,83 +216,127 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, loading, onRefresh, 
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Date</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Log Type</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Event Date</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Patient File</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Clinical Event</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Anatomy</th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Billed Amt</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Event</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Logged By / At</th>
+                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {records.length === 0 ? (
+                {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-400 italic">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-400 italic">
                       No records found.
                     </td>
                   </tr>
                 ) : (
-                  paginatedRecords.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 text-sm text-gray-500">{rec.date}</td>
-                      <td className="px-6 py-4 font-bold text-gray-900">{rec.patient_name || 'Unknown'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-700">{rec.description}</td>
-                      <td className="px-6 py-4 text-xs font-mono text-gray-500">
-                        {rec.teeth && rec.teeth.length > 0 ? (
-                          <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded leading-relaxed">
-                            {formatTeethWithPosition(rec.teeth)}
+                  paginatedRows.map((row) => {
+                    if (row.kind === 'appointment') {
+                      const appointment = row.appointment;
+                      return (
+                        <tr key={`appointment-${appointment.id}`} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 text-sm text-indigo-700 font-semibold">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-1">
+                              <CalendarDays size={14} /> Appointment
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">{appointment.date} {appointment.time}</td>
+                          <td className="px-6 py-4 font-bold text-gray-900">{appointment.patient_name || 'Unknown'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-700">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-700">
+                            Appointment made for {appointment.date} at {appointment.time} ({appointment.type || 'Checkup'}, {appointment.status})
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-700">
+                            <span className="font-semibold">{appointment.created_by_user_name || 'Unknown'}</span>
+                            <span className="block text-xs text-gray-500">{formatCreatedAt(appointment.created_at)}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right text-sm font-black text-gray-900">-</td>
+                        </tr>
+                      );
+                    }
+
+                    const rec = row.record;
+                    return (
+                      <tr key={`treatment-${rec.id}`} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-emerald-700 font-semibold">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1">
+                            <Stethoscope size={14} /> Treatment
                           </span>
-                        ) : 'Gen.'}
-                      </td>
-                      <td className="px-6 py-4 text-right text-sm font-black text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{rec.date}</td>
+                        <td className="px-6 py-4 font-bold text-gray-900">{rec.patient_name || 'Unknown'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700">
+                          {rec.description}
+                          <span className="block text-xs font-mono text-gray-500 mt-1">
+                            {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-700">Clinical record</td>
+                        <td className="px-6 py-4 text-right text-sm font-black text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
 
           <div className="md:hidden divide-y divide-gray-100">
-            {records.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <div className="px-4 py-8 text-center text-gray-400 italic">No records found.</div>
             ) : (
-              paginatedRecords.map((rec) => (
-                <div key={rec.id} className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-wider text-gray-400">Patient</p>
-                      <p className="text-sm font-bold text-gray-900">{rec.patient_name || 'Unknown'}</p>
-                      <p className="text-xs text-gray-500 mt-1">{rec.date}</p>
+              paginatedRows.map((row) => {
+                if (row.kind === 'appointment') {
+                  const appointment = row.appointment;
+                  return (
+                    <div key={`appointment-${appointment.id}`} className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-wider text-indigo-500">Appointment</p>
+                          <p className="text-sm font-bold text-gray-900">{appointment.patient_name || 'Unknown'}</p>
+                          <p className="text-xs text-gray-500 mt-1">{appointment.date} at {appointment.time}</p>
+                        </div>
+                        <p className="text-xs font-black text-indigo-700">{appointment.status}</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Made By</p>
+                        <p className="text-sm text-gray-800">{appointment.created_by_user_name || 'Unknown'}</p>
+                        <p className="text-xs text-gray-500 mt-1">{formatCreatedAt(appointment.created_at)}</p>
+                      </div>
                     </div>
-                    <p className="text-sm font-black text-indigo-700">{formatCurrency(rec.cost || 0, currency)}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Treatment</p>
-                    <p className="text-sm text-gray-800">{rec.description}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg border border-gray-100 p-2">
-                      <p className="text-gray-400 uppercase font-semibold mb-1">Doctor</p>
-                      <p className="text-gray-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</p>
+                  );
+                }
+
+                const rec = row.record;
+                return (
+                  <div key={`treatment-${rec.id}`} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-emerald-500">Treatment</p>
+                        <p className="text-sm font-bold text-gray-900">{rec.patient_name || 'Unknown'}</p>
+                        <p className="text-xs text-gray-500 mt-1">{rec.date}</p>
+                      </div>
+                      <p className="text-sm font-black text-indigo-700">{formatCurrency(rec.cost || 0, currency)}</p>
                     </div>
-                    <div className="rounded-lg border border-gray-100 p-2">
-                      <p className="text-gray-400 uppercase font-semibold mb-1">Teeth</p>
-                      <p className="text-gray-700">
-                        {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
-                      </p>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Treatment</p>
+                      <p className="text-sm text-gray-800">{rec.description}</p>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </>
       )}
 
-      {!loading && records.length > 0 && (
+      {!loading && filteredRows.length > 0 && (
         <Pagination
-          totalItems={records.length}
+          totalItems={filteredRows.length}
           itemsPerPage={itemsPerPage}
           currentPage={currentPage}
           onPageChange={setCurrentPage}

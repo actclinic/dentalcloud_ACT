@@ -122,6 +122,9 @@ export interface Appointment {
   type: string;
   status: 'Scheduled' | 'Completed' | 'Cancelled';
   notes?: string;
+  created_at?: string;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
 }
 
 export interface User {

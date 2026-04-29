@@ -16,6 +16,7 @@ interface AppointmentsViewProps {
   onDeleteAppointment: (id: string) => void;
   onUpdateStatus: (id: string, status: 'Scheduled' | 'Completed' | 'Cancelled') => void;
   onViewChart: (appointment: Appointment) => void;
+  onOpenAppointmentLog?: () => void;
   onExportPDF?: () => Promise<void>;
   onExportExcel?: () => Promise<void>;
   canCreate?: boolean;
@@ -34,6 +35,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   onDeleteAppointment,
   onUpdateStatus,
   onViewChart,
+  onOpenAppointmentLog,
   onExportPDF,
   onExportExcel,
   canCreate = true,
@@ -303,6 +305,14 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           </svg>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          {onOpenAppointmentLog && (
+            <button
+              onClick={onOpenAppointmentLog}
+              className="flex-1 md:flex-initial flex items-center justify-center gap-2 border border-indigo-200 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
+            >
+              <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Appointment Log</span>
+            </button>
+          )}
           {canExport && (
             <ExportMenu
               disabled={appointments.length === 0 || exporting}
@@ -452,7 +462,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                   <div className="rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="min-w-[960px] w-full text-sm">
-                        <thead className="bg-indigo-50 border-b border-indigo-200">
+                        <thead className="sticky top-0 z-10 bg-indigo-50 border-b border-indigo-200">
                           <tr className="text-indigo-700">
                             <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No.</th>
                             <th className="px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Dr. Name</th>

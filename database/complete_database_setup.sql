@@ -189,6 +189,8 @@ CREATE TABLE appointments (
   location_id UUID REFERENCES locations(id),
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
   doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by_user_name VARCHAR(255),
   date DATE NOT NULL,
   time TIME NOT NULL,
   type VARCHAR(100),

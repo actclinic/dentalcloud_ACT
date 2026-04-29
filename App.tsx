@@ -409,6 +409,7 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isTabPending, startTabTransition] = useTransition();
   const [doctorActiveTab, setDoctorActiveTab] = useState<ViewState>('dashboard');
+  const [recordsInitialFilter, setRecordsInitialFilter] = useState<'all' | 'appointments' | 'treatments'>('all');
   
   // -- Form State --
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -1329,7 +1330,9 @@ const App: React.FC = () => {
       const payload: Partial<Appointment> = {
         ...newAppointmentData,
         doctor_id: (newAppointmentData.doctor_id || '').trim() || undefined,
-        notes: compiledNotes || undefined
+        notes: compiledNotes || undefined,
+        created_by_user_id: auth.getSession()?.userId || null,
+        created_by_user_name: currentUser || auth.getSession()?.username || null
       };
       if (editingAppointment) {
         await api.appointments.update(editingAppointment.id, payload);
@@ -1364,7 +1367,9 @@ const App: React.FC = () => {
     await api.appointments.create({
       ...data,
       location_id: currentLocationId,
-      status: 'Scheduled'
+      status: 'Scheduled',
+      created_by_user_id: auth.getSession()?.userId || null,
+      created_by_user_name: currentUser || auth.getSession()?.username || null
     });
 
     await fetchInitialData();
@@ -2411,7 +2416,7 @@ const App: React.FC = () => {
                <NavItem icon={<Stethoscope size={18} />} label="Service Menu" active={currentView === 'treatments'} onClick={() => { setCurrentView('treatments'); setIsMobileMenuOpen(false); }} />
              )}
              {canAccessView('records') && (
-               <NavItem icon={<ClipboardList size={18} />} label={isDoctor ? 'Patient Records' : 'Audit Log'} active={currentView === 'records'} onClick={() => { setCurrentView('records'); setIsMobileMenuOpen(false); }} />
+               <NavItem icon={<ClipboardList size={18} />} label={isDoctor ? 'Patient Records' : 'Audit Log'} active={currentView === 'records'} onClick={() => { setRecordsInitialFilter('all'); setCurrentView('records'); setIsMobileMenuOpen(false); }} />
              )}
              {canAccessView('finance') && <NavItem icon={<CreditCard size={18} />} label="Clinical Focus" active={currentView === 'finance'} onClick={() => { setCurrentView('finance'); setIsMobileMenuOpen(false); }} />}
              {canAccessView('expenses') && (
@@ -2558,6 +2563,10 @@ const App: React.FC = () => {
                 onDeleteAppointment={handleDeleteAppointment} 
                 onUpdateStatus={handleUpdateAppointmentStatus} 
                 onViewChart={handleViewAppointmentChart}
+                onOpenAppointmentLog={canAccessView('records') && !isDoctor ? () => {
+                  setRecordsInitialFilter('appointments');
+                  setCurrentView('records');
+                } : undefined}
                 canCreate={!isDoctor}
                 canEdit={!isDoctor}
                 canDelete={!isDoctor}
@@ -2577,7 +2586,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', schedules: [] }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView

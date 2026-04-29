@@ -1028,14 +1028,31 @@ export const api = {
         time: data.time,
         type: data.type,
         status: data.status || 'Scheduled',
-        notes: data.notes
+        notes: data.notes,
+        created_by_user_id: data.created_by_user_id || null,
+        created_by_user_name: data.created_by_user_name || null
       };
 
-      const { data: result, error } = await supabase
+      let { data: result, error } = await supabase
         .from('appointments')
         .insert(payload)
         .select('*, patients(name), doctors(name)')
         .single();
+
+      if (error && /created_by_user_(id|name)/i.test(error.message || '')) {
+        const legacyPayload = { ...payload };
+        delete (legacyPayload as any).created_by_user_id;
+        delete (legacyPayload as any).created_by_user_name;
+
+        const legacyInsert = await supabase
+          .from('appointments')
+          .insert(legacyPayload)
+          .select('*, patients(name), doctors(name)')
+          .single();
+
+        result = legacyInsert.data;
+        error = legacyInsert.error;
+      }
 
       if (error) {
         if (error.code === '23503') throw new Error('Invalid Patient or Doctor ID');

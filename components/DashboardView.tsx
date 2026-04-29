@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon } from 'lucide-react';
+import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon, Trophy } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
@@ -287,6 +287,22 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       .slice(0, 6);
   }, [filteredTreatmentRecords]);
 
+  const topAppointmentCreators = useMemo(() => {
+    const map = new Map<string, { name: string; count: number }>();
+
+    filteredAppointments.forEach(appointment => {
+      const key = appointment.created_by_user_id || appointment.created_by_user_name || 'unknown';
+      const name = appointment.created_by_user_name || 'Unknown';
+      const current = map.get(key) || { name, count: 0 };
+      current.count += 1;
+      map.set(key, current);
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 8);
+  }, [filteredAppointments]);
+
   // New Patients by Month (range)
   const newPatientsMonthlyData = useMemo(() => {
     return rangeMonths.map(month => {
@@ -560,6 +576,43 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Appointment Makers</h3>
+            <p className="text-xs text-gray-500">Users who created the most appointments in the selected range</p>
+          </div>
+          <span className="inline-flex items-center gap-2 text-xs text-gray-500">
+            <Trophy className="w-4 h-4 text-amber-500" />
+            Marketing performance
+          </span>
+        </div>
+        {topAppointmentCreators.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No appointment creator data in this range.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="text-left py-2 pr-4">Rank</th>
+                  <th className="text-left py-2 pr-4">User</th>
+                  <th className="text-right py-2">Appointments Made</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {topAppointmentCreators.map((creator, index) => (
+                  <tr key={`${creator.name}-${index}`} className="text-gray-700">
+                    <td className="py-2 pr-4 font-semibold text-gray-500">#{index + 1}</td>
+                    <td className="py-2 pr-4 font-medium text-gray-900">{creator.name}</td>
+                    <td className="py-2 text-right font-semibold text-gray-900">{creator.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
