@@ -525,6 +525,10 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   const activeExpenses = useMemo(() => filterByLocation(expenses), [expenses, analysisLocationId]);
   const activeRecalls = useMemo(() => filterByLocation(recalls), [recalls, analysisLocationId]);
   const activeTreatmentRecords = useMemo(() => filterByLocation(treatmentRecords), [treatmentRecords, analysisLocationId]);
+  const currentStaffUser = useMemo(
+    () => currentAdminId ? users.find(user => user.id === currentAdminId) : undefined,
+    [currentAdminId, users]
+  );
 
   const branchSummaries = useMemo(() => {
     return locations.map(location => ({
@@ -1794,6 +1798,7 @@ Need more detailed help?
         location_id: analysisLocationId || null,
         all_branches: !analysisLocationId
       },
+      current_staff: currentStaffUser ? { id: currentStaffUser.id, username: currentStaffUser.username, role: currentStaffUser.role } : null,
       s: {
         p: activePatients.length,
         a: activeAppointments.length,
@@ -1854,6 +1859,7 @@ Need more detailed help?
         location_id: analysisLocationId || null,
         all_branches: !analysisLocationId
       },
+      current_staff: currentStaffUser ? { id: currentStaffUser.id, username: currentStaffUser.username, role: currentStaffUser.role } : null,
       s: {
         p: activePatients.length,
         a: activeAppointments.length,
@@ -1867,6 +1873,15 @@ Need more detailed help?
     };
 
     if (!isActionQuery && mode === 'ask') {
+      const appointmentCreatorMap = new Map<string, number>();
+      activeAppointments.forEach(appointment => {
+        const creator = appointment.created_by_user_name?.trim() || 'Unknown';
+        appointmentCreatorMap.set(creator, (appointmentCreatorMap.get(creator) || 0) + 1);
+      });
+      const topAppointmentCreator = Array.from(appointmentCreatorMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }))[0] || null;
+
       // Highly optimized/compressed data for minimal token usage
       return {
         ...baseData,
@@ -1885,7 +1900,8 @@ Need more detailed help?
           total: activeRecalls.length,
           overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
           due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
-        }
+        },
+        top_appointment_creator: topAppointmentCreator
       };
     }
 
@@ -1937,6 +1953,21 @@ Need more detailed help?
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([name, treatments]) => ({ name, treatments }));
+
+    const appointmentCreator30dMap = new Map<string, { name: string; count: number }>();
+    activeAppointments
+      .filter(appointment => appointment.date >= thirtyDaysAgoStr)
+      .forEach(appointment => {
+        const key = appointment.created_by_user_id || appointment.created_by_user_name || 'unknown';
+        const creator = appointment.created_by_user_name?.trim() || 'Unknown';
+        const current = appointmentCreator30dMap.get(key) || { name: creator, count: 0 };
+        current.count += 1;
+        appointmentCreator30dMap.set(key, current);
+      });
+
+    const appointmentCreators30d = Array.from(appointmentCreator30dMap.values())
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 8);
 
     const monthlyExpenses = activeExpenses.filter(exp => {
       const expDate = new Date(exp.date);
@@ -2007,6 +2038,8 @@ Need more detailed help?
         t: a.time, 
         s: a.status,
         ty: a.type,
+        by: a.created_by_user_name || 'Unknown',
+        ca: a.created_at || '',
         loc: a.location_id
       })),
       appointment_history: activeAppointments
@@ -2022,6 +2055,8 @@ Need more detailed help?
           s: a.status,
           ty: a.type,
           n: a.notes ? a.notes.substring(0, 80) : '',
+          by: a.created_by_user_name || 'Unknown',
+          ca: a.created_at || '',
           loc: a.location_id
         })),
       medicines: activeMedicines.slice(0, 25).map(m => ({ 
@@ -2063,7 +2098,9 @@ Need more detailed help?
       },
       reporting_insights: {
         doctor_popularity_30d: doctorPopularity30d,
-        top_doctor_30d: doctorPopularity30d[0] || null
+        top_doctor_30d: doctorPopularity30d[0] || null,
+        appointment_creators_30d: appointmentCreators30d,
+        top_appointment_creator_30d: appointmentCreators30d[0] || null
       },
       recall_insights: {
         summary: recallSummary,
@@ -2223,6 +2260,14 @@ APPOINTMENT MANAGEMENT:
 - apt_get_past(name): Get past appointment history for patient.
 - staff_availability(date, dr_id): Check doctor availability for date.
 - bulk_appointments(patients[], dr_id, date, time): Schedule multiple appointments.
+
+AUDIT LOG AND APPOINTMENT REPORTING:
+- The Audit Log has three filters: All logs, Appointment log, and Treatment log.
+- Appointment log rows show which staff user created an appointment and when it was created.
+- The Appointments tab has an Appointment Log button that opens Audit Log already filtered to appointment entries.
+- Dashboard includes Appointment Makers, ranking users by appointments created in the selected date range.
+- When Agent Mode creates an appointment, it is recorded under the currently logged-in staff user.
+- Older appointments created before the audit migration may show creator as Unknown.
 
 DOCTOR MANAGEMENT:
 - dr_c(n, e, ph, s, sch): Create doctor. n=name, e=email, ph=phone, s=specialization, sch=schedules.
@@ -2540,6 +2585,8 @@ When users ask complex questions, think through this framework:
 - Follow-up recommendations
 - Alternative treatment options
 - Doctor popularity insights (identify most famous doctor by treatment volume in the last 30 days when asked)
+- Appointment maker insights (identify which staff user created the most appointments in the selected period when asked)
+- Audit log guidance (explain All logs, Appointment log, Treatment log, and the Appointment Log shortcut in the Appointments tab)
 
 Today: ${contextData.td}
 Clinic Time Zone: ${getLocalTimeZone()}
@@ -2568,6 +2615,7 @@ INTELLIGENCE GUIDELINES:
 - COMPOUND ACTIONS: Process complex requests efficiently using internal reasoning to determine optimal action sequences.
 - SCHEDULED TASKS: When the user says times like "1:00 PM", "tonight", or "9:00 PM", treat them as the clinic's local time zone unless the user explicitly gives another time zone.
 - BRANCH DISCIPLINE: Always respect the selected branch scope in Practice Data. When the scope is all branches, make that clear in analysis. For write actions, ask for or include the branch when it is ambiguous.
+- APPOINTMENT AUDIT DISCIPLINE: Appointment creator reports come from appointment audit fields. If the creator is Unknown, explain that the appointment was likely made before creator tracking was enabled or before the migration was applied.
 - INTERNAL PROCESSING: All analytical thinking and planning occurs internally. Only present final, formatted results to users.
 
 **MANDATORY DOUBLE-CHECK STAGE:**
@@ -2621,6 +2669,7 @@ When responding to analysis requests, ALWAYS format data in structured tables wi
 2. PATIENT ANALYSIS: Demographics, treatment frequencies, appointment patterns
 3. INVENTORY ANALYSIS: Stock levels, turnover rates, reorder recommendations
 4. TREATMENT ANALYSIS: Procedure volumes, success rates, seasonal trends
+5. APPOINTMENT MAKER ANALYSIS: Rank staff by appointments created, show appointment counts, and mention Unknown separately if present
 
 Example table format:
 | Category | Current Period | Previous Period | Change | % Change | Insights |
@@ -3110,6 +3159,36 @@ ${rows}
 
 💡 This matches the new dashboard graph: **Doctor Popularity (Last 30 Days)**.`);
           }
+        } else if (lowerMessage.includes('appointment') && (lowerMessage.includes('maker') || lowerMessage.includes('made') || lowerMessage.includes('created') || lowerMessage.includes('hardworking') || lowerMessage.includes('marketing'))) {
+          const contextData: any = getContextualData();
+          const creators = contextData.reporting_insights?.appointment_creators_30d || [];
+
+          if (creators.length === 0) {
+            resolve(`**Appointment Makers Report (Last 30 Days)**
+
+No appointment creator data is available yet.
+
+This can happen when appointments were created before creator tracking was enabled, or before the appointment audit migration was applied.`);
+          } else {
+            const topCreator = creators[0];
+            const totalAppointments = creators.reduce((sum: number, item: any) => sum + (item.count || 0), 0);
+            const rows = creators.slice(0, 8)
+              .map((item: any, index: number) => {
+                const share = totalAppointments ? Math.round((item.count / totalAppointments) * 100) : 0;
+                return `| #${index + 1} | ${item.name} | ${item.count} | ${share}% |`;
+              })
+              .join('\n');
+
+            resolve(`**Appointment Makers Report (Last 30 Days)**
+
+Top appointment maker: **${topCreator.name}** (${topCreator.count} appointments)
+
+| Rank | User | Appointments Made | Share |
+|------|------|-------------------|-------|
+${rows}
+
+You can also open the Appointments tab and click **Appointment Log** to review the detailed audit entries.`);
+          }
         } else {
           resolve(`🤖 **I'm here to help with clinical dental assistance!**
 
@@ -3201,7 +3280,9 @@ I can provide guidance on:
                 time: pendingAction.params.t || pendingAction.params.tm || pendingAction.params.time,
                 type: pendingAction.params.ty || pendingAction.params.type,
                 notes: pendingAction.params.n || pendingAction.params.notes,
-                status: 'Scheduled'
+                status: 'Scheduled',
+                created_by_user_id: currentAdminId || null,
+                created_by_user_name: currentStaffUser?.username || 'Loli AI Assistant'
               });
               result.verification = await verifyAppointmentCreateAction(locationId, pendingAction.params, result, patientId, doctorId);
             }
