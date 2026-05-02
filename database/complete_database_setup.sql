@@ -195,7 +195,7 @@ CREATE TABLE appointments (
   guest_phone VARCHAR(50),
   guest_source VARCHAR(50),
   guest_notes TEXT,
-  converted_patient_id UUID REFERENCES patients(id) ON DELETE SET NULL,
+  converted_patient_id UUID,
   date DATE NOT NULL,
   time TIME NOT NULL,
   type VARCHAR(100),
@@ -210,6 +210,10 @@ CREATE TABLE appointments (
     )
   )
 );
+
+ALTER TABLE appointments
+ADD CONSTRAINT appointments_converted_patient_id_fkey
+FOREIGN KEY (converted_patient_id) REFERENCES patients(id) ON DELETE SET NULL;
 
 -- Medicines (Inventory)
 CREATE TABLE medicines (

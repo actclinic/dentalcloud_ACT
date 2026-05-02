@@ -991,7 +991,7 @@ export const api = {
       try {
         let query = supabase
           .from('appointments')
-          .select('*, patients(name), doctors(name)')
+          .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
           .order('date');
 
         if (locationId) {
@@ -1047,7 +1047,7 @@ export const api = {
       let { data: result, error } = await supabase
         .from('appointments')
         .insert(payload)
-        .select('*, patients(name), doctors(name)')
+        .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
         .single();
 
       if (error && /created_by_user_(id|name)/i.test(error.message || '')) {
@@ -1058,7 +1058,7 @@ export const api = {
         const legacyInsert = await supabase
           .from('appointments')
           .insert(legacyPayload)
-          .select('*, patients(name), doctors(name)')
+          .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
           .single();
 
         result = legacyInsert.data;
@@ -1130,7 +1130,7 @@ export const api = {
         .from('appointments')
         .update(updatePayload)
         .eq('id', id)
-        .select('*, patients(name), doctors(name)')
+        .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
         .single();
 
       if (error) throw new Error(error.message);
