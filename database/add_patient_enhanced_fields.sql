@@ -15,7 +15,7 @@ ADD COLUMN IF NOT EXISTS address TEXT,
 ADD COLUMN IF NOT EXISTS city VARCHAR(100),
 ADD COLUMN IF NOT EXISTS state_region VARCHAR(100),
 ADD COLUMN IF NOT EXISTS patient_type VARCHAR(50) DEFAULT 'walk-in' 
-  CHECK (patient_type IN ('online', 'walk-in', 'phone call', 'hotline', 'tiktok', 'tiktok hotline'));
+  CHECK (patient_type IN ('online', 'walk-in', 'phone call', 'hotline', 'tiktok', 'tiktok hotline', 'otp', 'OTP'));
 
 -- Add index for patient_type for filtering
 CREATE INDEX IF NOT EXISTS idx_patients_patient_type ON patients(patient_type);
@@ -28,7 +28,7 @@ COMMENT ON COLUMN patients.age IS 'Patient age in years';
 COMMENT ON COLUMN patients.address IS 'Street address';
 COMMENT ON COLUMN patients.city IS 'City (Myanmar cities from myanmar-cities library)';
 COMMENT ON COLUMN patients.state_region IS 'State/Region in Myanmar';
-COMMENT ON COLUMN patients.patient_type IS 'Patient source: online, walk-in, phone call, hotline, tiktok, tiktok hotline';
+COMMENT ON COLUMN patients.patient_type IS 'Patient source: online, walk-in, phone call, hotline, tiktok, tiktok hotline, OTP';
 
 -- Verification
 SELECT 'Migration completed successfully!' as status;

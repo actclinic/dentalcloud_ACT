@@ -2863,6 +2863,7 @@ const App: React.FC = () => {
                   <option value="Walk-in">Walk-in</option>
                   <option value="ONP">ONP</option>
                   <option value="RNP">RNP</option>
+                  <option value="OTP">OTP</option>
                   <option value="Hotline">Hotline</option>
                   <option value="Rec-ph call">Rec-ph call</option>
                   <option value="Tiktok">Tiktok</option>

@@ -158,10 +158,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       tiktok: 'Tiktok',
       'tiktok hotline': 'Tiktok Hotline',
       onp: 'ONP',
-      rnp: 'RNP'
+      rnp: 'RNP',
+      otp: 'OTP'
     };
 
-    if (normalized === 'Walk-in' || normalized === 'ONP' || normalized === 'RNP' || normalized === 'Hotline' || normalized === 'Rec-ph call' || normalized === 'Tiktok' || normalized === 'Tiktok Hotline') {
+    if (normalized === 'Walk-in' || normalized === 'ONP' || normalized === 'RNP' || normalized === 'OTP' || normalized === 'Hotline' || normalized === 'Rec-ph call' || normalized === 'Tiktok' || normalized === 'Tiktok Hotline') {
       return normalized as Patient['patient_type'];
     }
 
@@ -843,6 +844,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 <option value="Walk-in">Walk-in</option>
                 <option value="ONP">ONP</option>
                 <option value="RNP">RNP</option>
+                <option value="OTP">OTP</option>
                 <option value="Hotline">Hotline</option>
                 <option value="Rec-ph call">Rec-ph call</option>
                 <option value="Tiktok">Tiktok</option>
