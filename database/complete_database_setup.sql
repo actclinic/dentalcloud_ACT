@@ -187,16 +187,28 @@ CREATE TABLE treatments (
 CREATE TABLE appointments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   location_id UUID REFERENCES locations(id),
-  patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+  patient_id UUID REFERENCES patients(id) ON DELETE SET NULL,
   doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL,
   created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   created_by_user_name VARCHAR(255),
+  guest_name VARCHAR(255),
+  guest_phone VARCHAR(50),
+  guest_source VARCHAR(50),
+  guest_notes TEXT,
+  converted_patient_id UUID REFERENCES patients(id) ON DELETE SET NULL,
   date DATE NOT NULL,
   time TIME NOT NULL,
   type VARCHAR(100),
   status VARCHAR(20) DEFAULT 'Scheduled',
   notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT appointments_registered_or_guest_check CHECK (
+    patient_id IS NOT NULL
+    OR (
+      NULLIF(BTRIM(COALESCE(guest_name, '')), '') IS NOT NULL
+      AND NULLIF(BTRIM(COALESCE(guest_phone, '')), '') IS NOT NULL
+    )
+  )
 );
 
 -- Medicines (Inventory)
@@ -374,6 +386,10 @@ CREATE INDEX idx_appointments_patient ON appointments(patient_id);
 CREATE INDEX idx_appointments_doctor ON appointments(doctor_id);
 CREATE INDEX idx_appointments_date ON appointments(date);
 CREATE INDEX idx_appointments_location ON appointments(location_id);
+CREATE INDEX idx_appointments_created_by_user_id ON appointments(created_by_user_id);
+CREATE INDEX idx_appointments_created_at ON appointments(created_at);
+CREATE INDEX idx_appointments_guest_phone ON appointments(guest_phone);
+CREATE INDEX idx_appointments_guest_source ON appointments(guest_source);
 CREATE INDEX idx_medicines_location ON medicines(location_id);
 CREATE INDEX idx_medicines_name ON medicines(name);
 CREATE INDEX idx_medicines_category ON medicines(category);

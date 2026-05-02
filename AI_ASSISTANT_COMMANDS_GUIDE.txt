@@ -84,6 +84,20 @@ CREATE APPOINTMENT:
   "n": "Routine dental examination" 
 } }
 
+CREATE UNREGISTERED MARKETING LEAD APPOINTMENT:
+{ "action": "apt_c", "params": {
+  "guest_name": "Aung Aung",
+  "guest_phone": "09123456789",
+  "guest_source": "Marketing Team",
+  "doctor_name": "Dr. Mya",
+  "dt": "2026-05-10",
+  "t": "14:00",
+  "ty": "Consultation",
+  "n": "Lead is not registered yet"
+} }
+
+Use guest_name and guest_phone when the person should not become a patient record yet. Do not create a patient first unless the user asks to register or convert the lead.
+
 UPDATE APPOINTMENT:
 { "action": "apt_u", "params": { 
   "id": "appointment789", 

@@ -1005,7 +1005,7 @@ export const api = {
         // Flatten the response to match the Appointment interface
         return (data || []).map((apt: any) => ({
           ...apt,
-          patient_name: apt.patients?.name || 'Unknown',
+          patient_name: apt.patients?.name || apt.guest_name || 'Unknown',
           doctor_name: apt.doctors?.name || undefined
         }));
       } catch (err) {
@@ -1015,20 +1015,31 @@ export const api = {
     },
     create: async (data: Partial<Appointment>): Promise<Appointment> => {
       if (!data.location_id) throw new Error('location_id is required');
-      if (!data.patient_id) throw new Error('patient_id is required');
+      const hasRegisteredPatient = !!data.patient_id;
+      const guestName = (data.guest_name || '').trim();
+      const guestPhone = (data.guest_phone || '').trim();
+      const hasGuestContact = !!guestName && !!guestPhone;
+      if (!hasRegisteredPatient && !hasGuestContact) {
+        throw new Error('Select a registered patient or enter a lead name and phone number.');
+      }
       if (!data.date) throw new Error('date is required');
       if (!data.time) throw new Error('time is required');
       if (!data.type) throw new Error('type is required');
 
       const payload = {
         location_id: data.location_id,
-        patient_id: data.patient_id,
+        patient_id: data.patient_id || null,
         doctor_id: data.doctor_id && String(data.doctor_id).trim() !== '' ? data.doctor_id : null,
         date: data.date,
         time: data.time,
         type: data.type,
         status: data.status || 'Scheduled',
         notes: data.notes,
+        guest_name: hasRegisteredPatient ? null : guestName,
+        guest_phone: hasRegisteredPatient ? null : guestPhone,
+        guest_source: hasRegisteredPatient ? null : (data.guest_source || '').trim() || null,
+        guest_notes: hasRegisteredPatient ? null : (data.guest_notes || '').trim() || null,
+        converted_patient_id: data.converted_patient_id || null,
         created_by_user_id: data.created_by_user_id || null,
         created_by_user_name: data.created_by_user_name || null
       };
@@ -1073,7 +1084,7 @@ export const api = {
       // Flatten the response
       return {
         ...result,
-        patient_name: result.patients?.name || 'Unknown',
+        patient_name: result.patients?.name || result.guest_name || 'Unknown',
         doctor_name: result.doctors?.name || undefined
       };
     },
@@ -1107,6 +1118,9 @@ export const api = {
     update: async (id: string, data: Partial<Appointment>): Promise<Appointment> => {
       const updatePayload = {
         ...data,
+        patient_id: Object.prototype.hasOwnProperty.call(data, 'patient_id')
+          ? (data.patient_id || null)
+          : undefined,
         doctor_id: Object.prototype.hasOwnProperty.call(data, 'doctor_id')
           ? (data.doctor_id && String(data.doctor_id).trim() !== '' ? data.doctor_id : null)
           : undefined
@@ -1135,7 +1149,7 @@ export const api = {
       // Flatten the response
       return {
         ...result,
-        patient_name: result.patients?.name || 'Unknown',
+        patient_name: result.patients?.name || result.guest_name || 'Unknown',
         doctor_name: result.doctors?.name || undefined
       };
     },

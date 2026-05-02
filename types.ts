@@ -113,7 +113,7 @@ export interface DoctorInput {
 export interface Appointment {
   id: string;
   location_id: string;
-  patient_id: string;
+  patient_id?: string | null;
   patient_name?: string;
   doctor_id?: string;
   doctor_name?: string;
@@ -122,6 +122,11 @@ export interface Appointment {
   type: string;
   status: 'Scheduled' | 'Completed' | 'Cancelled';
   notes?: string;
+  guest_name?: string | null;
+  guest_phone?: string | null;
+  guest_source?: string | null;
+  guest_notes?: string | null;
+  converted_patient_id?: string | null;
   created_at?: string;
   created_by_user_id?: string | null;
   created_by_user_name?: string | null;

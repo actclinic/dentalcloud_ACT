@@ -111,6 +111,17 @@ const isHoverTheme = (value: unknown): value is HoverTheme => {
   return value === 'blue' || value === 'green' || value === 'yellow' || value === 'brown' || value === 'dark';
 };
 
+const LEAD_SOURCE_OPTIONS = ['Marketing Team', 'Hotline', 'Tiktok', 'Tiktok Hotline', 'Facebook', 'Phone Call', 'Walk-in', 'Referral'];
+
+const mapLeadSourceToPatientType = (source?: string | null): Patient['patient_type'] => {
+  const normalized = (source || '').trim().toLowerCase();
+  if (normalized.includes('tiktok') && normalized.includes('hotline')) return 'Tiktok Hotline';
+  if (normalized.includes('tiktok')) return 'Tiktok';
+  if (normalized.includes('hotline')) return 'Hotline';
+  if (normalized.includes('phone') || normalized.includes('call')) return 'Rec-ph call';
+  return 'Walk-in';
+};
+
 const toLocalISODate = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -429,6 +440,8 @@ const App: React.FC = () => {
   const [clinicalFeeAmount, setClinicalFeeAmount] = useState(0);
   const [applyClinicalFeeOnRegistration, setApplyClinicalFeeOnRegistration] = useState(false);
   const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: '', status: 'Scheduled', patient_id: '', doctor_id: '' });
+  const [appointmentPatientMode, setAppointmentPatientMode] = useState<'registered' | 'lead'>('registered');
+  const [convertingLeadAppointment, setConvertingLeadAppointment] = useState<Appointment | null>(null);
   const [appointmentClinicalFocus, setAppointmentClinicalFocus] = useState('');
   const [appointmentTargetTeethInput, setAppointmentTargetTeethInput] = useState('');
   const [appointmentGeneralNotes, setAppointmentGeneralNotes] = useState('');
@@ -980,7 +993,7 @@ const App: React.FC = () => {
           ? recordsData.filter((record) => record.doctor_id === session.doctor_id)
           : recordsData;
         const doctorPatientIds = new Set<string>([
-          ...doctorAppointments.map((appointment) => appointment.patient_id),
+          ...doctorAppointments.map((appointment) => appointment.patient_id).filter((patientId): patientId is string => !!patientId),
           ...doctorRecords.map((record) => record.patient_id)
         ]);
         const scopedPatients = isDoctorSession
@@ -1250,7 +1263,13 @@ const App: React.FC = () => {
         location_id: currentLocationId,
         balance: registrationFee,
       } as Parameters<typeof api.patients.create>[0];
-      await api.patients.create(patientInput);
+      const createdPatient = await api.patients.create(patientInput);
+      if (convertingLeadAppointment) {
+        await api.appointments.update(convertingLeadAppointment.id, {
+          patient_id: createdPatient.id,
+          converted_patient_id: createdPatient.id
+        });
+      }
       setShowPatientModal(false);
       fetchInitialData(); 
       setNewPatientData({ 
@@ -1266,6 +1285,7 @@ const App: React.FC = () => {
         patient_type: 'Walk-in'
       });
       setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
+      setConvertingLeadAppointment(null);
       if (registrationFee > 0) {
         setToast({
           message: `Patient registered with clinical fee: ${formatCurrency(registrationFee, currency)}.`,
@@ -1309,7 +1329,8 @@ const App: React.FC = () => {
   };
 
   const resetAppointmentForm = () => {
-    setNewAppointmentData({ date: '', time: '', type: appointmentTypeOptions[0] || '', status: 'Scheduled', patient_id: '', doctor_id: '' });
+    setAppointmentPatientMode('registered');
+    setNewAppointmentData({ date: '', time: '', type: appointmentTypeOptions[0] || '', status: 'Scheduled', patient_id: '', doctor_id: '', guest_name: '', guest_phone: '', guest_source: '', guest_notes: '' });
     setDoctorSearchQuery('');
     setShowDoctorDropdown(false);
     setAppointmentClinicalFocus('');
@@ -1329,6 +1350,11 @@ const App: React.FC = () => {
       });
       const payload: Partial<Appointment> = {
         ...newAppointmentData,
+        patient_id: appointmentPatientMode === 'registered' ? newAppointmentData.patient_id : null,
+        guest_name: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_name || '').trim() : null,
+        guest_phone: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_phone || '').trim() : null,
+        guest_source: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_source || '').trim() : null,
+        guest_notes: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_notes || '').trim() : null,
         doctor_id: (newAppointmentData.doctor_id || '').trim() || undefined,
         notes: compiledNotes || undefined,
         created_by_user_id: auth.getSession()?.userId || null,
@@ -2091,6 +2117,26 @@ const App: React.FC = () => {
     handlePatientSelect(patient);
   };
 
+  const handleConvertLeadAppointment = (appointment: Appointment) => {
+    setConvertingLeadAppointment(appointment);
+    setNewPatientData({
+      name: appointment.guest_name || appointment.patient_name || '',
+      email: '',
+      phone: appointment.guest_phone || '',
+      medicalHistory: appointment.guest_notes || '',
+      password: '',
+      age: undefined,
+      address: '',
+      city: '',
+      township: '',
+      patient_type: mapLeadSourceToPatientType(appointment.guest_source)
+    });
+    setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
+    setShowAppointmentModal(false);
+    setEditingAppointment(null);
+    setShowPatientModal(true);
+  };
+
   const handleTreatmentSelectionConfirm = (selectedTreatments: ClinicalRecord[]) => {
     const selectedTreatmentIds = new Set(selectedTreatments.map((treatment) => treatment.id));
     const selectedDates = new Set(selectedTreatments.map((treatment) => treatment.date));
@@ -2552,7 +2598,20 @@ const App: React.FC = () => {
                 onEditAppointment={(apt) => {
                   const clinicalPlan = parseAppointmentClinicalFocus(apt.notes);
                   setEditingAppointment(apt);
-                  setNewAppointmentData({ date: apt.date, time: apt.time, type: apt.type || '', status: apt.status, patient_id: apt.patient_id, doctor_id: apt.doctor_id, notes: apt.notes });
+                  setAppointmentPatientMode(apt.patient_id ? 'registered' : 'lead');
+                  setNewAppointmentData({
+                    date: apt.date,
+                    time: apt.time,
+                    type: apt.type || '',
+                    status: apt.status,
+                    patient_id: apt.patient_id || '',
+                    doctor_id: apt.doctor_id,
+                    notes: apt.notes,
+                    guest_name: apt.guest_name || '',
+                    guest_phone: apt.guest_phone || '',
+                    guest_source: apt.guest_source || '',
+                    guest_notes: apt.guest_notes || ''
+                  });
                   setDoctorSearchQuery(apt.doctor_name || '');
                   setShowDoctorDropdown(false);
                   setAppointmentClinicalFocus(clinicalPlan.clinicalFocus || apt.type || '');
@@ -2563,6 +2622,7 @@ const App: React.FC = () => {
                 onDeleteAppointment={handleDeleteAppointment} 
                 onUpdateStatus={handleUpdateAppointmentStatus} 
                 onViewChart={handleViewAppointmentChart}
+                onConvertLead={handleConvertLeadAppointment}
                 onOpenAppointmentLog={canAccessView('records') && !isDoctor ? () => {
                   setRecordsInitialFilter('appointments');
                   setCurrentView('records');
@@ -2761,8 +2821,19 @@ const App: React.FC = () => {
 
       {/* Modals */}
       {showPatientModal && (
-        <Modal title="Register Clinical Patient" onClose={() => setShowPatientModal(false)}>
+        <Modal title={convertingLeadAppointment ? "Convert Lead to Patient" : "Register Clinical Patient"} onClose={() => { setShowPatientModal(false); setConvertingLeadAppointment(null); }}>
           <form onSubmit={handleCreatePatient} className="space-y-5">
+            {convertingLeadAppointment && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Linked Appointment</p>
+                <p className="mt-1 text-sm font-bold text-amber-900">
+                  {convertingLeadAppointment.date} at {convertingLeadAppointment.time}
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  This patient profile will be linked back to the existing lead appointment.
+                </p>
+              </div>
+            )}
             <Input label="Full Patient Name" required value={newPatientData.name} onChange={(e: any) => setNewPatientData({...newPatientData, name: e.target.value})} />
             <div className="grid grid-cols-2 gap-4">
                <Input label="Primary Email" type="email" value={newPatientData.email} onChange={(e: any) => setNewPatientData({...newPatientData, email: e.target.value})} />
@@ -2902,19 +2973,89 @@ const App: React.FC = () => {
         <Modal title={editingAppointment ? "Edit Appointment" : "New Appointment"} onClose={() => {setShowAppointmentModal(false); setEditingAppointment(null); resetAppointmentForm();}}>
           <form onSubmit={handleCreateAppointment} className="space-y-5">
             <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient</label>
-              <select 
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                required
-                value={newAppointmentData.patient_id} 
-                onChange={(e: any) => setNewAppointmentData({...newAppointmentData, patient_id: e.target.value})}
-              >
-                <option value="">Select a patient</option>
-                {patients.map(patient => (
-                  <option key={patient.id} value={patient.id}>{patient.name}</option>
-                ))}
-              </select>
+              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Appointment For</label>
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppointmentPatientMode('registered');
+                    setNewAppointmentData({ ...newAppointmentData, guest_name: '', guest_phone: '', guest_source: '', guest_notes: '' });
+                  }}
+                  className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${appointmentPatientMode === 'registered' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                  Registered Patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppointmentPatientMode('lead');
+                    setNewAppointmentData({ ...newAppointmentData, patient_id: '' });
+                  }}
+                  className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${appointmentPatientMode === 'lead' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                  New Lead
+                </button>
+              </div>
             </div>
+
+            {appointmentPatientMode === 'registered' ? (
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient</label>
+                <select
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
+                  required
+                  value={newAppointmentData.patient_id || ''}
+                  onChange={(e: any) => setNewAppointmentData({...newAppointmentData, patient_id: e.target.value})}
+                >
+                  <option value="">Select a patient</option>
+                  {patients.map(patient => (
+                    <option key={patient.id} value={patient.id}>{patient.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Lead Name"
+                    required
+                    value={newAppointmentData.guest_name || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_name: e.target.value})}
+                    placeholder="Name for follow-up"
+                  />
+                  <Input
+                    label="Lead Phone"
+                    required
+                    value={newAppointmentData.guest_phone || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_phone: e.target.value})}
+                    placeholder="09..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Lead Source</label>
+                  <select
+                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                    value={newAppointmentData.guest_source || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_source: e.target.value})}
+                  >
+                    <option value="">Select source</option>
+                    {LEAD_SOURCE_OPTIONS.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Lead Follow-up Notes</label>
+                  <textarea
+                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                    rows={2}
+                    value={newAppointmentData.guest_notes || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_notes: e.target.value})}
+                    placeholder="Marketing context, caller request, preferred contact time..."
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Doctor (Optional)</label>
               <div className="relative" ref={doctorDropdownRef}>

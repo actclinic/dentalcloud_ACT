@@ -75,7 +75,8 @@ The main component responsible for AI interactions, featuring:
 
 ### 2. Appointment Scheduling Workflow
 **Primary Operations:**
-- Booking appointments between patients and doctors
+- Booking appointments between registered patients and doctors
+- Booking unregistered marketing lead appointments with guest name, phone, source, and follow-up notes without creating a patient record first
 - Rescheduling and cancellation
 - Status tracking (Scheduled, Completed, Cancelled)
 - Availability checking for doctors

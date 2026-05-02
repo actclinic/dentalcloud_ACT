@@ -16,6 +16,7 @@ interface AppointmentsViewProps {
   onDeleteAppointment: (id: string) => void;
   onUpdateStatus: (id: string, status: 'Scheduled' | 'Completed' | 'Cancelled') => void;
   onViewChart: (appointment: Appointment) => void;
+  onConvertLead?: (appointment: Appointment) => void;
   onOpenAppointmentLog?: () => void;
   onExportPDF?: () => Promise<void>;
   onExportExcel?: () => Promise<void>;
@@ -35,6 +36,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   onDeleteAppointment,
   onUpdateStatus,
   onViewChart,
+  onConvertLead,
   onOpenAppointmentLog,
   onExportPDF,
   onExportExcel,
@@ -117,6 +119,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const firstVisitDateByPatient = useMemo(() => {
     const map = new Map<string, string>();
     activeVisitAppointments.forEach((appointment) => {
+      if (!appointment.patient_id) return;
       const current = map.get(appointment.patient_id);
       if (!current || appointment.date < current) {
         map.set(appointment.patient_id, appointment.date);
@@ -135,6 +138,9 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
       const focusTeethText = clinicalPlan.targetTeeth.join(', ');
       const matchesSearch = !searchTerm || (
         apt.patient_name?.toLowerCase().includes(term) ||
+        apt.guest_phone?.toLowerCase().includes(term) ||
+        apt.guest_source?.toLowerCase().includes(term) ||
+        apt.guest_notes?.toLowerCase().includes(term) ||
         apt.type?.toLowerCase().includes(term) ||
         apt.doctor_name?.toLowerCase().includes(term) ||
         apt.date.toLowerCase().includes(term) ||
@@ -394,10 +400,20 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                           <div key={appointment.id} className="rounded-xl border border-gray-200 bg-white p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="font-semibold text-gray-900">{appointment.patient_name || 'Unknown Patient'}</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-gray-900">{appointment.patient_name || 'Unknown Patient'}</p>
+                                  {!appointment.patient_id && (
+                                    <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Lead</span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-500 mt-1">
                                   Dr. {appointment.doctor_name || '-'} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
                                 </p>
+                                {!appointment.patient_id && (
+                                  <p className="text-xs text-amber-700 mt-1">
+                                    {appointment.guest_phone || 'No phone'}{appointment.guest_source ? ` • ${appointment.guest_source}` : ''}
+                                  </p>
+                                )}
                                 <p className="text-xs text-gray-600 mt-1">{appointment.type || 'Checkup'}</p>
                               </div>
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getStatusColor(appointment.status)}`}>
@@ -405,10 +421,16 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                               </span>
                             </div>
                             <div className="mt-3 flex items-center gap-2">
-                              {canViewChart && (
+                              {canViewChart && appointment.patient_id && (
                                 <button onClick={() => onViewChart(appointment)} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors">
                                   <Eye className="w-3.5 h-3.5" />
                                   View Chart
+                                </button>
+                              )}
+                              {!appointment.patient_id && onConvertLead && (
+                                <button onClick={() => onConvertLead(appointment)} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors">
+                                  <User className="w-3.5 h-3.5" />
+                                  Convert
                                 </button>
                               )}
                               <select value={appointment.status} onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)} className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
@@ -435,10 +457,20 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                           <div key={appointment.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-90">
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="font-semibold text-gray-800">{appointment.patient_name || 'Unknown Patient'}</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-gray-800">{appointment.patient_name || 'Unknown Patient'}</p>
+                                  {!appointment.patient_id && (
+                                    <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Lead</span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-500 mt-1">
                                   Dr. {appointment.doctor_name || '-'} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
                                 </p>
+                                {!appointment.patient_id && (
+                                  <p className="text-xs text-amber-700 mt-1">
+                                    {appointment.guest_phone || 'No phone'}{appointment.guest_source ? ` • ${appointment.guest_source}` : ''}
+                                  </p>
+                                )}
                                 <p className="text-xs text-gray-600 mt-1">{appointment.type || 'Checkup'}</p>
                               </div>
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getStatusColor(appointment.status)}`}>
@@ -495,7 +527,19 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                   <td className="px-3 py-3 align-top text-gray-800">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
                                   <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">{formatDateDDMMYYYY(appointment.date)}</td>
                                   <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">{formatTime(appointment.time)}</td>
-                                  <td className="px-3 py-3 align-top font-medium text-gray-900">{appointment.patient_name || 'Unknown Patient'}</td>
+                                  <td className="px-3 py-3 align-top font-medium text-gray-900">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span>{appointment.patient_name || 'Unknown Patient'}</span>
+                                      {!appointment.patient_id && (
+                                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Lead</span>
+                                      )}
+                                    </div>
+                                    {!appointment.patient_id && (
+                                      <div className="mt-1 text-xs font-normal text-amber-700">
+                                        {appointment.guest_phone || 'No phone'}{appointment.guest_source ? ` • ${appointment.guest_source}` : ''}
+                                      </div>
+                                    )}
+                                  </td>
                                   <td className="px-3 py-3 align-top text-gray-700">{appointment.type || 'Checkup'}</td>
                                   <td className="px-3 py-3 align-top">
                                     <select
@@ -510,7 +554,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                   </td>
                                   <td className="px-3 py-3 align-top">
                                     <div className="flex items-center gap-1.5">
-                                      {canViewChart && (
+                                      {canViewChart && appointment.patient_id && (
                                         <button
                                           onClick={() => onViewChart(appointment)}
                                           className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
@@ -518,6 +562,16 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                         >
                                           <Eye className="w-3.5 h-3.5" />
                                           Chart
+                                        </button>
+                                      )}
+                                      {!appointment.patient_id && onConvertLead && (
+                                        <button
+                                          onClick={() => onConvertLead(appointment)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                                          title="Convert lead to patient"
+                                        >
+                                          <User className="w-3.5 h-3.5" />
+                                          Convert
                                         </button>
                                       )}
                                       {canEdit && (
@@ -670,11 +724,21 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                       return (
                         <div key={appointment.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">{appointment.patient_name || 'Unknown Patient'}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900">
+                              <span>{appointment.patient_name || 'Unknown Patient'}</span>
+                              {!appointment.patient_id && (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Lead</span>
+                              )}
+                            </div>
                             <div className="text-xs text-gray-500 mt-0.5">
                               {formatTime(appointment.time)} • {appointment.type || 'Checkup'}
                               {appointment.doctor_name ? ` • Dr. ${appointment.doctor_name}` : ''}
                             </div>
+                            {!appointment.patient_id && (
+                              <div className="mt-1 text-xs text-amber-700">
+                                {appointment.guest_phone || 'No phone'}{appointment.guest_source ? ` • ${appointment.guest_source}` : ''}
+                              </div>
+                            )}
                             {(clinicalPlan.clinicalFocus || clinicalPlan.targetTeeth.length > 0) && (
                               <div className="mt-1 text-xs text-indigo-700">
                                 {clinicalPlan.clinicalFocus ? `Focus: ${clinicalPlan.clinicalFocus}` : ''}
@@ -684,14 +748,25 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => onViewChart(appointment)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
-                              title="Open patient chart"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              View Chart
-                            </button>
+                            {appointment.patient_id ? (
+                              <button
+                                onClick={() => onViewChart(appointment)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                title="Open patient chart"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                View Chart
+                              </button>
+                            ) : onConvertLead ? (
+                              <button
+                                onClick={() => onConvertLead(appointment)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                                title="Convert lead to patient"
+                              >
+                                <User className="w-3.5 h-3.5" />
+                                Convert
+                              </button>
+                            ) : null}
                             <select
                               value={appointment.status}
                               onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)}

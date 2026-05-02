@@ -89,11 +89,12 @@ export const exportAppointmentsToPDF = (appointments: Appointment[]) => {
     
     autoTable(doc, {
       startY: 46,
-      head: [['Date', 'Time', 'Patient', 'Type', 'Doctor', 'Status']],
+      head: [['Date', 'Time', 'Patient', 'Contact', 'Type', 'Doctor', 'Status']],
       body: upcoming.map(apt => [
         new Date(apt.date).toLocaleDateString(),
         apt.time,
         apt.patient_name || 'Unknown',
+        apt.patient_id ? 'Registered' : [apt.guest_phone, apt.guest_source].filter(Boolean).join(' / ') || 'Lead',
         apt.type || 'Checkup',
         apt.doctor_name ? `Dr. ${apt.doctor_name}` : 'N/A',
         apt.status
@@ -120,11 +121,12 @@ export const exportAppointmentsToPDF = (appointments: Appointment[]) => {
     
     autoTable(doc, {
       startY: startY + 4,
-      head: [['Date', 'Time', 'Patient', 'Type', 'Status']],
+      head: [['Date', 'Time', 'Patient', 'Contact', 'Type', 'Status']],
       body: past.map(apt => [
         new Date(apt.date).toLocaleDateString(),
         apt.time,
         apt.patient_name || 'Unknown',
+        apt.patient_id ? 'Registered' : [apt.guest_phone, apt.guest_source].filter(Boolean).join(' / ') || 'Lead',
         apt.type || 'Checkup',
         apt.status
       ]),

@@ -627,7 +627,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     activeTreatmentRecords.filter(record => record.patient_id === patientId);
 
   const getScopedAppointmentsForPatients = (patientIds: string[]) =>
-    activeAppointments.filter(appointment => patientIds.includes(appointment.patient_id));
+    activeAppointments.filter(appointment => !!appointment.patient_id && patientIds.includes(appointment.patient_id));
 
   const getScopedMedicineById = (medicineId?: string | null) =>
     activeMedicines.find(medicine => medicine.id === medicineId) || null;
@@ -671,6 +671,8 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     if (!candidatePatientId && (params?.patient_name || params?.name || params?.n)) {
       candidatePatientId = resolvePatient(params?.patient_name || params?.name || params?.n)?.id;
     }
+    const candidateGuestName = normalizeLookupText(params?.guest_name || params?.lead_name || params?.name || params?.patient_name);
+    const candidateGuestPhone = normalizeLookupText(params?.guest_phone || params?.lead_phone || params?.phone);
 
     let candidateDoctorId = params?.dr_id || params?.doctor_id;
     if (!candidateDoctorId && params?.doctor_name) {
@@ -683,6 +685,8 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
 
     const matches = activeAppointments.filter(appointment => {
       if (candidatePatientId && appointment.patient_id !== candidatePatientId) return false;
+      if (candidateGuestName && !normalizeLookupText(appointment.guest_name || appointment.patient_name).includes(candidateGuestName)) return false;
+      if (candidateGuestPhone && !normalizeLookupText(appointment.guest_phone).includes(candidateGuestPhone)) return false;
       if (candidateDoctorId && appointment.doctor_id !== candidateDoctorId) return false;
       if (candidateDate && appointment.date !== candidateDate) return false;
       if (candidateTime && appointment.time !== candidateTime) return false;
@@ -705,7 +709,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   };
 
   const formatAppointmentLabel = (appointment: Appointment) =>
-    `${appointment.patient_name || 'Unknown Patient'} on ${appointment.date} at ${appointment.time}${appointment.doctor_name ? ` with Dr. ${appointment.doctor_name}` : ''}`;
+    `${appointment.patient_name || 'Unknown Patient'}${appointment.patient_id ? '' : ' (lead)'} on ${appointment.date} at ${appointment.time}${appointment.doctor_name ? ` with Dr. ${appointment.doctor_name}` : ''}`;
 
   const isAppointmentActionIntent = (text: string) => {
     const normalized = normalizeLookupText(text);
@@ -781,6 +785,50 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       }),
       result
     );
+  };
+
+  const createAppointmentFromAiParams = async (params: any, locationId: string | undefined) => {
+    const patientIdentifier = params.p_id || params.pid || params.patient_id || params.patient_name || params.name;
+    const patient = resolvePatient(patientIdentifier);
+    const doctor = resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name);
+    const leadName = (params.guest_name || params.lead_name || params.name || params.patient_name || '').trim();
+    const leadPhone = (params.guest_phone || params.lead_phone || params.phone || params.ph || '').trim();
+
+    if (!patient && (!leadName || !leadPhone)) {
+      throw new Error('Appointment creation needs an existing patient, or lead name and phone number.');
+    }
+    if (!doctor && (params.dr_id || params.doctor_id || params.doctor_name)) {
+      throw new Error('Doctor not found.');
+    }
+
+    const date = params.dt || params.date;
+    if (doctor && date) {
+      const availability = await api.planning.getDoctorAvailability(doctor.id, date);
+      console.log('Doctor Availability State:', availability);
+    }
+
+    const appointment = await api.appointments.create({
+      location_id: locationId,
+      patient_id: patient?.id || null,
+      doctor_id: doctor?.id,
+      date,
+      time: params.t || params.tm || params.time,
+      type: params.ty || params.type,
+      notes: params.notes || params.n,
+      status: 'Scheduled',
+      guest_name: patient ? null : leadName,
+      guest_phone: patient ? null : leadPhone,
+      guest_source: patient ? null : (params.guest_source || params.lead_source || params.source || 'AI Assistant Lead'),
+      guest_notes: patient ? null : (params.guest_notes || params.lead_notes || params.follow_up_notes || null),
+      created_by_user_id: currentAdminId || null,
+      created_by_user_name: currentStaffUser?.username || 'Loli AI Assistant'
+    });
+
+    if (patient) {
+      (appointment as any).verification = await verifyAppointmentCreateAction(locationId, params, appointment, patient.id, doctor?.id);
+    }
+
+    return appointment;
   };
 
   const verifyAppointmentUpdateAction = async (
@@ -2251,7 +2299,8 @@ PATIENT MANAGEMENT:
 - pat_loyalty_history(pid): Get patient loyalty transaction history.
 
 APPOINTMENT MANAGEMENT:
-- apt_c(p_id, dr_id, dt, t, ty, n): Create appointment. p_id=patient id (or use "name"), dr_id=doctor id, dt=date(YYYY-MM-DD), t=time(HH:mm), ty=type, n=notes.
+- apt_c(p_id, dr_id, dt, t, ty, n): Create appointment for a registered patient. p_id=patient id (or use "name"), dr_id=doctor id, dt=date(YYYY-MM-DD), t=time(HH:mm), ty=type, n=notes.
+- apt_c(guest_name, guest_phone, guest_source, guest_notes, dr_id, dt, t, ty, n): Create appointment for an unregistered marketing lead. Do not create a patient profile unless the user asks to register/convert the lead. Lead appointments must include guest_name and guest_phone.
 - apt_u(id, data): Update appointment. data can include {date, time, status, doctor_id, etc}.
 - apt_d(id): Delete appointment.
 - apt_reschedule(id, dt, t): Reschedule appointment.
@@ -2268,6 +2317,7 @@ AUDIT LOG AND APPOINTMENT REPORTING:
 - Dashboard includes Appointment Makers, ranking users by appointments created in the selected date range.
 - When Agent Mode creates an appointment, it is recorded under the currently logged-in staff user.
 - Older appointments created before the audit migration may show creator as Unknown.
+- Marketing lead appointments do not have patient charts yet. They keep guest_name, guest_phone, guest_source, and guest_notes for follow-up and can be converted into a registered patient later.
 
 DOCTOR MANAGEMENT:
 - dr_c(n, e, ph, s, sch): Create doctor. n=name, e=email, ph=phone, s=specialization, sch=schedules.
@@ -2362,12 +2412,14 @@ Response:
 
 To perform an action, include a JSON block at the END of your message. 
 IMPORTANT: You can use "name" instead of "pid" or "p_id" for any patient-related action. The system will automatically look up the ID.
+For unregistered marketing leads, do not create a patient first. Use apt_c with guest_name and guest_phone, plus guest_source/guest_notes when available.
 For doctor-related actions, you can use "doctor_name" if you do not know the doctor ID.
 For appointment updates, prefer passing id. If id is unknown, you may pass patient name plus date/time to help match the appointment.
 
 Examples:
 { "action": "p_c", "params": { "n": "John Doe", "e": "john@example.com", "ph": "1234567890", "m": "No known allergies" } }
 { "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2024-01-15", "t": "10:00", "ty": "Checkup", "n": "Routine checkup" } }
+{ "action": "apt_c", "params": { "guest_name": "Aung Aung", "guest_phone": "09123456789", "guest_source": "Marketing Team", "doctor_name": "Mya", "dt": "2026-05-10", "t": "14:00", "ty": "Consultation", "n": "Lead is not registered yet" } }
 { "action": "tr_create", "params": { "name": "John Doe", "teeth": [18, 19], "desc": "Composite filling", "cost": 150 } }
 { "action": "m_sell", "params": { "name": "Sarah Johnson", "mid": "medicine123", "qty": 2 } }
 { "action": "loyalty_redeem", "params": { "name": "John Smith", "points": 100, "amount": 5000 } }
@@ -3269,22 +3321,7 @@ I can provide guidance on:
         switch (pendingAction.action) {
           case 'apt_c':
             {
-              const patientId = pendingAction.params.p_id || pendingAction.params.pid || pendingAction.params.patient_id || resolvePatient(pendingAction.params.name || pendingAction.params.n)?.id;
-              const doctorId = pendingAction.params.dr_id || pendingAction.params.doctor_id || resolveDoctor(pendingAction.params.doctor_name)?.id;
-              if (!patientId) throw new Error("Patient ID or Name is required for appointment creation.");
-              result = await api.appointments.create({ 
-                location_id: locationId,
-                patient_id: patientId,
-                doctor_id: doctorId,
-                date: pendingAction.params.dt || pendingAction.params.date,
-                time: pendingAction.params.t || pendingAction.params.tm || pendingAction.params.time,
-                type: pendingAction.params.ty || pendingAction.params.type,
-                notes: pendingAction.params.n || pendingAction.params.notes,
-                status: 'Scheduled',
-                created_by_user_id: currentAdminId || null,
-                created_by_user_name: currentStaffUser?.username || 'Loli AI Assistant'
-              });
-              result.verification = await verifyAppointmentCreateAction(locationId, pendingAction.params, result, patientId, doctorId);
+              result = await createAppointmentFromAiParams(pendingAction.params, locationId);
             }
             break;
           case 'apt_u':
@@ -3540,7 +3577,7 @@ I can provide guidance on:
         let successMessage = '';
         switch (pendingAction.action) {
           case 'apt_c':
-            successMessage = `✅ Appointment created successfully for ${result.patient_name} with Dr. ${result.doctor_name} at ${result.time}.`;
+            successMessage = `✅ Appointment created successfully for ${formatAppointmentLabel(result)}.${result.patient_id ? '' : ` Follow-up phone: ${result.guest_phone || 'not recorded'}.`}`;
             break;
           case 'apt_u':
             successMessage = `✅ Appointment updated successfully.`;
@@ -3776,7 +3813,7 @@ I can provide guidance on:
 
       if (allActionMatches.length === 0 && mode === 'agent' && isAppointmentActionIntent(userMessage.content)) {
         try {
-          const recoveryPrompt = `The previous response did not include an executable system action. Convert this appointment request into exactly one JSON action if enough details are present.\n\nUser request: ${userMessage.content}\n\nUse this schema only:\n{ "action": "apt_c", "params": { "name": "patient name", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "n": "optional notes" } }\n\nRules:\n- Return JSON only, no markdown.\n- Do not invent patient, date, time, doctor, branch, or type.\n- If patient, date, time, or type is missing, return a short sentence starting with MISSING_APPOINTMENT_DETAILS instead of JSON.`;
+          const recoveryPrompt = `The previous response did not include an executable system action. Convert this appointment request into exactly one JSON action if enough details are present.\n\nUser request: ${userMessage.content}\n\nUse one schema only:\nRegistered patient appointment:\n{ "action": "apt_c", "params": { "name": "registered patient name", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "n": "optional notes" } }\n\nUnregistered marketing lead appointment:\n{ "action": "apt_c", "params": { "guest_name": "lead name", "guest_phone": "phone", "guest_source": "marketing source if provided", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "n": "optional appointment notes" } }\n\nRules:\n- Return JSON only, no markdown.\n- Do not invent patient, lead name, phone, date, time, doctor, branch, or type.\n- If this is a registered patient appointment and patient, date, time, or type is missing, return a short sentence starting with MISSING_APPOINTMENT_DETAILS instead of JSON.\n- If this is a lead appointment and guest_name, guest_phone, date, time, or type is missing, return MISSING_APPOINTMENT_DETAILS instead of JSON.`;
           const recoveredResponse = await callAICompletionAPI(recoveryPrompt, messages);
           const recoveredActionMatches = findAllActions(recoveredResponse);
           if (recoveredActionMatches.length > 0) {
@@ -4426,30 +4463,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             // Existing Actions (keep all existing cases)
             case 'apt_c':
               try {
-                const patient = resolvePatient(params.p_id || params.pid || params.patient_id || params.name || params.n);
-                const doctor = resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name);
-                if (!patient) throw new Error("Patient ID or Name is required for appointment creation.");
-                if (!doctor && (params.dr_id || params.doctor_id || params.doctor_name)) {
-                  throw new Error("Doctor not found.");
-                }
-
-                if (doctor && (params.dt || params.date)) {
-                  const availability = await api.planning.getDoctorAvailability(doctor.id, params.dt || params.date);
-                  console.log('Doctor Availability State:', availability);
-                }
-
-                result = await api.appointments.create({ 
-                  location_id: locationId,
-                  patient_id: patient.id,
-                  doctor_id: doctor?.id,
-                  date: params.dt || params.date,
-                  time: params.t || params.tm || params.time,
-                  type: params.ty || params.type,
-                  notes: params.n || params.notes,
-                  status: 'Scheduled'
-                });
-                result.verification = await verifyAppointmentCreateAction(locationId, params, result, patient.id, doctor?.id);
-                currentActionResult = `✅ Appointment created successfully for ${result.patient_name} with Dr. ${result.doctor_name} at ${result.time}.`;
+                result = await createAppointmentFromAiParams(params, locationId);
+                currentActionResult = `✅ Appointment created successfully for ${formatAppointmentLabel(result)}.${result.patient_id ? '' : ` Follow-up phone: ${result.guest_phone || 'not recorded'}.`}`;
               } catch (err: any) {
                 console.error('Appointment creation error:', err);
                 currentActionResult = `❌ Failed to create appointment: ${err.message}`;
