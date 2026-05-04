@@ -53,7 +53,11 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow' | 'today'>('today');
+  const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow' | 'today' | 'custom'>('today');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo] = useState('');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -67,6 +71,43 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     return `${year}-${month}-${day}`;
   };
 
+  const parseLocalDate = (dateString: string) => {
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, (month || 1) - 1, day || 1);
+  };
+
+  const resetAppointmentPages = () => {
+    setUpcomingPage(1);
+    setPastPage(1);
+  };
+
+  const applyQuickDateFilter = (filter: 'all' | 'tomorrow' | 'today') => {
+    setDateQuickFilter(filter);
+    setDateFrom('');
+    setDateTo('');
+    setSelectedCalendarDate(null);
+    resetAppointmentPages();
+  };
+
+  const applySingleDateFilter = (isoDate: string) => {
+    setDateQuickFilter('custom');
+    setDateFrom(isoDate);
+    setDateTo(isoDate);
+    setSelectedCalendarDate(isoDate);
+    setCalendarDate(parseLocalDate(isoDate));
+    resetAppointmentPages();
+  };
+
+  const clearDateTimeFilters = () => {
+    setDateQuickFilter('all');
+    setDateFrom('');
+    setDateTo('');
+    setTimeFrom('');
+    setTimeTo('');
+    setSelectedCalendarDate(null);
+    resetAppointmentPages();
+  };
+
   const tomorrowISO = useMemo(() => {
     const nextDay = new Date();
     nextDay.setDate(nextDay.getDate() + 1);
@@ -76,12 +117,12 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const todayLocalISO = useMemo(() => toLocalISODate(new Date()), []);
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
     return date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
   };
 
   const formatDateDDMMYYYY = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
@@ -130,8 +171,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
   const isNewPatientToday = (patientId: string) => firstVisitDateByPatient.get(patientId) === todayLocalISO;
 
-  // Filtered data based on search term
-  const filteredAppointments = useMemo(() => {
+  const searchAndTimeFilteredAppointments = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return appointments.filter(apt => {
       const clinicalPlan = parseAppointmentClinicalFocus(apt.notes);
@@ -152,11 +192,24 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
       );
 
       if (!matchesSearch) return false;
-      if (dateQuickFilter === 'tomorrow') return apt.date === tomorrowISO;
-      if (dateQuickFilter === 'today') return apt.date === todayLocalISO;
+      const aptTime = apt.time.split(':').slice(0, 2).join(':');
+      if (timeFrom && aptTime < timeFrom) return false;
+      if (timeTo && aptTime > timeTo) return false;
       return true;
     });
-  }, [appointments, searchTerm, dateQuickFilter, tomorrowISO, todayLocalISO]);
+  }, [appointments, searchTerm, timeFrom, timeTo]);
+
+  const filteredAppointments = useMemo(() => {
+    return searchAndTimeFilteredAppointments.filter(apt => {
+      if (dateQuickFilter === 'tomorrow') return apt.date === tomorrowISO;
+      if (dateQuickFilter === 'today') return apt.date === todayLocalISO;
+      if (dateQuickFilter === 'custom') {
+        if (dateFrom && apt.date < dateFrom) return false;
+        if (dateTo && apt.date > dateTo) return false;
+      }
+      return true;
+    });
+  }, [searchAndTimeFilteredAppointments, dateQuickFilter, tomorrowISO, todayLocalISO, dateFrom, dateTo]);
 
   // Separate upcoming and past appointments
   const upcomingAppointments = filteredAppointments.filter(apt => {
@@ -224,8 +277,6 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     }
   };
 
-  const toISODate = (date: Date) => date.toISOString().split('T')[0];
-
   const calendarGrid = useMemo(() => {
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
@@ -243,7 +294,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
     for (let day = 1; day <= totalDays; day++) {
       const date = new Date(year, month, day);
-      cells.push({ date, isoDate: toISODate(date), inCurrentMonth: true });
+      cells.push({ date, isoDate: toLocalISODate(date), inCurrentMonth: true });
     }
 
     const remainder = cells.length % 7;
@@ -259,7 +310,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const appointmentMapByDate = useMemo(() => {
     const map = new Map<string, Appointment[]>();
 
-    filteredAppointments.forEach((apt) => {
+    searchAndTimeFilteredAppointments.forEach((apt) => {
       const dateKey = apt.date;
       if (!map.has(dateKey)) {
         map.set(dateKey, []);
@@ -272,7 +323,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     });
 
     return map;
-  }, [filteredAppointments]);
+  }, [searchAndTimeFilteredAppointments]);
 
   const selectedDayAppointments = useMemo(() => {
     if (!selectedCalendarDate) return [];
@@ -284,7 +335,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     year: 'numeric'
   });
 
-  const todayISO = toISODate(new Date());
+  const todayISO = todayLocalISO;
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
@@ -301,8 +352,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setUpcomingPage(1); // Reset to first page when searching
-              setPastPage(1);
+              resetAppointmentPages();
             }}
             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
           />
@@ -311,6 +361,28 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           </svg>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          <div className="inline-flex flex-1 md:flex-initial rounded-lg border border-gray-200 bg-gray-50 p-1">
+            <button
+              onClick={() => setViewMode('current')}
+              className={`inline-flex flex-1 md:flex-initial items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors ${
+                viewMode === 'current' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="List view"
+            >
+              <List className="w-3.5 h-3.5" />
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`inline-flex flex-1 md:flex-initial items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors ${
+                viewMode === 'calendar' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="Calendar view"
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              Calendar
+            </button>
+          </div>
           {onOpenAppointmentLog && (
             <button
               onClick={onOpenAppointmentLog}
@@ -339,9 +411,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 w-full md:w-auto">
           <button
             onClick={() => {
-              setDateQuickFilter('all');
-              setUpcomingPage(1);
-              setPastPage(1);
+              applyQuickDateFilter('all');
             }}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
               dateQuickFilter === 'all' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
@@ -351,9 +421,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           </button>
           <button
             onClick={() => {
-              setDateQuickFilter('tomorrow');
-              setUpcomingPage(1);
-              setPastPage(1);
+              applyQuickDateFilter('tomorrow');
             }}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
               dateQuickFilter === 'tomorrow' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
@@ -363,15 +431,80 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           </button>
           <button
             onClick={() => {
-              setDateQuickFilter('today');
-              setUpcomingPage(1);
-              setPastPage(1);
+              applyQuickDateFilter('today');
             }}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
               dateQuickFilter === 'today' ? 'bg-white text-emerald-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             Today
+          </button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-[repeat(4,minmax(120px,1fr))_auto] gap-2 w-full md:w-[680px]">
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-gray-500">
+            From date
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                setDateFrom(nextDate);
+                setDateQuickFilter(nextDate || dateTo ? 'custom' : 'all');
+                if (nextDate && dateTo && nextDate > dateTo) setDateTo(nextDate);
+                setSelectedCalendarDate(nextDate && nextDate === dateTo ? nextDate : null);
+                resetAppointmentPages();
+              }}
+              className="h-9 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-gray-500">
+            To date
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                setDateTo(nextDate);
+                setDateQuickFilter(dateFrom || nextDate ? 'custom' : 'all');
+                setSelectedCalendarDate(dateFrom && nextDate === dateFrom ? nextDate : null);
+                resetAppointmentPages();
+              }}
+              className="h-9 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-gray-500">
+            From time
+            <input
+              type="time"
+              value={timeFrom}
+              onChange={(e) => {
+                const nextTime = e.target.value;
+                setTimeFrom(nextTime);
+                if (nextTime && timeTo && nextTime > timeTo) setTimeTo(nextTime);
+                resetAppointmentPages();
+              }}
+              className="h-9 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-gray-500">
+            To time
+            <input
+              type="time"
+              value={timeTo}
+              min={timeFrom || undefined}
+              onChange={(e) => {
+                setTimeTo(e.target.value);
+                resetAppointmentPages();
+              }}
+              className="h-9 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </label>
+          <button
+            onClick={clearDateTimeFilters}
+            className="col-span-2 sm:col-span-4 lg:col-span-1 lg:self-end h-9 inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Clear
           </button>
         </div>
       </div>
@@ -672,7 +805,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                   return (
                     <button
                       key={`${cell.isoDate || 'empty'}-${idx}`}
-                      onClick={() => cell.isoDate && setSelectedCalendarDate(cell.isoDate)}
+                      onClick={() => cell.isoDate && applySingleDateFilter(cell.isoDate)}
                       disabled={!cell.isoDate}
                       className={`min-h-[96px] text-left border rounded-xl p-2 transition-colors ${
                         !cell.inCurrentMonth
@@ -748,7 +881,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            {appointment.patient_id ? (
+                            {canViewChart && appointment.patient_id ? (
                               <button
                                 onClick={() => onViewChart(appointment)}
                                 className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
@@ -776,18 +909,22 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                               <option value="Completed">Completed</option>
                               <option value="Cancelled">Cancelled</option>
                             </select>
-                            <button onClick={() => onEditAppointment(appointment)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg">
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setAppointmentToDelete(appointment.id);
-                                setDeleteConfirmOpen(true);
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canEdit && (
+                              <button onClick={() => onEditAppointment(appointment)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => {
+                                  setAppointmentToDelete(appointment.id);
+                                  setDeleteConfirmOpen(true);
+                                }}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
