@@ -432,7 +432,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto pb-24 pt-4">
+      <div className={activeTab === 'messages' ? 'flex-1 overflow-hidden pb-16' : 'flex-1 overflow-y-auto pb-24 pt-4'}>
         {error && patient && (
           <div className="px-4 mb-4">
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start justify-between gap-3">
@@ -837,7 +837,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         )}
 
         {activeTab === 'messages' && messagingEnabled && (
-          <div className="px-4">
+          <div className="h-full">
             <PatientMessagingView currentUser={auth.getCurrentUser()} messagingEnabled={messagingEnabled} />
           </div>
         )}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCheck, MessageCircle, Send, User, ChevronLeft, Clock, Mail } from 'lucide-react';
+import { Check, CheckCheck, MessageCircle, Send, User, ChevronLeft } from 'lucide-react';
 import { Conversation, Message } from '../types';
 import { api } from '../services/api';
 import { auth } from '../services/auth';
@@ -319,7 +319,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
   // ─── Loading State ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex h-full min-h-[480px] items-center justify-center rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="flex h-full min-h-0 items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--hover-600)] border-t-transparent" />
           <span className="text-sm text-gray-400">Loading messages...</span>
@@ -331,7 +331,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
   // ─── Disabled State ───────────────────────────────────────────────────────
   if (!messagingEnabled) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white p-10 text-center shadow-sm">
+      <div className="flex h-full items-center justify-center bg-white p-10 text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-50">
           <MessageCircle className="h-7 w-7 text-gray-300" />
         </div>
@@ -345,20 +345,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
 
   // ─── Main Render ──────────────────────────────────────────────────────────
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="border-b border-gray-100 px-6 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--hover-50)]">
-            <Mail className="h-5 w-5 text-[var(--hover-600)]" />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Messages</h2>
-            <p className="mt-0.5 text-xs text-gray-400">Real-time chat with clinic staff</p>
-          </div>
-        </div>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
       {/* ── Error Banner ──────────────────────────────────────────────────── */}
       {error && (
         <div className="border-b border-red-100 bg-red-50/80 px-6 py-3 text-xs text-red-600">
@@ -367,7 +354,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
       )}
 
       {/* ── Split Layout ──────────────────────────────────────────────────── */}
-      <div className="flex h-[70vh] min-h-[520px] max-h-[720px] flex-col md:grid md:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="flex min-h-0 flex-1 flex-col md:grid md:grid-cols-[300px_minmax(0,1fr)]">
         {/* ═══ Conversation List ═══════════════════════════════════════════════ */}
         <aside
           className={`${
