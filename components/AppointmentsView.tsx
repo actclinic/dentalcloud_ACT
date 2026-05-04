@@ -398,7 +398,31 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
       </div>
-      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:ml-auto">
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap">
+            <span>Filter day</span>
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => {
+                const nextDate = e.target.value;
+                if (nextDate) {
+                  applySingleDateFilter(nextDate);
+                } else {
+                  clearDateFilter();
+                }
+              }}
+              className="h-8 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            />
+          </label>
+          <button
+            onClick={clearDateFilter}
+            className="h-8 inline-flex items-center justify-center rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors bg-white"
+          >
+            Clear
+          </button>
+        </div>
         <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
           <button
             onClick={() => {
@@ -429,30 +453,6 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             }`}
           >
             Today
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap">
-            <span>Filter day</span>
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => {
-                const nextDate = e.target.value;
-                if (nextDate) {
-                  applySingleDateFilter(nextDate);
-                } else {
-                  clearDateFilter();
-                }
-              }}
-              className="h-8 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            />
-          </label>
-          <button
-            onClick={clearDateFilter}
-            className="h-8 inline-flex items-center justify-center rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors bg-white"
-          >
-            Clear
           </button>
         </div>
       </div>
