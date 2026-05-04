@@ -713,33 +713,36 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-4">
+              {/* Calendar Navigation */}
+              <div className="flex items-center justify-between mb-3 md:mb-4">
                 <button
                   onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-                  className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"
+                  className="p-1.5 md:p-2 rounded-lg border border-gray-200 hover:bg-gray-50"
                   title="Previous month"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5 md:w-4 md:h-4" />
                 </button>
-                <h3 className="text-lg font-semibold text-gray-800">{monthLabel}</h3>
+                <h3 className="text-sm md:text-lg font-semibold text-gray-800">{monthLabel}</h3>
                 <button
                   onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-                  className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"
+                  className="p-1.5 md:p-2 rounded-lg border border-gray-200 hover:bg-gray-50"
                   title="Next month"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-7 gap-2 mb-2">
+              {/* Day Headers */}
+              <div className="grid grid-cols-7 gap-0.5 md:gap-2 mb-1 md:mb-2">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                  <div key={day} className="text-xs font-bold text-gray-500 uppercase text-center py-1">
+                  <div key={day} className="text-[10px] md:text-xs font-bold text-gray-500 uppercase text-center py-0.5 md:py-1">
                     {day}
                   </div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-7 gap-2">
+              {/* Calendar Grid */}
+              <div className="grid grid-cols-7 gap-0.5 md:gap-2">
                 {calendarGrid.map((cell, idx) => {
                   const dayAppointments = cell.isoDate ? (appointmentMapByDate.get(cell.isoDate) || []) : [];
                   const isSelected = !!cell.isoDate && cell.isoDate === selectedCalendarDate;
@@ -750,7 +753,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                       key={`${cell.isoDate || 'empty'}-${idx}`}
                       onClick={() => cell.isoDate && applySingleDateFilter(cell.isoDate)}
                       disabled={!cell.isoDate}
-                      className={`min-h-[96px] text-left border rounded-xl p-2 transition-colors ${
+                      className={`min-h-[36px] md:min-h-[80px] text-left border rounded md:rounded-xl p-0.5 md:p-2 transition-colors ${
                         !cell.inCurrentMonth
                           ? 'bg-gray-50 border-gray-100 cursor-default'
                           : isSelected
@@ -760,21 +763,38 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                     >
                       {cell.date && (
                         <>
-                          <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-indigo-700' : 'text-gray-700'}`}>
+                          <div className={`text-[11px] md:text-xs font-semibold mb-0 md:mb-1 ${isToday ? 'text-indigo-700' : 'text-gray-700'}`}>
                             {cell.date.getDate()}
                           </div>
-                          <div className="space-y-1">
-                            {dayAppointments.slice(0, 3).map((apt) => (
+                          <div className="hidden md:block space-y-0.5 md:space-y-1">
+                            {dayAppointments.slice(0, 2).map((apt) => (
                               <div
                                 key={apt.id}
-                                className={`text-[10px] px-1.5 py-0.5 rounded truncate border ${getStatusColor(apt.status)}`}
+                                className={`text-[9px] md:text-[10px] px-1 md:px-1.5 py-0.5 rounded truncate border ${getStatusColor(apt.status)}`}
                                 title={`${formatTime(apt.time)} - ${apt.patient_name || 'Unknown Patient'}`}
                               >
                                 {formatTime(apt.time)} {apt.patient_name || 'Unknown'}
                               </div>
                             ))}
-                            {dayAppointments.length > 3 && (
-                              <div className="text-[10px] text-gray-500">+{dayAppointments.length - 3} more</div>
+                            {dayAppointments.length > 2 && (
+                              <div className="text-[9px] md:text-[10px] text-gray-500">+{dayAppointments.length - 2} more</div>
+                            )}
+                          </div>
+                          {/* Mobile: show dot indicators for appointments */}
+                          <div className="flex md:hidden gap-0.5 mt-0.5 flex-wrap">
+                            {dayAppointments.slice(0, 4).map((apt) => (
+                              <span
+                                key={apt.id}
+                                className={`inline-block w-1.5 h-1.5 rounded-full ${
+                                  apt.status === 'Scheduled' ? 'bg-blue-500' :
+                                  apt.status === 'Completed' ? 'bg-emerald-500' :
+                                  'bg-red-400'
+                                }`}
+                                title={`${formatTime(apt.time)} - ${apt.patient_name || 'Unknown Patient'}`}
+                              />
+                            ))}
+                            {dayAppointments.length > 4 && (
+                              <span className="text-[8px] text-gray-400">+{dayAppointments.length - 4}</span>
                             )}
                           </div>
                         </>
@@ -784,77 +804,80 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                 })}
               </div>
 
-              <div className="mt-6 border border-gray-200 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-gray-800 mb-3">
+              {/* Selected Day Appointments */}
+              <div className="mt-3 md:mt-6 border border-gray-200 rounded-lg md:rounded-xl p-3 md:p-4">
+                <h4 className="text-xs md:text-sm font-semibold text-gray-800 mb-2 md:mb-3">
                   {selectedCalendarDate
                     ? `Appointments for ${formatDate(selectedCalendarDate)}`
                     : 'Select a date to view appointments'}
                 </h4>
 
                 {!selectedCalendarDate || selectedDayAppointments.length === 0 ? (
-                  <p className="text-sm text-gray-500 italic">No appointments found for this date.</p>
+                  <p className="text-xs md:text-sm text-gray-500 italic">No appointments found for this date.</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 md:space-y-2">
                     {selectedDayAppointments.map((appointment) => {
                       const clinicalPlan = parseAppointmentClinicalFocus(appointment.notes);
                       return (
-                        <div key={appointment.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900">
-                              <span>{appointment.patient_name || 'Unknown Patient'}</span>
+                        <div key={appointment.id} className="flex flex-col md:flex-row md:items-center justify-between p-2 md:p-3 border border-gray-200 rounded-lg gap-2 md:gap-0">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5 md:gap-2 text-xs md:text-sm font-medium text-gray-900">
+                              <span className="truncate">{appointment.patient_name || 'Unknown Patient'}</span>
                               {!appointment.patient_id && (
-                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Lead</span>
+                                <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">Lead</span>
                               )}
                             </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
+                            <div className="text-[11px] md:text-xs text-gray-500 mt-0.5 truncate">
                               {formatTime(appointment.time)} • {appointment.type || 'Checkup'}
                               {appointment.doctor_name ? ` • Dr. ${appointment.doctor_name}` : ''}
                             </div>
                             {!appointment.patient_id && (
-                              <div className="mt-1 text-xs text-amber-700">
+                              <div className="mt-0.5 text-[11px] md:text-xs text-amber-700 truncate">
                                 {appointment.guest_phone || 'No phone'}{appointment.guest_source ? ` • ${appointment.guest_source}` : ''}
                               </div>
                             )}
                             {(clinicalPlan.clinicalFocus || clinicalPlan.targetTeeth.length > 0) && (
-                              <div className="mt-1 text-xs text-indigo-700">
+                              <div className="mt-0.5 text-[11px] md:text-xs text-indigo-700 truncate">
                                 {clinicalPlan.clinicalFocus ? `Focus: ${clinicalPlan.clinicalFocus}` : ''}
                                 {clinicalPlan.clinicalFocus && clinicalPlan.targetTeeth.length > 0 ? ' • ' : ''}
                                 {clinicalPlan.targetTeeth.length > 0 ? `Teeth: ${clinicalPlan.targetTeeth.join(', ')}` : ''}
                               </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
                             {canViewChart && appointment.patient_id ? (
                               <button
                                 onClick={() => onViewChart(appointment)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                className="inline-flex items-center gap-1 md:gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2 md:px-2.5 py-1 md:py-1.5 text-[11px] md:text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
                                 title="Open patient chart"
                               >
-                                <Eye className="w-3.5 h-3.5" />
-                                View Chart
+                                <Eye className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                <span className="hidden sm:inline">View Chart</span>
+                                <span className="sm:hidden">Chart</span>
                               </button>
                             ) : onConvertLead ? (
                               <button
                                 onClick={() => onConvertLead(appointment)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                                className="inline-flex items-center gap-1 md:gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 md:px-2.5 py-1 md:py-1.5 text-[11px] md:text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
                                 title="Convert lead to patient"
                               >
-                                <User className="w-3.5 h-3.5" />
-                                Convert
+                                <User className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                <span className="hidden sm:inline">Convert</span>
+                                <span className="sm:hidden">Lead</span>
                               </button>
                             ) : null}
                             <select
                               value={appointment.status}
                               onChange={(e) => onUpdateStatus(appointment.id, e.target.value as any)}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1"
+                              className="text-[11px] md:text-xs border border-gray-200 rounded-lg px-1.5 md:px-2 py-1"
                             >
                               <option value="Scheduled">Scheduled</option>
                               <option value="Completed">Completed</option>
                               <option value="Cancelled">Cancelled</option>
                             </select>
                             {canEdit && (
-                              <button onClick={() => onEditAppointment(appointment)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg">
-                                <Edit2 className="w-4 h-4" />
+                              <button onClick={() => onEditAppointment(appointment)} className="p-1.5 md:p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                                <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
                               </button>
                             )}
                             {canDelete && (
@@ -863,9 +886,9 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                   setAppointmentToDelete(appointment.id);
                                   setDeleteConfirmOpen(true);
                                 }}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                className="p-1.5 md:p-2 text-red-600 hover:bg-red-50 rounded-lg"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
                               </button>
                             )}
                           </div>

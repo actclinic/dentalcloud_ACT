@@ -520,3 +520,36 @@ body {
 .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #64748b 0%, #475569 100%);
 }
+
+/* ===== Calendar Responsive Optimizations ===== */
+
+/* On very small screens (< 400px), make calendar cells even more compact */
+@media (max-width: 400px) {
+  .calendar-grid-cell {
+    min-height: 32px !important;
+    padding: 2px !important;
+    border-radius: 6px !important;
+  }
+  .calendar-day-header {
+    font-size: 9px !important;
+  }
+  .calendar-day-number {
+    font-size: 10px !important;
+  }
+}
+
+/* Ensure the calendar never overflows its container */
+.calendar-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Appointment dot pulse animation for today's date */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.calendar-dot-today {
+  animation: dot-pulse 2s ease-in-out infinite;
+}
