@@ -587,9 +587,6 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
                     )}
                   </button>
                 </div>
-                <p className="mt-1.5 text-[11px] text-gray-400">
-                  Press Enter to send, Shift+Enter for new line
-                </p>
               </div>
             </>
           ) : (
