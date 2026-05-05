@@ -143,64 +143,61 @@ export const Input = ({ label, ...props }: InputProps) => (
   </div>
 );
 
-const toTwentyFourHourTime = (hours: number, minutes: number, meridiem?: string) => {
+type Meridiem = 'AM' | 'PM';
+
+const toTwentyFourHourTime = (hours: number, minutes: number, meridiem: Meridiem) => {
   if (minutes > 59) return null;
+  if (hours < 1 || hours > 12) return null;
 
-  if (meridiem) {
-    if (hours < 1 || hours > 12) return null;
-    const normalizedHours = meridiem === 'PM'
-      ? (hours === 12 ? 12 : hours + 12)
-      : (hours === 12 ? 0 : hours);
+  const normalizedHours = meridiem === 'PM'
+    ? (hours === 12 ? 12 : hours + 12)
+    : (hours === 12 ? 0 : hours);
 
-    return `${String(normalizedHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  }
-
-  if (hours > 23) return null;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  return `${String(normalizedHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
-const formatTypedTime = (rawValue: string, completeOnly = false) => {
+const getMeridiemFromValue = (value: string): Meridiem => {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return 'AM';
+
+  return Number(match[1]) >= 12 ? 'PM' : 'AM';
+};
+
+const getDisplayTimeValue = (value: string) => {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return value.replace(/\s*([ap])\.?m?\.?$/i, '').trim();
+
+  const hours = Number(match[1]);
+  const displayHours = hours % 12 || 12;
+  return `${String(displayHours).padStart(2, '0')}:${match[2]}`;
+};
+
+const formatTypedTime = (rawValue: string, meridiem: Meridiem, completeOnly = false) => {
   const raw = rawValue.trim();
   if (!raw) return '';
 
-  const meridiemMatch = raw.match(/\s*([ap])\.?m?\.?$/i);
-  const meridiem = meridiemMatch ? `${meridiemMatch[1].toUpperCase()}M` : undefined;
-  const timeWithoutMeridiem = meridiem ? raw.slice(0, meridiemMatch.index).trim() : raw;
-  const meridiemColonMatch = timeWithoutMeridiem.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  const sanitized = raw.replace(/[^\d:]/g, '');
+  const colonMatch = sanitized.match(/^(\d{1,2}):(\d{1,2})$/);
 
-  if (meridiem && meridiemColonMatch) {
-    const hours = Number(meridiemColonMatch[1]);
-    const minutesText = meridiemColonMatch[2];
-    const minutes = minutesText === undefined ? 0 : Number(minutesText);
-    const formatted = toTwentyFourHourTime(hours, minutes, meridiem);
-
-    if (formatted && (minutesText !== undefined || completeOnly || /^[ap]m$/i.test(meridiemMatch[0].trim()))) {
-      return formatted;
-    }
+  if (colonMatch && (colonMatch[2].length === 2 || completeOnly)) {
+    const formatted = toTwentyFourHourTime(Number(colonMatch[1]), Number(colonMatch[2].padEnd(2, '0')), meridiem);
+    if (formatted) return formatted;
   }
 
-  const digitsOnly = raw.replace(/\D/g, '');
-  if (!completeOnly && (/^\d{4}$/.test(digitsOnly) || (/^\d{3}$/.test(digitsOnly) && Number(digitsOnly[0]) > 2))) {
+  const digitsOnly = sanitized.replace(/\D/g, '');
+  if (/^\d{3,4}$/.test(digitsOnly)) {
     const hours = digitsOnly.length === 3 ? digitsOnly.slice(0, 1) : digitsOnly.slice(0, 2);
     const minutes = digitsOnly.slice(-2);
-    const formatted = toTwentyFourHourTime(Number(hours), Number(minutes));
+    const formatted = toTwentyFourHourTime(Number(hours), Number(minutes), meridiem);
     if (formatted) return formatted;
   }
 
-  const colonMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
-  if (colonMatch) {
-    const formatted = toTwentyFourHourTime(Number(colonMatch[1]), Number(colonMatch[2]));
+  if (completeOnly && /^\d{1,2}$/.test(digitsOnly)) {
+    const formatted = toTwentyFourHourTime(Number(digitsOnly), 0, meridiem);
     if (formatted) return formatted;
   }
 
-  if (completeOnly && /^\d{3,4}$/.test(digitsOnly)) {
-    const hours = digitsOnly.length === 3 ? digitsOnly.slice(0, 1) : digitsOnly.slice(0, 2);
-    const minutes = digitsOnly.slice(-2);
-    const formatted = toTwentyFourHourTime(Number(hours), Number(minutes));
-    if (formatted) return formatted;
-  }
-
-  return raw;
+  return sanitized;
 };
 
 type TimeInputProps = Omit<InputProps, 'type' | 'value' | 'onChange'> & {
@@ -208,22 +205,57 @@ type TimeInputProps = Omit<InputProps, 'type' | 'value' | 'onChange'> & {
   onChange: (value: string) => void;
 };
 
-export const TimeInput = ({ value = '', onChange, onBlur, placeholder = 'HH:MM AM/PM', ...props }: TimeInputProps) => (
-  <Input
-    {...props}
-    type="text"
-    inputMode="text"
-    placeholder={placeholder}
-    pattern="^(([01]?[0-9]|2[0-3]):?[0-5][0-9]|(0?[1-9]|1[0-2])(:[0-5][0-9])?\\s?([AaPp]\\.?[Mm]?\\.?))$"
-    maxLength={10}
-    value={value}
-    onChange={(e) => onChange(formatTypedTime(e.target.value))}
-    onBlur={(e) => {
-      onChange(formatTypedTime(e.target.value, true));
-      onBlur?.(e);
-    }}
-  />
-);
+export const TimeInput = ({ value = '', onChange, onBlur, placeholder = 'HH:MM', label, ...props }: TimeInputProps) => {
+  const [meridiem, setMeridiem] = React.useState<Meridiem>(() => getMeridiemFromValue(value));
+
+  React.useEffect(() => {
+    if (/^(\d{1,2}):(\d{2})$/.test(value)) {
+      setMeridiem(getMeridiemFromValue(value));
+    }
+  }, [value]);
+
+  const displayValue = getDisplayTimeValue(value);
+
+  return (
+    <div>
+      {label && (
+        <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">{label}</label>
+      )}
+      <div className="flex rounded-xl border border-gray-200 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all overflow-hidden">
+        <input
+          {...props}
+          type="text"
+          inputMode="numeric"
+          placeholder={placeholder}
+          pattern="^((0?[1-9]|1[0-2]):[0-5][0-9]|(0?[1-9]|1[0-2])[0-5][0-9])$"
+          maxLength={5}
+          value={displayValue}
+          onChange={(e) => onChange(formatTypedTime(e.target.value, meridiem))}
+          onBlur={(e) => {
+            onChange(formatTypedTime(e.target.value, meridiem, true));
+            onBlur?.(e);
+          }}
+          className="min-w-0 flex-1 border-0 p-3 text-sm font-medium outline-none placeholder:text-gray-300"
+        />
+        <select
+          value={meridiem}
+          onChange={(e) => {
+            const nextMeridiem = e.target.value as Meridiem;
+            setMeridiem(nextMeridiem);
+            const formatted = formatTypedTime(displayValue, nextMeridiem, true);
+            if (formatted) onChange(formatted);
+          }}
+          disabled={props.disabled}
+          className="w-20 border-l border-gray-200 bg-gray-50 px-2 text-sm font-bold text-gray-700 outline-none"
+          aria-label={`${label || 'Time'} period`}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
+      </div>
+    </div>
+  );
+};
 
 export const NavItem = ({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void }) => (
   <button 
