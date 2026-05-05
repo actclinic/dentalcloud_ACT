@@ -114,6 +114,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [deleteModal, setDeleteModal] = React.useState(false);
   const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
   const [treatmentSearchTerm, setTreatmentSearchTerm] = React.useState('');
+  const [showTreatmentDropdown, setShowTreatmentDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
@@ -144,6 +145,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     });
   }, [treatmentTypes, treatmentSearchTerm]);
   const menuRef = useRef<HTMLDivElement>(null);
+  const treatmentSelectorRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const FILES_PER_PAGE = 3;
@@ -189,6 +191,21 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
       };
     }
   }, [openMenuId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (treatmentSelectorRef.current && !treatmentSelectorRef.current.contains(event.target as Node)) {
+        setShowTreatmentDropdown(false);
+      }
+    };
+
+    if (showTreatmentDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showTreatmentDropdown]);
 
   // Toggle menu for a specific file
   const toggleMenu = useCallback((fileId: string, event?: React.MouseEvent) => {
@@ -407,115 +424,145 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 emptyMessage="No doctors found"
               />
             </div>
-            <div className="mb-4">
-              <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Search Treatments</label>
+            <div className="relative" ref={treatmentSelectorRef}>
+              <label className="block text-[10px] text-indigo-700 uppercase font-bold tracking-wider mb-1.5">Select Treatment</label>
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-300" />
                 <input
                   type="search"
                   value={treatmentSearchTerm}
-                  onChange={(e) => setTreatmentSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setTreatmentSearchTerm(e.target.value);
+                    setShowTreatmentDropdown(true);
+                  }}
+                  onFocus={() => setShowTreatmentDropdown(true)}
                   placeholder="Search by treatment name or category..."
-                  className="w-full rounded-xl border border-indigo-200 bg-white py-2.5 pl-10 pr-10 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="w-full rounded-xl border border-indigo-200 bg-white py-2.5 pl-10 pr-24 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   aria-label="Search treatments"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowTreatmentDropdown((open) => !open)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                  aria-expanded={showTreatmentDropdown}
+                  aria-label="Open treatment dropdown"
+                >
+                  {filteredTreatmentTypes.length}
+                </button>
                 {treatmentSearchTerm && (
                   <button
                     type="button"
-                    onClick={() => setTreatmentSearchTerm('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                    onClick={() => {
+                      setTreatmentSearchTerm('');
+                      setShowTreatmentDropdown(true);
+                    }}
+                    className="absolute right-14 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
                     aria-label="Clear treatment search"
                   >
                     <X size={16} />
                   </button>
                 )}
               </div>
-              {treatmentSearchTerm.trim() && (
-                <p className="mt-1.5 text-xs text-indigo-700">
-                  Showing {filteredTreatmentTypes.length} of {treatmentTypes.length} treatments
-                </p>
-              )}
-            </div>
-            <div className="max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-               {filteredTreatmentTypes.map(t => {
-                  const displayCost = useFlatRate
-                    ? t.cost
-                    : (t.cost * (selectedTeeth.length || 1));
-                 const costLabel = useFlatRate 
-                   ? `${formatCurrency(t.cost, currency)} (flat rate)` 
-                   : `${formatCurrency(t.cost, currency)} / tooth`;
-                 const isDisabled = !useFlatRate && selectedTeeth.length === 0;
-                 
-                 return (
-                   <button 
-                    key={t.id}
-                    disabled={isDisabled}
-                    onClick={() => onTreatmentSubmit(t)}
-                    className="flex flex-col items-start bg-white hover:bg-indigo-600 hover:text-white p-3 rounded-xl border border-indigo-100 text-left transition-all shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
-                   >
-                     <span className="text-sm font-bold group-hover:text-white text-gray-900">{t.name}</span>
-                     <span className="text-xs text-indigo-600 group-hover:text-indigo-100">
-                       {costLabel}
-                       {!useFlatRate && selectedTeeth.length > 0 && (
-                         <span className="block mt-0.5 font-semibold">Total: {formatCurrency(displayCost, currency)}</span>
-                       )}
-                       {useFlatRate && (
-                         <span className="block mt-0.5 font-semibold text-green-600 group-hover:text-green-200">Flat: {formatCurrency(displayCost, currency)}</span>
-                       )}
-                     </span>
-                    </button>
-                  );
-                })}
-                {filteredTreatmentTypes.length === 0 && (
-                  <div className="col-span-full rounded-xl border border-dashed border-indigo-200 bg-white/70 p-6 text-center text-sm text-indigo-700">
-                    No treatments match your search.
+              {showTreatmentDropdown && (
+                <div className="absolute left-0 right-0 top-full z-40 mt-2 rounded-xl border border-indigo-100 bg-white shadow-xl">
+                  <div className="max-h-72 overflow-y-auto p-2 custom-scrollbar">
+                    {filteredTreatmentTypes.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-indigo-100 bg-indigo-50 px-3 py-4 text-center text-sm font-semibold text-indigo-700">
+                        No treatments match your search.
+                      </div>
+                    ) : (
+                      filteredTreatmentTypes.map(t => {
+                        const displayCost = useFlatRate
+                          ? t.cost
+                          : (t.cost * (selectedTeeth.length || 1));
+                        const costLabel = useFlatRate
+                          ? `${formatCurrency(t.cost, currency)} flat rate`
+                          : `${formatCurrency(t.cost, currency)} / tooth`;
+                        const isDisabled = !useFlatRate && selectedTeeth.length === 0;
+
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() => {
+                              onTreatmentSubmit(t);
+                              setShowTreatmentDropdown(false);
+                            }}
+                            className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-bold text-gray-900">{t.name}</span>
+                              {t.category && (
+                                <span className="block truncate text-xs font-medium text-gray-400">{t.category}</span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-right text-xs font-bold text-indigo-700">
+                              {costLabel}
+                              {!useFlatRate && selectedTeeth.length > 0 && (
+                                <span className="block text-green-700">Total: {formatCurrency(displayCost, currency)}</span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
-                )}
-              </div>
+                  {!useFlatRate && selectedTeeth.length === 0 && (
+                    <div className="border-t border-indigo-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                      Select teeth first or enable Flat Rate.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
 
       {selectedPatient && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Clinical Case History</h3>
-          <div className="overflow-x-auto max-h-96 overflow-y-auto custom-scrollbar">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gray-50 text-gray-500 sticky top-0 border-b border-gray-100">
+        <div className="bg-white p-5 md:p-7 rounded-xl shadow-sm border border-gray-100">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-xl font-black text-gray-900">Clinical Case History</h3>
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
+              {treatmentHistory.length} records
+            </span>
+          </div>
+          <div className="overflow-x-auto max-h-[34rem] min-h-[18rem] overflow-y-auto custom-scrollbar">
+            <table className="w-full text-[15px] text-left">
+              <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 border-b border-gray-100 uppercase tracking-wide">
                 <tr>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Doctor</th>
-                  <th className="px-4 py-3">Anatomy (Teeth)</th>
-                  <th className="px-4 py-3">Service Provided</th>
-                  <th className="px-4 py-3 text-right">Fee</th>
-                  <th className="px-4 py-3 text-center">Action</th>
+                  <th className="px-5 py-4">Date</th>
+                  <th className="px-5 py-4">Doctor</th>
+                  <th className="px-5 py-4">Anatomy (Teeth)</th>
+                  <th className="px-5 py-4">Service Provided</th>
+                  <th className="px-5 py-4 text-right">Fee</th>
+                  <th className="px-5 py-4 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {treatmentHistory.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
                 ) : (
                   treatmentHistory.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-500">{rec.date}</td>
-                      <td className="px-4 py-3 text-gray-700 font-medium">{formatDoctorName(rec.doctor_name)}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded leading-relaxed inline-block">
+                      <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{rec.date}</td>
+                      <td className="px-5 py-4 text-gray-800 font-semibold whitespace-nowrap">{formatDoctorName(rec.doctor_name)}</td>
+                      <td className="px-5 py-4">
+                        <span className="text-sm bg-gray-100 px-2 py-1 rounded leading-relaxed inline-block">
                           {formatTeethWithPosition(rec.teeth)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-800">{rec.description}</td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-5 py-4 font-semibold text-gray-900">{rec.description}</td>
+                      <td className="px-5 py-4 text-right font-black text-gray-900 whitespace-nowrap">{formatCurrency(rec.cost || 0, currency)}</td>
+                      <td className="px-5 py-4 text-center">
                         {onUndoTreatment && (
                           <button 
                             onClick={() => onUndoTreatment(rec)}
-                            className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                            className="text-gray-400 hover:text-red-600 transition-colors p-2"
                             title="Undo/Delete Record"
                           >
-                            <RotateCcw size={14} />
+                            <RotateCcw size={16} />
                           </button>
                         )}
                       </td>
