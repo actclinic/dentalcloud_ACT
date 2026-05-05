@@ -2392,7 +2392,7 @@ const App: React.FC = () => {
       )}
 
       {isDoctor && (
-        <header className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 sticky top-0 z-40" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}>
+        <header className="bg-white shadow-sm border-b border-gray-200 px-4 pt-6 pb-3 sticky top-0 z-40">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-gray-900 truncate">{doctorViewTitle}</h1>

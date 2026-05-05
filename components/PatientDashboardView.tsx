@@ -404,7 +404,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}>
+    <div className="min-h-screen bg-gray-50 flex flex-col pt-3">
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
