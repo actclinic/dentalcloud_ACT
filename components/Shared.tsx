@@ -143,41 +143,61 @@ export const Input = ({ label, ...props }: InputProps) => (
   </div>
 );
 
+const toTwentyFourHourTime = (hours: number, minutes: number, meridiem?: string) => {
+  if (minutes > 59) return null;
+
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return null;
+    const normalizedHours = meridiem === 'PM'
+      ? (hours === 12 ? 12 : hours + 12)
+      : (hours === 12 ? 0 : hours);
+
+    return `${String(normalizedHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  if (hours > 23) return null;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
 const formatTypedTime = (rawValue: string, completeOnly = false) => {
   const raw = rawValue.trim();
   if (!raw) return '';
+
+  const meridiemMatch = raw.match(/\s*([ap])\.?m?\.?$/i);
+  const meridiem = meridiemMatch ? `${meridiemMatch[1].toUpperCase()}M` : undefined;
+  const timeWithoutMeridiem = meridiem ? raw.slice(0, meridiemMatch.index).trim() : raw;
+  const meridiemColonMatch = timeWithoutMeridiem.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+
+  if (meridiem && meridiemColonMatch) {
+    const hours = Number(meridiemColonMatch[1]);
+    const minutesText = meridiemColonMatch[2];
+    const minutes = minutesText === undefined ? 0 : Number(minutesText);
+    const formatted = toTwentyFourHourTime(hours, minutes, meridiem);
+
+    if (formatted && (minutesText !== undefined || completeOnly || /^[ap]m$/i.test(meridiemMatch[0].trim()))) {
+      return formatted;
+    }
+  }
 
   const digitsOnly = raw.replace(/\D/g, '');
   if (!completeOnly && (/^\d{4}$/.test(digitsOnly) || (/^\d{3}$/.test(digitsOnly) && Number(digitsOnly[0]) > 2))) {
     const hours = digitsOnly.length === 3 ? digitsOnly.slice(0, 1) : digitsOnly.slice(0, 2);
     const minutes = digitsOnly.slice(-2);
-    const hourNumber = Number(hours);
-    const minuteNumber = Number(minutes);
-
-    if (hourNumber <= 23 && minuteNumber <= 59) {
-      return `${String(hourNumber).padStart(2, '0')}:${minutes}`;
-    }
+    const formatted = toTwentyFourHourTime(Number(hours), Number(minutes));
+    if (formatted) return formatted;
   }
 
   const colonMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
   if (colonMatch) {
-    const hourNumber = Number(colonMatch[1]);
-    const minuteNumber = Number(colonMatch[2]);
-
-    if (hourNumber <= 23 && minuteNumber <= 59) {
-      return `${String(hourNumber).padStart(2, '0')}:${colonMatch[2]}`;
-    }
+    const formatted = toTwentyFourHourTime(Number(colonMatch[1]), Number(colonMatch[2]));
+    if (formatted) return formatted;
   }
 
   if (completeOnly && /^\d{3,4}$/.test(digitsOnly)) {
     const hours = digitsOnly.length === 3 ? digitsOnly.slice(0, 1) : digitsOnly.slice(0, 2);
     const minutes = digitsOnly.slice(-2);
-    const hourNumber = Number(hours);
-    const minuteNumber = Number(minutes);
-
-    if (hourNumber <= 23 && minuteNumber <= 59) {
-      return `${String(hourNumber).padStart(2, '0')}:${minutes}`;
-    }
+    const formatted = toTwentyFourHourTime(Number(hours), Number(minutes));
+    if (formatted) return formatted;
   }
 
   return raw;
@@ -188,14 +208,14 @@ type TimeInputProps = Omit<InputProps, 'type' | 'value' | 'onChange'> & {
   onChange: (value: string) => void;
 };
 
-export const TimeInput = ({ value = '', onChange, onBlur, placeholder = 'HH:MM', ...props }: TimeInputProps) => (
+export const TimeInput = ({ value = '', onChange, onBlur, placeholder = 'HH:MM AM/PM', ...props }: TimeInputProps) => (
   <Input
     {...props}
     type="text"
-    inputMode="numeric"
+    inputMode="text"
     placeholder={placeholder}
-    pattern="^([01]?[0-9]|2[0-3]):?[0-5][0-9]$"
-    maxLength={5}
+    pattern="^(([01]?[0-9]|2[0-3]):?[0-5][0-9]|(0?[1-9]|1[0-2])(:[0-5][0-9])?\\s?([AaPp]\\.?[Mm]?\\.?))$"
+    maxLength={10}
     value={value}
     onChange={(e) => onChange(formatTypedTime(e.target.value))}
     onBlur={(e) => {
