@@ -2521,7 +2521,7 @@ const App: React.FC = () => {
       </aside>
       )}
 
-      <main className={isDoctor ? "flex min-w-0 flex-1 flex-col p-0 pb-28" : isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 md:h-screen" : "flex-1 min-w-0 p-3 md:p-5"}>
+      <main className={isDoctor ? "flex min-w-0 flex-1 flex-col p-0 pb-32" : isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 md:h-screen" : "flex-1 min-w-0 p-3 md:p-5"}>
         <div className={isDoctor || isWorkspaceView ? "flex min-h-0 flex-1 flex-col" : "w-full"}>
           <Suspense fallback={<div className="flex justify-center p-20"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>}>
             {currentView === 'dashboard' && canAccessView('dashboard') && (
@@ -2796,8 +2796,7 @@ const App: React.FC = () => {
 
       {isDoctor && (
         <nav
-          className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white px-2 py-2"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white px-2 pt-2 pb-5"
         >
           {isTabPending && <div className="h-0.5 w-full bg-indigo-100"><div className="h-full w-1/3 bg-indigo-500 animate-pulse" /></div>}
           <div className="mx-auto flex max-w-md justify-around">

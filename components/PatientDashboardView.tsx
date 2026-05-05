@@ -432,7 +432,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       </div>
 
       {/* Main Content */}
-      <div className={activeTab === 'messages' ? 'h-[calc(100dvh-8rem)] min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto pb-24 pt-4'}>
+      <div className={activeTab === 'messages' ? 'h-[calc(100dvh-9rem)] min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto pb-28 pt-4'}>
         {error && patient && (
           <div className="px-4 mb-4">
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start justify-between gap-3">
@@ -844,7 +844,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       </div>
 
       {/* Mobile Optimized Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-2 z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-5 z-50">
         <div className="flex justify-around max-w-md mx-auto">
           <button
             onClick={() => setActiveTab('home')}
