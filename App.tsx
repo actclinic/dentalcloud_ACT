@@ -2350,6 +2350,7 @@ const App: React.FC = () => {
   const currentDoctor = isDoctor && session?.doctor_id
     ? doctors.find((doctor) => doctor.id === session.doctor_id) || null
     : null;
+  const shouldShowAdminBadge = isAdmin && currentUser.trim().toLowerCase() !== 'admin';
   const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging' || currentView === 'patients' || currentView === 'appointments';
   const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs) as ViewState[];
   const doctorMobileTabs: { key: ViewState; label: string; icon: React.ReactNode; isActive: boolean }[] = [
@@ -2496,7 +2497,7 @@ const App: React.FC = () => {
               <p className="text-[10px] theme-nav-muted font-bold uppercase tracking-wider mb-2">Logged in as</p>
               <div className="flex items-center justify-between">
                  <span className="text-xs theme-nav-text font-medium">{currentUser}</span>
-                 {isAdmin && (
+                 {shouldShowAdminBadge && (
                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 uppercase">Admin</span>
                  )}
               </div>
