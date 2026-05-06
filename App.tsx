@@ -3203,7 +3203,11 @@ const App: React.FC = () => {
       )}
 
       {showDoctorModal && (
-        <Modal title={editingDoctor ? "Edit Doctor" : "New Doctor"} onClose={() => {setShowDoctorModal(false); setEditingDoctor(null);}}>
+        <Modal
+          title={editingDoctor ? "Edit Doctor" : "New Doctor"}
+          onClose={() => {setShowDoctorModal(false); setEditingDoctor(null);}}
+          maxWidthClassName="max-w-3xl"
+        >
           <form onSubmit={handleCreateDoctor} className="space-y-5">
             <Input label="Doctor Name" required value={newDoctorData.name} onChange={(e: any) => setNewDoctorData({...newDoctorData, name: e.target.value})} />
             <div className="grid grid-cols-2 gap-4">
