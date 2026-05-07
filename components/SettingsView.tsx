@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload } from 'lucide-react';
-import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize } from '../types';
+import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload, Tags, CalendarRange } from 'lucide-react';
+import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize, PatientType, AppointmentType } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
 import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings as persistEmailSettings } from '../utils/emailSettings';
@@ -25,6 +25,14 @@ interface SettingsViewProps {
   clinicalFeeEnabled: boolean;
   clinicalFeeAmount: number;
   onSaveClinicalFeeSettings: (enabled: boolean, amount: number) => Promise<void>;
+  patientTypes: PatientType[];
+  appointmentTypes: AppointmentType[];
+  onCreatePatientType: (data: Partial<PatientType>) => Promise<void>;
+  onUpdatePatientType: (id: string, data: Partial<PatientType>) => Promise<void>;
+  onDeletePatientType: (id: string) => Promise<void>;
+  onCreateAppointmentType: (data: Partial<AppointmentType>) => Promise<void>;
+  onUpdateAppointmentType: (id: string, data: Partial<AppointmentType>) => Promise<void>;
+  onDeleteAppointmentType: (id: string) => Promise<void>;
   isAdmin: boolean;
   appName: string;
   appLogoUrl: string;
@@ -68,6 +76,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   clinicalFeeEnabled,
   clinicalFeeAmount,
   onSaveClinicalFeeSettings,
+  patientTypes,
+  appointmentTypes,
+  onCreatePatientType,
+  onUpdatePatientType,
+  onDeletePatientType,
+  onCreateAppointmentType,
+  onUpdateAppointmentType,
+  onDeleteAppointmentType,
   isAdmin,
   appName,
   appLogoUrl,
@@ -151,6 +167,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     amount: clinicalFeeAmount
   });
   const [clinicalFeeMessage, setClinicalFeeMessage] = useState<string>('');
+  const [patientTypeForm, setPatientTypeForm] = useState<{ name: string; sort_order: string; is_active: boolean }>({
+    name: '',
+    sort_order: String(patientTypes.length),
+    is_active: true
+  });
+  const [editingPatientTypeId, setEditingPatientTypeId] = useState<string | null>(null);
+  const [patientTypeMessage, setPatientTypeMessage] = useState<string>('');
+  const [appointmentTypeForm, setAppointmentTypeForm] = useState<{ name: string; sort_order: string; is_active: boolean }>({
+    name: '',
+    sort_order: String(appointmentTypes.length),
+    is_active: true
+  });
+  const [editingAppointmentTypeId, setEditingAppointmentTypeId] = useState<string | null>(null);
+  const [appointmentTypeMessage, setAppointmentTypeMessage] = useState<string>('');
 
   const updateEmailSettings = (updates: Partial<EmailSettings>) => {
     setEmailSettingsMessage('');
@@ -236,6 +266,140 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const resetPatientTypeForm = () => {
+    setEditingPatientTypeId(null);
+    setPatientTypeForm({
+      name: '',
+      sort_order: String(patientTypes.length),
+      is_active: true
+    });
+  };
+
+  const handleSavePatientType = async () => {
+    const trimmedName = patientTypeForm.name.trim();
+    if (!trimmedName) {
+      setPatientTypeMessage('Patient type name is required.');
+      return;
+    }
+
+    try {
+      setPatientTypeMessage('');
+      const payload: Partial<PatientType> = {
+        name: trimmedName,
+        sort_order: parseInt(patientTypeForm.sort_order, 10) || 0,
+        is_active: patientTypeForm.is_active
+      };
+
+      if (editingPatientTypeId) {
+        await onUpdatePatientType(editingPatientTypeId, payload);
+        setPatientTypeMessage('Patient type updated successfully.');
+      } else {
+        await onCreatePatientType(payload);
+        setPatientTypeMessage('Patient type created successfully.');
+      }
+
+      resetPatientTypeForm();
+    } catch (error: any) {
+      console.error('Failed to save patient type:', error);
+      setPatientTypeMessage(error?.message || 'Failed to save patient type.');
+    }
+  };
+
+  const handleEditPatientType = (patientType: PatientType) => {
+    setPatientTypeMessage('');
+    setEditingPatientTypeId(patientType.id);
+    setPatientTypeForm({
+      name: patientType.name || '',
+      sort_order: String(patientType.sort_order ?? 0),
+      is_active: patientType.is_active
+    });
+  };
+
+  const handleDeletePatientType = async (patientType: PatientType) => {
+    if (!window.confirm(`Delete patient type "${patientType.name}"?`)) {
+      return;
+    }
+
+    try {
+      setPatientTypeMessage('');
+      await onDeletePatientType(patientType.id);
+      if (editingPatientTypeId === patientType.id) {
+        resetPatientTypeForm();
+      }
+      setPatientTypeMessage('Patient type deleted successfully.');
+    } catch (error: any) {
+      console.error('Failed to delete patient type:', error);
+      setPatientTypeMessage(error?.message || 'Failed to delete patient type.');
+    }
+  };
+
+  const resetAppointmentTypeForm = () => {
+    setEditingAppointmentTypeId(null);
+    setAppointmentTypeForm({
+      name: '',
+      sort_order: String(appointmentTypes.length),
+      is_active: true
+    });
+  };
+
+  const handleSaveAppointmentType = async () => {
+    const trimmedName = appointmentTypeForm.name.trim();
+    if (!trimmedName) {
+      setAppointmentTypeMessage('Appointment type name is required.');
+      return;
+    }
+
+    try {
+      setAppointmentTypeMessage('');
+      const payload: Partial<AppointmentType> = {
+        name: trimmedName,
+        sort_order: parseInt(appointmentTypeForm.sort_order, 10) || 0,
+        is_active: appointmentTypeForm.is_active
+      };
+
+      if (editingAppointmentTypeId) {
+        await onUpdateAppointmentType(editingAppointmentTypeId, payload);
+        setAppointmentTypeMessage('Appointment type updated successfully.');
+      } else {
+        await onCreateAppointmentType(payload);
+        setAppointmentTypeMessage('Appointment type created successfully.');
+      }
+
+      resetAppointmentTypeForm();
+    } catch (error: any) {
+      console.error('Failed to save appointment type:', error);
+      setAppointmentTypeMessage(error?.message || 'Failed to save appointment type.');
+    }
+  };
+
+  const handleEditAppointmentType = (appointmentType: AppointmentType) => {
+    setAppointmentTypeMessage('');
+    setEditingAppointmentTypeId(appointmentType.id);
+    setAppointmentTypeForm({
+      name: appointmentType.name || '',
+      sort_order: String(appointmentType.sort_order ?? 0),
+      is_active: appointmentType.is_active
+    });
+  };
+
+  const handleDeleteAppointmentType = async (appointmentType: AppointmentType) => {
+    if (!window.confirm(`Delete appointment type "${appointmentType.name}"?`)) {
+      return;
+    }
+
+    try {
+      setAppointmentTypeMessage('');
+      await onDeleteAppointmentType(appointmentType.id);
+      if (editingAppointmentTypeId === appointmentType.id) {
+        resetAppointmentTypeForm();
+      }
+      setAppointmentTypeMessage('Appointment type deleted successfully.');
+    } catch (error: any) {
+      console.error('Failed to delete appointment type:', error);
+      setAppointmentTypeMessage(error?.message || 'Failed to delete appointment type.');
+    }
+  };
+
   const handleAppLogoUpload = async (file?: File | null) => {
     if (!file) return;
 
@@ -273,6 +437,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setIsDeletingLogo(false);
     }
   };
+
+  useEffect(() => {
+    if (!editingPatientTypeId) {
+      setPatientTypeForm((prev) => ({
+        ...prev,
+        sort_order: String(patientTypes.length)
+      }));
+    }
+  }, [patientTypes, editingPatientTypeId]);
+
+  useEffect(() => {
+    if (!editingAppointmentTypeId) {
+      setAppointmentTypeForm((prev) => ({
+        ...prev,
+        sort_order: String(appointmentTypes.length)
+      }));
+    }
+  }, [appointmentTypes, editingAppointmentTypeId]);
 
   const saveManagerContacts = (contacts: ManagerContact[]) => {
     localStorage.setItem(MANAGER_EMAILS_KEY, JSON.stringify(contacts));
@@ -620,6 +802,236 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   {clinicalFeeMessage}
                 </p>
               )}
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Tags className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-lg font-semibold text-gray-800">Patient Type Management</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Manage the patient type options shown in patient registration and profile edit forms.
+            </p>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+              <div className="space-y-3">
+                {patientTypes.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                    No patient types found yet.
+                  </div>
+                ) : (
+                  patientTypes.map((patientType) => (
+                    <div key={patientType.id} className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-gray-900">{patientType.name}</h4>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${patientType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+                            {patientType.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Display order: {patientType.sort_order ?? 0}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditPatientType(patientType)}
+                          className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePatientType(patientType)}
+                          className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 h-fit">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="font-semibold text-gray-900">{editingPatientTypeId ? 'Edit Patient Type' : 'Add Patient Type'}</h4>
+                  {editingPatientTypeId && (
+                    <button
+                      type="button"
+                      onClick={resetPatientTypeForm}
+                      className="text-xs font-bold text-gray-500 hover:text-gray-700"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
+
+                <Input
+                  label="Patient Type Name"
+                  value={patientTypeForm.name}
+                  onChange={(e: any) => {
+                    setPatientTypeMessage('');
+                    setPatientTypeForm({ ...patientTypeForm, name: e.target.value });
+                  }}
+                  placeholder="e.g. Facebook Ads"
+                />
+
+                <Input
+                  label="Display Order"
+                  type="number"
+                  min="0"
+                  value={patientTypeForm.sort_order}
+                  onChange={(e: any) => {
+                    setPatientTypeMessage('');
+                    setPatientTypeForm({ ...patientTypeForm, sort_order: e.target.value });
+                  }}
+                />
+
+                <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={patientTypeForm.is_active}
+                    onChange={(e) => {
+                      setPatientTypeMessage('');
+                      setPatientTypeForm({ ...patientTypeForm, is_active: e.target.checked });
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Show this type in patient forms
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleSavePatientType}
+                  className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+                >
+                  {editingPatientTypeId ? 'Update Patient Type' : 'Create Patient Type'}
+                </button>
+
+                {patientTypeMessage && (
+                  <p className={`text-xs ${patientTypeMessage.toLowerCase().includes('failed') || patientTypeMessage.toLowerCase().includes('cannot') || patientTypeMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {patientTypeMessage}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="border border-gray-200 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <CalendarRange className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-lg font-semibold text-gray-800">Appointment Type Management</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Manage the options shown in the appointment form Type field without affecting your treatment service table.
+            </p>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+              <div className="space-y-3">
+                {appointmentTypes.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                    No appointment types found yet.
+                  </div>
+                ) : (
+                  appointmentTypes.map((appointmentType) => (
+                    <div key={appointmentType.id} className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-gray-900">{appointmentType.name}</h4>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${appointmentType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+                            {appointmentType.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Display order: {appointmentType.sort_order ?? 0}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditAppointmentType(appointmentType)}
+                          className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAppointmentType(appointmentType)}
+                          className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 h-fit">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="font-semibold text-gray-900">{editingAppointmentTypeId ? 'Edit Appointment Type' : 'Add Appointment Type'}</h4>
+                  {editingAppointmentTypeId && (
+                    <button
+                      type="button"
+                      onClick={resetAppointmentTypeForm}
+                      className="text-xs font-bold text-gray-500 hover:text-gray-700"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
+
+                <Input
+                  label="Appointment Type Name"
+                  value={appointmentTypeForm.name}
+                  onChange={(e: any) => {
+                    setAppointmentTypeMessage('');
+                    setAppointmentTypeForm({ ...appointmentTypeForm, name: e.target.value });
+                  }}
+                  placeholder="e.g. Follow-up"
+                />
+
+                <Input
+                  label="Display Order"
+                  type="number"
+                  min="0"
+                  value={appointmentTypeForm.sort_order}
+                  onChange={(e: any) => {
+                    setAppointmentTypeMessage('');
+                    setAppointmentTypeForm({ ...appointmentTypeForm, sort_order: e.target.value });
+                  }}
+                />
+
+                <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={appointmentTypeForm.is_active}
+                    onChange={(e) => {
+                      setAppointmentTypeMessage('');
+                      setAppointmentTypeForm({ ...appointmentTypeForm, is_active: e.target.checked });
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Show this type in appointment forms
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleSaveAppointmentType}
+                  className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+                >
+                  {editingAppointmentTypeId ? 'Update Appointment Type' : 'Create Appointment Type'}
+                </button>
+
+                {appointmentTypeMessage && (
+                  <p className={`text-xs ${appointmentTypeMessage.toLowerCase().includes('failed') || appointmentTypeMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {appointmentTypeMessage}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}

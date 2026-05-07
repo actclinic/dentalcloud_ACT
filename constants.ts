@@ -17,6 +17,24 @@ export const TREATMENT_CATEGORIES = [
   'Orthodontics'
 ] as const;
 
+export const DEFAULT_PATIENT_TYPE_NAME = 'Walk-in';
+
+export const DEFAULT_PATIENT_TYPE_OPTIONS = [
+  'Walk-in',
+  'ONP',
+  'RNP',
+  'OTP',
+  'Hotline',
+  'Rec-ph call',
+  'Tiktok',
+  'Tiktok Hotline'
+] as const;
+
+export const DEFAULT_APPOINTMENT_TYPE_OPTIONS = [
+  'Consult',
+  'Check Up'
+] as const;
+
 export const FLEXIBLE_STAFF_TABS = [
   {
     key: 'dashboard',

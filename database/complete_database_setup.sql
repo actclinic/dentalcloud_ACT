@@ -93,6 +93,27 @@ CREATE TABLE users (
 );
 
 -- Patients
+CREATE TABLE patient_types (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+INSERT INTO patient_types (name, sort_order, is_active)
+VALUES
+  ('Walk-in', 0, true),
+  ('ONP', 1, true),
+  ('RNP', 2, true),
+  ('OTP', 3, true),
+  ('Hotline', 4, true),
+  ('Rec-ph call', 5, true),
+  ('Tiktok', 6, true),
+  ('Tiktok Hotline', 7, true)
+ON CONFLICT (name) DO NOTHING;
+
 CREATE TABLE patients (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   location_id UUID REFERENCES locations(id),
@@ -103,7 +124,7 @@ CREATE TABLE patients (
   address TEXT,
   city VARCHAR(100),
   township VARCHAR(100),
-  patient_type VARCHAR(50) DEFAULT 'Walk-in' CHECK (patient_type IN ('Walk-in', 'ONP', 'RNP', 'OTP', 'Hotline', 'Rec-ph call', 'Tiktok', 'Tiktok Hotline')),
+  patient_type VARCHAR(100) DEFAULT 'Walk-in',
   balance DECIMAL(12,2) DEFAULT 0,
   loyalty_points INTEGER DEFAULT 0,
   medical_history TEXT,
@@ -133,6 +154,21 @@ CREATE TABLE otp_codes (
   used BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE appointment_types (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+INSERT INTO appointment_types (name, sort_order, is_active)
+VALUES
+  ('Consult', 0, true),
+  ('Check Up', 1, true)
+ON CONFLICT (name) DO NOTHING;
 
 -- Doctors
 CREATE TABLE doctors (
@@ -366,6 +402,10 @@ END $$;
 -- ============================================================================
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_location ON users(location_id);
+CREATE INDEX idx_patient_types_sort_order ON patient_types(sort_order);
+CREATE INDEX idx_patient_types_active ON patient_types(is_active);
+CREATE INDEX idx_appointment_types_sort_order ON appointment_types(sort_order);
+CREATE INDEX idx_appointment_types_active ON appointment_types(is_active);
 CREATE INDEX idx_patients_location ON patients(location_id);
 CREATE INDEX idx_patients_email ON patients(email);
 CREATE INDEX idx_patients_phone ON patients(phone);

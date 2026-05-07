@@ -49,9 +49,13 @@ import {
   Expense,
   Recall,
   ScheduledTask,
-  ReceiptSize
+  ReceiptSize,
+  PatientType,
+  AppointmentType
 } from './types';
 import {
+  DEFAULT_PATIENT_TYPE_NAME,
+  DEFAULT_PATIENT_TYPE_OPTIONS,
   TREATMENT_CATEGORIES,
   DEFAULT_NORMAL_TAB_PERMISSIONS,
   DOCTOR_DASHBOARD_TABS,
@@ -119,8 +123,16 @@ const mapLeadSourceToPatientType = (source?: string | null): Patient['patient_ty
   if (normalized.includes('tiktok')) return 'Tiktok';
   if (normalized.includes('hotline')) return 'Hotline';
   if (normalized.includes('phone') || normalized.includes('call')) return 'Rec-ph call';
-  return 'Walk-in';
+  return DEFAULT_PATIENT_TYPE_NAME;
 };
+
+const buildDefaultPatientTypeRecords = (): PatientType[] =>
+  DEFAULT_PATIENT_TYPE_OPTIONS.map((name, index) => ({
+    id: `default-${index + 1}`,
+    name,
+    sort_order: index,
+    is_active: true
+  }));
 
 const toLocalISODate = (date: Date): string => {
   const year = date.getFullYear();
@@ -221,6 +233,8 @@ const App: React.FC = () => {
   
   // -- Data State --
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientTypes, setPatientTypes] = useState<PatientType[]>(buildDefaultPatientTypeRecords());
+  const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [treatmentHistory, setTreatmentHistory] = useState<ClinicalRecord[]>([]); 
@@ -434,7 +448,7 @@ const App: React.FC = () => {
       address: '',
       city: '',
       township: '',
-      patient_type: 'Walk-in'
+      patient_type: DEFAULT_PATIENT_TYPE_NAME
     });
   const [clinicalFeeEnabled, setClinicalFeeEnabled] = useState(false);
   const [clinicalFeeAmount, setClinicalFeeAmount] = useState(0);
@@ -483,9 +497,18 @@ const App: React.FC = () => {
     []
   );
   const appointmentTypeOptions = useMemo(() => {
-    const unique = [...new Set(treatmentTypes.map((type) => (type.name || '').trim()).filter(Boolean))];
-    return unique.sort((a, b) => a.localeCompare(b));
-  }, [treatmentTypes]);
+    const activeNames = appointmentTypes
+      .filter((type) => type.is_active)
+      .map((type) => (type.name || '').trim())
+      .filter(Boolean);
+
+    if (activeNames.length > 0) {
+      return activeNames;
+    }
+
+    const treatmentFallback = [...new Set(treatmentTypes.map((type) => (type.name || '').trim()).filter(Boolean))];
+    return treatmentFallback.sort((a, b) => a.localeCompare(b));
+  }, [appointmentTypes, treatmentTypes]);
   const appointmentTypeOptionsForModal = useMemo(() => {
     const currentType = (newAppointmentData.type || '').trim();
     if (!currentType || appointmentTypeOptions.includes(currentType)) {
@@ -497,6 +520,20 @@ const App: React.FC = () => {
     const existing = treatmentTypes.map((type) => (type.category || '').trim()).filter(Boolean);
     return [...new Set([...TREATMENT_CATEGORIES, ...existing])].sort((a, b) => a.localeCompare(b));
   }, [treatmentTypes]);
+  const activePatientTypeOptions = useMemo(() => {
+    const activeNames = patientTypes
+      .filter((type) => type.is_active)
+      .map((type) => (type.name || '').trim())
+      .filter(Boolean);
+    return activeNames.length > 0 ? activeNames : [...DEFAULT_PATIENT_TYPE_OPTIONS];
+  }, [patientTypes]);
+  const patientTypeOptionsForNewPatient = useMemo(() => {
+    const currentType = (newPatientData.patient_type || '').trim();
+    if (!currentType || activePatientTypeOptions.includes(currentType)) {
+      return activePatientTypeOptions;
+    }
+    return [...activePatientTypeOptions, currentType];
+  }, [activePatientTypeOptions, newPatientData.patient_type]);
   const townshipOptionsForNewPatient = useMemo(
     () => getTownshipsForCity(newPatientData.city || '').map((township) => ({ value: township, label: township })),
     [newPatientData.city]
@@ -935,8 +972,14 @@ const App: React.FC = () => {
         console.warn('Failed to update overdue recalls:', err);
       });
       
-      const locData = await api.locations.getAll();
+      const [locData, patientTypeData, appointmentTypeData] = await Promise.all([
+        api.locations.getAll(),
+        api.patientTypes.getAll(),
+        api.appointmentTypes.getAll()
+      ]);
       setLocations(locData);
+      setPatientTypes(patientTypeData);
+      setAppointmentTypes(appointmentTypeData);
       const session = auth.getSession();
       const restrictedLocationId = session?.location_id || '';
 
@@ -1282,7 +1325,7 @@ const App: React.FC = () => {
         address: '',
         city: '',
         township: '',
-        patient_type: 'Walk-in'
+        patient_type: activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME
       });
       setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
       setConvertingLeadAppointment(null);
@@ -2550,6 +2593,7 @@ const App: React.FC = () => {
             )}
             {currentView === 'patients' && canAccessView('patients') && <PatientsView 
                 patients={patients} 
+                patientTypes={patientTypes}
                 appointments={appointments}
                 loading={loading} 
                 currency={currency} 
@@ -2557,6 +2601,18 @@ const App: React.FC = () => {
                 loyaltyRules={loyaltyRules}
                 onSelectPatient={handlePatientSelect} 
                 onAddPatient={() => {
+                  setNewPatientData({
+                    name: '',
+                    email: '',
+                    phone: '',
+                    medicalHistory: '',
+                    password: '',
+                    age: undefined,
+                    address: '',
+                    city: '',
+                    township: '',
+                    patient_type: activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME
+                  });
                   setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
                   setShowPatientModal(true);
                 }} 
@@ -2691,6 +2747,33 @@ const App: React.FC = () => {
                     clinicalFeeEnabled={clinicalFeeEnabled}
                     clinicalFeeAmount={clinicalFeeAmount}
                     onSaveClinicalFeeSettings={handleSaveClinicalFeeSettings}
+                    patientTypes={patientTypes}
+                    appointmentTypes={appointmentTypes}
+                    onCreatePatientType={async (data) => {
+                      await api.patientTypes.create(data);
+                      setPatientTypes(await api.patientTypes.getAll());
+                    }}
+                    onUpdatePatientType={async (id, data) => {
+                      await api.patientTypes.update(id, data);
+                      setPatientTypes(await api.patientTypes.getAll());
+                      await fetchInitialData(currentLocationId || undefined);
+                    }}
+                    onDeletePatientType={async (id) => {
+                      await api.patientTypes.delete(id);
+                      setPatientTypes(await api.patientTypes.getAll());
+                    }}
+                    onCreateAppointmentType={async (data) => {
+                      await api.appointmentTypes.create(data);
+                      setAppointmentTypes(await api.appointmentTypes.getAll());
+                    }}
+                    onUpdateAppointmentType={async (id, data) => {
+                      await api.appointmentTypes.update(id, data);
+                      setAppointmentTypes(await api.appointmentTypes.getAll());
+                    }}
+                    onDeleteAppointmentType={async (id) => {
+                      await api.appointmentTypes.delete(id);
+                      setAppointmentTypes(await api.appointmentTypes.getAll());
+                    }}
                     isAdmin={isAdmin}
                     appName={appName}
                     appLogoUrl={appLogoUrl}
@@ -2857,17 +2940,12 @@ const App: React.FC = () => {
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient Type</label>
                 <select
                   className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                  value={newPatientData.patient_type || 'Walk-in'}
-                  onChange={(e) => setNewPatientData({...newPatientData, patient_type: e.target.value as Patient['patient_type']})}
+                  value={newPatientData.patient_type || activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME}
+                  onChange={(e) => setNewPatientData({...newPatientData, patient_type: e.target.value})}
                 >
-                  <option value="Walk-in">Walk-in</option>
-                  <option value="ONP">ONP</option>
-                  <option value="RNP">RNP</option>
-                  <option value="OTP">OTP</option>
-                  <option value="Hotline">Hotline</option>
-                  <option value="Rec-ph call">Rec-ph call</option>
-                  <option value="Tiktok">Tiktok</option>
-                  <option value="Tiktok Hotline">Tiktok Hotline</option>
+                  {patientTypeOptionsForNewPatient.map((patientType) => (
+                    <option key={patientType} value={patientType}>{patientType}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -3164,11 +3242,11 @@ const App: React.FC = () => {
                     }
                   }}
                   options={appointmentTypeOptionsForModal.map((typeName) => ({ value: typeName, label: typeName }))}
-                  placeholder="Select treatment type"
-                  emptyMessage="No treatment type found"
+                  placeholder="Select appointment type"
+                  emptyMessage="No appointment type found"
                 />
                 {appointmentTypeOptions.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No treatment types configured yet. Add services in Treatment Config first.</p>
+                  <p className="text-xs text-amber-600 mt-1">No appointment types configured yet. Add appointment types in Settings first.</p>
                 )}
               </div>
               <div>

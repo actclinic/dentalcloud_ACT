@@ -19,7 +19,7 @@ export interface Patient {
   address?: string;
   city?: string;
   township?: string;
-  patient_type?: 'Walk-in' | 'ONP' | 'RNP' | 'OTP' | 'Hotline' | 'Rec-ph call' | 'Tiktok' | 'Tiktok Hotline';
+  patient_type?: string;
   lastVisit?: string;
   balance: number;
   loyalty_points: number;
@@ -27,6 +27,15 @@ export interface Patient {
   created_at?: string;
   has_account?: boolean;
   username?: string | null;
+}
+
+export interface PatientType {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PatientFile {
@@ -130,6 +139,15 @@ export interface Appointment {
   created_at?: string;
   created_by_user_id?: string | null;
   created_by_user_name?: string | null;
+}
+
+export interface AppointmentType {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface User {

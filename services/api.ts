@@ -1,7 +1,7 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings } from '../types';
-import { DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType } from '../types';
+import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { loadEmailSettings } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
@@ -284,6 +284,13 @@ const normalizeS3SettingsRow = (row: any): S3Settings => ({
   updated_at: row?.updated_at
 });
 
+const DEFAULT_PATIENT_TYPES: PatientType[] = DEFAULT_PATIENT_TYPE_OPTIONS.map((name, index) => ({
+  id: `default-${index + 1}`,
+  name,
+  sort_order: index,
+  is_active: true
+}));
+
 const fetchS3Settings = async (): Promise<S3Settings | null> => {
   const { data, error } = await supabase
     .from('app_settings')
@@ -374,6 +381,182 @@ export const api = {
         .single();
       if (error) throw new Error(error.message);
       return result;
+    }
+  },
+
+  patientTypes: {
+    getAll: async (): Promise<PatientType[]> => {
+      try {
+        const { data, error } = await supabase
+          .from('patient_types')
+          .select('*')
+          .order('sort_order', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (error) {
+          if (isMissingTableError(error, 'patient_types')) {
+            return DEFAULT_PATIENT_TYPES;
+          }
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          return DEFAULT_PATIENT_TYPES;
+        }
+
+        return data;
+      } catch (err) {
+        console.warn('Error fetching patient types:', err);
+        return DEFAULT_PATIENT_TYPES;
+      }
+    },
+    create: async (data: Partial<PatientType>): Promise<PatientType> => {
+      const payload = {
+        name: (data.name || '').trim(),
+        sort_order: Number.isFinite(Number(data.sort_order)) ? Number(data.sort_order) : 0,
+        is_active: data.is_active ?? true
+      };
+
+      const { data: result, error } = await supabase
+        .from('patient_types')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    update: async (id: string, data: Partial<PatientType>): Promise<PatientType> => {
+      const { data: existing, error: existingError } = await supabase
+        .from('patient_types')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (existingError) throw new Error(existingError.message);
+
+      const payload = {
+        name: data.name !== undefined ? data.name.trim() : existing.name,
+        sort_order: data.sort_order !== undefined ? Number(data.sort_order) : existing.sort_order,
+        is_active: data.is_active ?? existing.is_active,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: result, error } = await supabase
+        .from('patient_types')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      if (existing.name !== payload.name) {
+        const { error: patientUpdateError } = await supabase
+          .from('patients')
+          .update({ patient_type: payload.name })
+          .eq('patient_type', existing.name);
+
+        if (patientUpdateError) {
+          throw new Error(patientUpdateError.message);
+        }
+      }
+
+      return result;
+    },
+    delete: async (id: string): Promise<void> => {
+      const { data: existing, error: existingError } = await supabase
+        .from('patient_types')
+        .select('name')
+        .eq('id', id)
+        .single();
+
+      if (existingError) throw new Error(existingError.message);
+
+      const { count, error: usageError } = await supabase
+        .from('patients')
+        .select('id', { count: 'exact', head: true })
+        .eq('patient_type', existing.name);
+
+      if (usageError) throw new Error(usageError.message);
+      if ((count || 0) > 0) {
+        throw new Error(`Cannot delete "${existing.name}" because it is already used by patient records.`);
+      }
+
+      const { error } = await supabase
+        .from('patient_types')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
+    }
+  },
+
+  appointmentTypes: {
+    getAll: async (): Promise<AppointmentType[]> => {
+      try {
+        const { data, error } = await supabase
+          .from('appointment_types')
+          .select('*')
+          .order('sort_order', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (error) {
+          if (isMissingTableError(error, 'appointment_types')) {
+            return [];
+          }
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          return [];
+        }
+
+        return data;
+      } catch (err) {
+        console.warn('Error fetching appointment types:', err);
+        return [];
+      }
+    },
+    create: async (data: Partial<AppointmentType>): Promise<AppointmentType> => {
+      const payload = {
+        name: (data.name || '').trim(),
+        sort_order: Number.isFinite(Number(data.sort_order)) ? Number(data.sort_order) : 0,
+        is_active: data.is_active ?? true
+      };
+
+      const { data: result, error } = await supabase
+        .from('appointment_types')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    update: async (id: string, data: Partial<AppointmentType>): Promise<AppointmentType> => {
+      const { data: result, error } = await supabase
+        .from('appointment_types')
+        .update({
+          ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+          ...(data.sort_order !== undefined ? { sort_order: Number(data.sort_order) } : {}),
+          ...(data.is_active !== undefined ? { is_active: data.is_active } : {}),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return result;
+    },
+    delete: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('appointment_types')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
     }
   },
 
@@ -498,7 +681,7 @@ export const api = {
         address: data.address || null,
         city: data.city || null,
         township: data.township || null,
-        patient_type: data.patient_type || 'Walk-in',
+        patient_type: data.patient_type || DEFAULT_PATIENT_TYPE_NAME,
         balance: data.balance ?? 0,
         loyalty_points: 0,
         medical_history: data.medicalHistory || null

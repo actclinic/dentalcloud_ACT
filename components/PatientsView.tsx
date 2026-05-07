@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft } from 'lucide-react';
-import { Patient, LoyaltyRule, Appointment, ClinicalRecord } from '../types';
+import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import { exportPatientsToExcel } from '../utils/excelExport';
@@ -10,9 +10,11 @@ import ExportMenu from './ExportMenu';
 import { SearchableSelect } from './SearchableSelect';
 import { getMyanmarCities, getTownshipsForCity } from '../utils/myanmarCities';
 import { api } from '../services/api';
+import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS } from '../constants';
 
 interface PatientsViewProps {
   patients: Patient[];
+  patientTypes: PatientType[];
   appointments: Appointment[];
   loading: boolean;
   currency: Currency;
@@ -30,6 +32,7 @@ interface PatientsViewProps {
 
 const PatientsView: React.FC<PatientsViewProps> = ({ 
   patients, 
+  patientTypes,
   appointments: _appointments,
   loading, 
   currency, 
@@ -61,7 +64,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     address: '',
     city: '',
     township: '',
-    patient_type: 'Walk-in' as Patient['patient_type']
+    patient_type: DEFAULT_PATIENT_TYPE_NAME
   });
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -147,10 +150,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     [editData.city]
   );
 
-  const normalizePatientType = (value?: string): Patient['patient_type'] => {
+  const activePatientTypeOptions = useMemo(() => {
+    const activeNames = patientTypes
+      .filter((type) => type.is_active)
+      .map((type) => (type.name || '').trim())
+      .filter(Boolean);
+    return activeNames.length > 0 ? activeNames : [...DEFAULT_PATIENT_TYPE_OPTIONS];
+  }, [patientTypes]);
+
+  const normalizePatientType = (value?: string): string => {
     const normalized = (value || '').trim();
     const mappedLegacy = normalized.toLowerCase();
-    const legacyMap: Record<string, Patient['patient_type']> = {
+    const legacyMap: Record<string, string> = {
       'walk-in': 'Walk-in',
       online: 'ONP',
       'phone call': 'Rec-ph call',
@@ -162,12 +173,20 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       otp: 'OTP'
     };
 
-    if (normalized === 'Walk-in' || normalized === 'ONP' || normalized === 'RNP' || normalized === 'OTP' || normalized === 'Hotline' || normalized === 'Rec-ph call' || normalized === 'Tiktok' || normalized === 'Tiktok Hotline') {
-      return normalized as Patient['patient_type'];
+    if (normalized && activePatientTypeOptions.includes(normalized)) {
+      return normalized;
     }
 
-    return legacyMap[mappedLegacy] || 'Walk-in';
+    return legacyMap[mappedLegacy] || normalized || activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME;
   };
+
+  const patientTypeOptionsForEdit = useMemo(() => {
+    const currentType = normalizePatientType(editData.patient_type);
+    if (!currentType || activePatientTypeOptions.includes(currentType)) {
+      return activePatientTypeOptions;
+    }
+    return [...activePatientTypeOptions, currentType];
+  }, [activePatientTypeOptions, editData.patient_type]);
 
   // Paginated data
   const paginatedPatients = useMemo(() => {
@@ -839,16 +858,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               <select
                 className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
                 value={editData.patient_type}
-                onChange={(e) => setEditData({...editData, patient_type: e.target.value as Patient['patient_type']})}
+                onChange={(e) => setEditData({...editData, patient_type: e.target.value})}
               >
-                <option value="Walk-in">Walk-in</option>
-                <option value="ONP">ONP</option>
-                <option value="RNP">RNP</option>
-                <option value="OTP">OTP</option>
-                <option value="Hotline">Hotline</option>
-                <option value="Rec-ph call">Rec-ph call</option>
-                <option value="Tiktok">Tiktok</option>
-                <option value="Tiktok Hotline">Tiktok Hotline</option>
+                {patientTypeOptionsForEdit.map((patientType) => (
+                  <option key={patientType} value={patientType}>{patientType}</option>
+                ))}
               </select>
             </div>
           </div>
