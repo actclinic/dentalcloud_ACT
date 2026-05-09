@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Calendar, FileText, User, LogOut, Settings, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info, FolderOpen } from 'lucide-react';
+import { Home, Calendar, FileText, User, LogOut, Plus, Trash2, Download, Eye, EyeOff, MessageCircle, X, Info, FolderOpen } from 'lucide-react';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
 import { otpService } from '../services/otp';
@@ -336,7 +336,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
           <p className="text-gray-600 mb-4">{error}</p>
           <button
             onClick={fetchPatientData}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+            className="bg-[var(--hover-600)] text-white px-4 py-2 rounded-lg hover:brightness-110 transition-all"
           >
             Try Again
           </button>
@@ -404,26 +404,28 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pt-3">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
+      <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Hello, {patient.name}</h1>
-            <p className="text-sm text-gray-500">Patient Dashboard</p>
+            <h1 className="text-xl font-bold text-gray-900">Hello, {patient.name}</h1>
+            <p className="text-xs text-gray-500">Patient Dashboard</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('profile')}
-              className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-              aria-label="Profile"
+              className="h-10 w-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+              aria-label="Profile settings"
+              title="Profile"
             >
               <User className="w-5 h-5 text-gray-600" />
             </button>
             <button
               onClick={handleLogout}
-              className="p-2 rounded-full bg-red-100 hover:bg-red-200 transition-colors"
-              aria-label="Logout"
+              className="h-10 w-10 flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 transition-colors"
+              aria-label="Log out of your account"
+              title="Logout"
             >
               <LogOut className="w-5 h-5 text-red-600" />
             </button>
@@ -449,83 +451,79 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         )}
 
         {activeTab === 'home' && (
-          <div className="px-4 space-y-6">
+          <div className="px-4 space-y-5">
             {/* Recall / Countdown Card */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-5 shadow-lg shadow-indigo-300/40">
-              <div className="absolute -right-6 -top-8 h-28 w-28 rounded-full bg-white/10" />
-              <div className="absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-white/10" />
-
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-semibold tracking-wider uppercase text-indigo-100">Countdown</p>
-                  <Calendar className="w-5 h-5 text-indigo-100" />
-                </div>
-
-                {nextScheduledAppointment && daysLeft !== null ? (
-                  <>
-                    <p className="text-white/90 text-sm">Next appointment in</p>
-                    <div className="flex items-end gap-2 mt-1">
-                      <span className="text-2xl font-black text-white leading-none">{daysLeft}</span>
-                      <span className="text-base font-bold text-indigo-100 pb-1">{daysLeft === 1 ? 'day left' : 'days left'}</span>
-                    </div>
-                    <p className="text-xs text-indigo-100 mt-3">
-                      {nextScheduledAppointment.date} at {nextScheduledAppointment.time} • {nextScheduledAppointment.type}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-white/90 text-sm">No upcoming appointment</p>
-                    <p className="text-base font-bold text-white mt-1">Book your next check-up</p>
-                    <button
-                      onClick={() => openCreateAppointmentModal()}
-                      className="mt-4 px-4 py-2 rounded-xl bg-white text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors"
-                    >
-                      Schedule now
-                    </button>
-                  </>
-                )}
+            <div className="rounded-xl bg-[var(--hover-600)] p-5 shadow-md">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase text-white/80">Next Appointment</p>
+                <Calendar className="w-5 h-5 text-white/80" />
               </div>
+
+              {nextScheduledAppointment && daysLeft !== null ? (
+                <>
+                  <p className="text-white/70 text-sm">Coming in</p>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-lg font-bold text-white">{daysLeft}</span>
+                    <span className="text-sm font-semibold text-white/80">{daysLeft === 1 ? 'day' : 'days'}</span>
+                  </div>
+                  <p className="text-xs text-white/70 mt-2">
+                    {nextScheduledAppointment.date} at {nextScheduledAppointment.time}
+                  </p>
+                  <p className="text-xs text-white/60 mt-0.5">{nextScheduledAppointment.type}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-white/80 text-sm">No upcoming appointment</p>
+                  <p className="text-sm font-semibold text-white mt-1">Book your next check-up today</p>
+                  <button
+                    onClick={() => openCreateAppointmentModal()}
+                    className="mt-4 h-12 px-6 rounded-xl bg-white text-[var(--hover-600)] text-sm font-bold hover:bg-gray-50 transition-colors"
+                  >
+                    Schedule now
+                  </button>
+                </>
+              )}
             </div>
 
-            {/* Quick Stats - Mobile optimized */}
+            {/* Quick Stats */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="text-base font-bold text-indigo-600">{appointments.length}</div>
-                <div className="text-xs text-gray-600 mt-1">Appointments</div>
+              <div className="bg-white rounded-xl p-4">
+                <div className="text-lg font-bold text-[var(--hover-600)]">{appointments.length}</div>
+                <div className="text-xs text-gray-500 mt-1">Appointments</div>
               </div>
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="text-base font-bold text-green-600">{treatmentRecords.length}</div>
-                <div className="text-xs text-gray-600 mt-1">Treatments</div>
+              <div className="bg-white rounded-xl p-4">
+                <div className="text-lg font-bold text-[var(--hover-600)]">{treatmentRecords.length}</div>
+                <div className="text-xs text-gray-500 mt-1">Treatments</div>
               </div>
             </div>
 
-            {/* Upcoming Appointments - Mobile optimized */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900 text-sm">Upcoming Appointments</h2>
+            {/* Upcoming Appointments */}
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                <h2 className="text-sm font-semibold text-gray-900">Upcoming Appointments</h2>
                 <button
                   onClick={() => setActiveTab('appointments')}
-                  className="text-indigo-600 text-xs font-medium hover:underline"
+                  className="h-9 px-3 text-xs font-semibold text-[var(--hover-600)] bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   View All
                 </button>
               </div>
               <div className="p-4">
                 {appointments.filter(apt => apt.status === 'Scheduled').length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {appointments
                       .filter(apt => apt.status === 'Scheduled')
                       .slice(0, 3)
                       .map(apt => (
-                        <div key={apt.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                          <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <Calendar className="w-6 h-6 text-indigo-600" />
+                        <div key={apt.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Calendar className="w-5 h-5 text-gray-600" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{apt.date}</p>
-                            <p className="text-xs text-gray-600 truncate">{apt.time} • {apt.type}</p>
+                            <p className="text-sm font-medium text-gray-900 truncate">{apt.date}</p>
+                            <p className="text-xs text-gray-500 truncate">{apt.time} &middot; {apt.type}</p>
                           </div>
-                          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full flex-shrink-0">
+                          <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-full flex-shrink-0 font-medium">
                             {apt.status}
                           </span>
                         </div>
@@ -534,43 +532,42 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 ) : (
                   <div className="text-center py-6">
                     <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-500 text-sm">No upcoming appointments</p>
+                    <p className="text-sm text-gray-500">No upcoming appointments</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Recent Treatments - Mobile optimized */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900 text-sm">Recent Treatments</h2>
+            {/* Recent Treatments */}
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                <h2 className="text-sm font-semibold text-gray-900">Recent Treatments</h2>
                 <button
                   onClick={() => setActiveTab('records')}
-                  className="text-indigo-600 text-xs font-medium hover:underline"
+                  className="h-9 px-3 text-xs font-semibold text-[var(--hover-600)] bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   View All
                 </button>
               </div>
               <div className="p-4">
                 {treatmentRecords.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {treatmentRecords
                       .slice(0, 3)
                       .map(record => (
-                        <div key={record.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                          <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <FileText className="w-6 h-6 text-green-600" />
+                        <div key={record.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-5 h-5 text-gray-600" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{record.description}</p>
-                            <p className="text-xs text-gray-600 truncate">{record.date}</p>
+                            <p className="text-sm font-medium text-gray-900 truncate">{record.description}</p>
+                            <p className="text-xs text-gray-500 truncate">{record.date}</p>
                           </div>
                           <button
                             onClick={() => handleDownloadReceipt(record)}
-                            className="p-2 text-indigo-600 hover:text-indigo-800 flex-shrink-0"
-                            title="View Details"
+                            className="h-9 px-3 text-xs font-medium text-[var(--hover-600)] hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
                           >
-                            <span className="text-xs font-medium">Details</span>
+                            Details
                           </button>
                         </div>
                       ))}
@@ -578,7 +575,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 ) : (
                   <div className="text-center py-6">
                     <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-500 text-sm">No treatment records yet</p>
+                    <p className="text-sm text-gray-500">No treatment records yet</p>
                   </div>
                 )}
               </div>
@@ -588,12 +585,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
 
         {activeTab === 'appointments' && (
           <div className="px-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900 text-sm">My Appointments</h2>
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                <h2 className="text-sm font-semibold text-gray-900">My Appointments</h2>
                 <button
                   onClick={() => openCreateAppointmentModal()}
-                  className="flex items-center gap-1 bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
+                  className="h-10 flex items-center gap-1.5 bg-[var(--hover-600)] text-white px-4 rounded-lg hover:brightness-110 transition-all text-xs font-semibold"
                 >
                   <Plus className="w-4 h-4" />
                   New
@@ -603,29 +600,29 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 {appointments.length > 0 ? (
                   <div className="space-y-3">
                     {appointments.map(apt => (
-                      <div key={apt.id} className="p-4 border border-gray-200 rounded-2xl">
+                      <div key={apt.id} className="p-4 border border-gray-200 rounded-xl">
                         <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-medium text-gray-900 text-sm">{apt.type}</h3>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            apt.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
-                            apt.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                            'bg-red-100 text-red-800'
+                          <h3 className="text-sm font-medium text-gray-900">{apt.type}</h3>
+                          <span className={`px-2.5 py-1 text-xs rounded-full font-medium ${
+                            apt.status === 'Scheduled' ? 'bg-gray-100 text-gray-700' :
+                            apt.status === 'Completed' ? 'bg-green-50 text-green-700' :
+                            'bg-red-50 text-red-700'
                           }`}>
                             {apt.status}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-600 mb-1">
+                        <p className="text-xs text-gray-500 mb-1">
                           <Calendar className="w-3 h-3 inline mr-1" />
                           {apt.date} at {apt.time}
                         </p>
                         {apt.doctor_name && (
-                          <p className="text-xs text-gray-600 mb-2">
+                          <p className="text-xs text-gray-500 mb-2">
                             <User className="w-3 h-3 inline mr-1" />
                             Dr. {apt.doctor_name}
                           </p>
                         )}
                         {apt.notes && (
-                          <p className="text-xs text-gray-500 mt-2 truncate">{apt.notes}</p>
+                          <p className="text-xs text-gray-400 mt-2 truncate">{apt.notes}</p>
                         )}
                         {apt.status === 'Scheduled' && (
                           <div className="mt-3 flex justify-end">
@@ -635,9 +632,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                                   handleCancelAppointment(apt.id);
                                 }
                               }}
-                              className="flex items-center gap-1 text-red-600 hover:text-red-800 text-xs"
+                              className="h-9 px-3 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-3 h-3 inline mr-1" />
                               Cancel
                             </button>
                           </div>
@@ -649,10 +646,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <h3 className="text-sm font-medium text-gray-900 mb-2">No Appointments</h3>
-                    <p className="text-gray-500 text-sm">You don't have any appointments scheduled.</p>
+                    <p className="text-sm text-gray-500">You don't have any appointments scheduled.</p>
                     <button
                       onClick={() => openCreateAppointmentModal()}
-                      className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
+                      className="mt-3 h-10 px-4 bg-[var(--hover-600)] text-white rounded-lg hover:brightness-110 transition-all text-xs font-semibold"
                     >
                       Schedule Appointment
                     </button>
@@ -665,36 +662,35 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
 
         {activeTab === 'records' && (
           <div className="px-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100">
-                <h2 className="font-semibold text-gray-900 text-sm">Treatment Records</h2>
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h2 className="text-sm font-semibold text-gray-900">Treatment Records</h2>
               </div>
               <div className="p-4">
                 {treatmentRecords.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {treatmentRecords.map(record => (
-                      <div key={record.id} className="p-4 border border-gray-200 rounded-2xl">
+                      <div key={record.id} className="p-4 border border-gray-200 rounded-xl">
                         <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-medium text-gray-900 text-sm">{record.description}</h3>
+                          <h3 className="text-sm font-medium text-gray-900">{record.description}</h3>
                           <button
                             onClick={() => handleDownloadReceipt(record)}
-                            className="p-2 text-indigo-600 hover:text-indigo-800"
-                            title="View Details"
+                            className="h-9 px-3 text-xs font-medium text-[var(--hover-600)] hover:bg-gray-50 rounded-lg transition-colors"
                           >
-                            <span className="text-xs font-medium">Details</span>
+                            Details
                           </button>
                         </div>
-                        <p className="text-xs text-gray-600 mb-2">
+                        <p className="text-xs text-gray-500 mb-2">
                           <FileText className="w-3 h-3 inline mr-1" />
                           Date: {record.date}
                         </p>
                         {record.teeth && record.teeth.length > 0 && (
-                          <p className="text-xs text-gray-500 mb-2">
+                          <p className="text-xs text-gray-400 mb-2">
                             Teeth: {formatTeethWithPosition(record.teeth)}
                           </p>
                         )}
                         <div className="mt-3 pt-3 border-t border-gray-100">
-                          <span className="text-base font-semibold text-green-600">
+                          <span className="text-sm font-bold text-[var(--hover-600)]">
                             {record.cost.toLocaleString()} MMK
                           </span>
                         </div>
@@ -705,7 +701,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                   <div className="text-center py-8">
                     <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <h3 className="text-sm font-medium text-gray-900 mb-2">No Treatment Records</h3>
-                    <p className="text-gray-500 text-sm">You don't have any treatment records yet.</p>
+                    <p className="text-sm text-gray-500">You don't have any treatment records yet.</p>
                   </div>
                 )}
               </div>
@@ -716,16 +712,16 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         {activeTab === 'profile' && (
           <div className="px-4 space-y-4">
             {/* Profile Information Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900 text-sm">My Profile</h2>
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                <h2 className="text-sm font-semibold text-gray-900">My Profile</h2>
                 <div className="flex items-center gap-2">
                   <span className="theme-accent-soft-bg theme-accent-text rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap">
-                    Theme: {hoverTheme}
+                    {hoverTheme}
                   </span>
                   <button
                     onClick={() => setEditingProfile(true)}
-                    className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors text-xs"
+                    className="h-10 px-4 bg-[var(--hover-600)] text-white rounded-lg hover:brightness-110 transition-all text-xs font-semibold"
                   >
                     Edit
                   </button>
@@ -733,48 +729,48 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               </div>
               <div className="p-4 space-y-4">
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center">
-                    <User className="w-8 h-8 text-indigo-600" />
+                  <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center">
+                    <User className="w-7 h-7 text-gray-500" />
                   </div>
                   <div>
-                    <h3 className="text-base font-medium text-gray-900">{patient.name}</h3>
-                    <p className="text-xs text-gray-600">Patient ID: {patient.id.substring(0, 8)}...</p>
+                    <h3 className="text-base font-semibold text-gray-900">{patient.name}</h3>
+                    <p className="text-xs text-gray-500">ID: {patient.id.substring(0, 8)}...</p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Email</p>
-                    <p className="font-medium text-gray-900 text-sm">{patient.email}</p>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-0.5">Email</p>
+                    <p className="text-sm font-medium text-gray-900">{patient.email}</p>
                   </div>
 
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Phone</p>
-                    <p className="font-medium text-gray-900 text-sm">{patient.phone || 'Not provided'}</p>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-0.5">Phone</p>
+                    <p className="text-sm font-medium text-gray-900">{patient.phone || 'Not provided'}</p>
                   </div>
 
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Debt</p>
-                    <p className="font-medium text-gray-900 text-sm">{patient.balance.toLocaleString()} MMK</p>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-0.5">Debt</p>
+                    <p className="text-sm font-medium text-gray-900">{patient.balance.toLocaleString()} MMK</p>
                   </div>
 
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Loyalty Points</p>
-                    <p className="font-medium text-gray-900 text-sm">{patient.loyalty_points} points</p>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-0.5">Loyalty Points</p>
+                    <p className="text-sm font-medium text-gray-900">{patient.loyalty_points} points</p>
                   </div>
                 </div>
 
                 {patient.medicalHistory && (
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Medical History</p>
-                    <p className="text-gray-900 text-sm">{patient.medicalHistory}</p>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-0.5">Medical History</p>
+                    <p className="text-sm text-gray-900">{patient.medicalHistory}</p>
                   </div>
                 )}
 
                 <div className="pt-4 border-t border-gray-100">
                   <button
                     onClick={() => setChangingPassword(true)}
-                    className="w-full bg-gray-100 text-gray-800 py-3 rounded-xl hover:bg-gray-200 transition-colors font-medium text-sm"
+                    className="w-full h-10 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
                   >
                     Change Password
                   </button>
@@ -783,45 +779,43 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             </div>
 
             {/* Patient Documents Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-              <div className="p-4 border-b border-gray-100">
+            <div className="bg-white rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-2">
-                  <FolderOpen className="w-5 h-5 text-indigo-600" />
-                  <h2 className="font-semibold text-gray-900 text-sm">My Documents</h2>
+                  <FolderOpen className="w-5 h-5 text-gray-500" />
+                  <h2 className="text-sm font-semibold text-gray-900">My Documents</h2>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">View and download your medical documents</p>
+                <p className="text-xs text-gray-500 mt-0.5">View and download your medical documents</p>
               </div>
               <div className="p-4">
                 {patientFiles.length === 0 ? (
                   <div className="text-center py-8">
                     <FolderOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <h3 className="text-sm font-medium text-gray-900 mb-2">No Documents Available</h3>
-                    <p className="text-gray-500 text-sm">You don't have any documents yet. Your doctor will upload them during your visits.</p>
+                    <p className="text-sm text-gray-500">Your doctor will upload documents during your visits.</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {patientFiles.map((file) => (
-                      <div key={file.path} className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:border-indigo-200 hover:bg-indigo-50/30 transition-all">
+                      <div key={file.path} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:border-gray-200 transition-all">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <FileText className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                          <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-gray-800 truncate">{file.name}</p>
-                            <p className="text-xs text-gray-500">{file.type || 'File'} · {formatBytes(file.size)}</p>
+                            <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                            <p className="text-xs text-gray-400">{file.type || 'File'} &middot; {formatBytes(file.size)}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             onClick={() => handleViewDocument(file)}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-                            title="View document"
+                            className="h-9 px-3 text-xs font-semibold text-[var(--hover-600)] bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1"
                           >
                             <Eye size={14} />
                             View
                           </button>
                           <button
                             onClick={() => handleDownloadDocument(file)}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-                            title="Download document"
+                            className="h-9 px-3 text-xs font-semibold text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors flex items-center gap-1"
                           >
                             <Download size={14} />
                             Download
@@ -843,74 +837,84 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         )}
       </div>
 
-      {/* Mobile Optimized Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-5 z-50">
-        <div className="flex justify-around max-w-md mx-auto">
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-4 z-50">
+        <div className="flex max-w-md mx-auto">
           <button
             onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center py-2 px-2 rounded-xl transition-colors flex-1 max-w-[80px] ${
-              activeTab === 'home' 
-                ? 'text-indigo-600 bg-indigo-50' 
-                : 'text-gray-500 hover:text-gray-700'
+            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+              activeTab === 'home'
+                ? 'text-[var(--hover-600)]'
+                : 'text-gray-400 hover:text-gray-600'
             }`}
             aria-label="Home"
           >
-            <Home className="w-6 h-6 mb-1" />
-            <span className="text-[10px]">Home</span>
+            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'home' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
+              <Home className="w-5 h-5 mb-0.5" />
+              <span className="text-xs">Home</span>
+            </div>
           </button>
           
           <button
             onClick={() => setActiveTab('appointments')}
-            className={`flex flex-col items-center py-2 px-2 rounded-xl transition-colors flex-1 max-w-[80px] ${
-              activeTab === 'appointments' 
-                ? 'text-indigo-600 bg-indigo-50' 
-                : 'text-gray-500 hover:text-gray-700'
+            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+              activeTab === 'appointments'
+                ? 'text-[var(--hover-600)]'
+                : 'text-gray-400 hover:text-gray-600'
             }`}
             aria-label="Appointments"
           >
-            <Calendar className="w-6 h-6 mb-1" />
-            <span className="text-[10px]">Appointments</span>
+            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'appointments' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
+              <Calendar className="w-5 h-5 mb-0.5" />
+              <span className="text-xs">Appointments</span>
+            </div>
           </button>
           
           <button
             onClick={() => setActiveTab('records')}
-            className={`flex flex-col items-center py-2 px-2 rounded-xl transition-colors flex-1 max-w-[80px] ${
-              activeTab === 'records' 
-                ? 'text-indigo-600 bg-indigo-50' 
-                : 'text-gray-500 hover:text-gray-700'
+            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+              activeTab === 'records'
+                ? 'text-[var(--hover-600)]'
+                : 'text-gray-400 hover:text-gray-600'
             }`}
             aria-label="Records"
           >
-            <FileText className="w-6 h-6 mb-1" />
-            <span className="text-[10px]">Records</span>
+            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'records' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
+              <FileText className="w-5 h-5 mb-0.5" />
+              <span className="text-xs">Records</span>
+            </div>
           </button>
 
           {messagingEnabled && (
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center py-2 px-2 rounded-xl transition-colors flex-1 max-w-[80px] ${
-                activeTab === 'messages' 
-                  ? 'text-indigo-600 bg-indigo-50' 
-                  : 'text-gray-500 hover:text-gray-700'
+              className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+                activeTab === 'messages'
+                  ? 'text-[var(--hover-600)]'
+                  : 'text-gray-400 hover:text-gray-600'
               }`}
               aria-label="Messages"
             >
-              <MessageCircle className="w-6 h-6 mb-1" />
-              <span className="text-[10px]">Messages</span>
+              <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'messages' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
+                <MessageCircle className="w-5 h-5 mb-0.5" />
+                <span className="text-xs">Messages</span>
+              </div>
             </button>
           )}
           
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center py-2 px-2 rounded-xl transition-colors flex-1 max-w-[80px] ${
-              activeTab === 'profile' 
-                ? 'text-indigo-600 bg-indigo-50' 
-                : 'text-gray-500 hover:text-gray-700'
+            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+              activeTab === 'profile'
+                ? 'text-[var(--hover-600)]'
+                : 'text-gray-400 hover:text-gray-600'
             }`}
             aria-label="Profile"
           >
-            <User className="w-6 h-6 mb-1" />
-            <span className="text-[10px]">Profile</span>
+            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'profile' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
+              <User className="w-5 h-5 mb-0.5" />
+              <span className="text-xs">Profile</span>
+            </div>
           </button>
         </div>
       </div>
@@ -920,7 +924,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         <Modal title="Schedule New Appointment" onClose={() => setShowCreateAppointment(false)}>
           <form onSubmit={handleCreateAppointment} className="space-y-5">
             <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Doctor (Optional)</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Doctor (Optional)</label>
               <div className="relative" ref={doctorDropdownRef}>
                 <div className="relative">
                   <input
@@ -975,8 +979,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                         <button
                           key={doctor.id}
                           type="button"
-                          className={`w-full px-4 py-2.5 text-sm text-left hover:bg-indigo-50 ${
-                            selectedDoctor === doctor.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
+                          className={`w-full px-4 py-2.5 text-sm text-left hover:bg-[var(--hover-100)] ${
+                            selectedDoctor === doctor.id ? 'bg-[var(--hover-100)] text-[var(--hover-600)]' : 'text-gray-700'
                           }`}
                           onClick={() => {
                             handleDoctorChange(doctor.id);
@@ -1016,7 +1020,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             </div>
             <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Type</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Type</label>
                 <SearchableSelect
                   value={newAppointment.type || ''}
                   onChange={(selectedType) => setNewAppointment({ ...newAppointment, type: selectedType })}
@@ -1029,7 +1033,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 )}
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Status</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Status</label>
                 <select 
                   className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
                   value={newAppointment.status} 
@@ -1042,7 +1046,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Notes</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Notes</label>
               <textarea 
                 className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" 
                 rows={3}
@@ -1055,13 +1059,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               <button
                 type="button"
                 onClick={() => setShowCreateAppointment(false)}
-                className="w-full bg-gray-200 text-gray-800 py-3 rounded-xl hover:bg-gray-300 transition-colors"
+                className="w-full h-10 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 transition-colors font-medium"
+                className="w-full h-12 bg-[var(--hover-600)] text-white rounded-lg hover:brightness-110 transition-all text-sm font-bold"
               >
                 Schedule Appointment
               </button>
@@ -1093,13 +1097,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             <div className="flex flex-col gap-3 pt-4">
               <button
                 onClick={() => setEditingProfile(false)}
-                className="w-full bg-gray-200 text-gray-800 py-3 rounded-xl hover:bg-gray-300 transition-colors"
+                className="w-full h-10 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={handleUpdateProfile}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 transition-colors"
+                className="w-full h-12 bg-[var(--hover-600)] text-white rounded-lg hover:brightness-110 transition-all text-sm font-bold"
               >
                 Save Changes
               </button>
@@ -1113,7 +1117,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         <Modal title="Change Password" onClose={() => setChangingPassword(false)}>
           <div className="space-y-4">
             <div className="relative">
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Current Password</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Current Password</label>
               <input
                 type={showPasswords.current ? 'text' : 'password'}
                 value={passwordChange.currentPassword}
@@ -1131,7 +1135,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             </div>
             
             <div className="relative">
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">New Password</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">New Password</label>
               <input
                 type={showPasswords.new ? 'text' : 'password'}
                 value={passwordChange.newPassword}
@@ -1149,7 +1153,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             </div>
             
             <div className="relative">
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Confirm New Password</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Confirm New Password</label>
               <input
                 type={showPasswords.confirm ? 'text' : 'password'}
                 value={passwordChange.confirmPassword}
@@ -1169,13 +1173,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             <div className="flex flex-col gap-3 pt-4">
               <button
                 onClick={() => setChangingPassword(false)}
-                className="w-full bg-gray-200 text-gray-800 py-3 rounded-xl hover:bg-gray-300 transition-colors"
+                className="w-full h-10 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={handleChangePassword}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 transition-colors"
+                className="w-full h-12 bg-[var(--hover-600)] text-white rounded-lg hover:brightness-110 transition-all text-sm font-bold"
               >
                 Change Password
               </button>
@@ -1187,7 +1191,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       {/* Treatment Details Modal */}
       {showTreatmentDetails && selectedTreatmentDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-bold text-gray-900">Treatment Details</h3>
@@ -1254,25 +1258,25 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 </div>
               )}
               
-              <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
-                <h4 className="font-medium text-indigo-700 mb-2 flex items-center gap-2">
+              <div className="bg-[var(--hover-100)] rounded-xl p-4 border border-[var(--hover-200)]">
+                <h4 className="font-medium text-[var(--hover-600)] mb-2 flex items-center gap-2">
                   <Info className="w-4 h-4" />
                   Patient Information
                 </h4>
-                <p className="text-indigo-600 text-sm">
+                <p className="text-[var(--hover-600)] text-sm">
                   This treatment record is available for your reference. 
                   Contact the clinic if you have any questions about this procedure.
                 </p>
               </div>
             </div>
             
-            <div className="p-6 border-t border-gray-200 flex justify-end">
+            <div className="p-4 border-t border-gray-200 flex justify-end">
               <button
                 onClick={() => {
                   setShowTreatmentDetails(false);
                   setSelectedTreatmentDetails(null);
                 }}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="h-10 px-5 bg-[var(--hover-600)] text-white rounded-lg hover:brightness-110 transition-all text-sm font-semibold"
               >
                 Close
               </button>
@@ -1294,11 +1298,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       {/* Document Viewer Modal */}
       {showDocumentViewer && selectedDocument && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowDocumentViewer(false)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-indigo-50 to-purple-50">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <div className="flex items-center gap-3">
-                <FileText className="w-6 h-6 text-indigo-600" />
+                <FileText className="w-6 h-6 text-[var(--hover-600)]" />
                 <div>
                   <h3 className="font-semibold text-gray-900">{selectedDocument.name}</h3>
                   <p className="text-xs text-gray-500">{selectedDocument.type || 'File'} · {formatBytes(selectedDocument.size)}</p>
@@ -1367,14 +1371,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
               <button
                 onClick={() => setShowDocumentViewer(false)}
-                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="h-10 px-5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 Close
               </button>
               <a
                 href={selectedDocument.url}
                 download={selectedDocument.name}
-                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                className="h-10 flex items-center gap-2 px-5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
               >
                 <Download size={16} />
                 Download
