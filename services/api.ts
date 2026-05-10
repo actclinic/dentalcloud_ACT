@@ -97,6 +97,22 @@ const mapPatient = (row: any): Patient => ({
   username: Array.isArray(row?.patient_auth) ? (row.patient_auth[0]?.username ?? null) : (row?.patient_auth?.username ?? null)
 });
 
+const getTrimmedDoctorName = (value?: string | null): string | undefined => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized || undefined;
+};
+
+const getAppointmentDoctorDisplayName = (appointmentRow: any, clinicalDoctorName?: string): string | undefined => {
+  if (appointmentRow?.status === 'Completed') {
+    const completedDoctorName = getTrimmedDoctorName(clinicalDoctorName);
+    if (completedDoctorName) {
+      return completedDoctorName;
+    }
+  }
+
+  return getTrimmedDoctorName(appointmentRow?.doctors?.name);
+};
+
 const normalizeMyanmarPhoneForLookup = (value?: string | null): string | null => {
   const digits = (value || '').replace(/\D/g, '');
   const localDigits = digits.length === 10 && digits.startsWith('9') ? `0${digits}` : digits;
@@ -1185,11 +1201,56 @@ export const api = {
 
         if (error) throw error;
 
+        const appointments = data || [];
+        const completedAppointments = appointments.filter(
+          (apt: any) => apt.status === 'Completed' && apt.patient_id && apt.date
+        );
+
+        const treatmentDoctorByPatientAndDate = new Map<string, string>();
+
+        if (completedAppointments.length > 0) {
+          const patientIds = [...new Set(completedAppointments.map((apt: any) => apt.patient_id).filter(Boolean))];
+          const dates = [...new Set(completedAppointments.map((apt: any) => apt.date).filter(Boolean))];
+
+          if (patientIds.length > 0 && dates.length > 0) {
+            let treatmentsQuery = supabase
+              .from('treatments')
+              .select('patient_id, date, created_at, doctors(name)')
+              .in('patient_id', patientIds)
+              .in('date', dates)
+              .not('doctor_id', 'is', null)
+              .order('created_at', { ascending: false });
+
+            if (locationId) {
+              treatmentsQuery = treatmentsQuery.eq('location_id', locationId);
+            }
+
+            const { data: treatments, error: treatmentsError } = await treatmentsQuery;
+
+            if (treatmentsError) {
+              throw treatmentsError;
+            }
+
+            (treatments || []).forEach((record: any) => {
+              const doctorName = getTrimmedDoctorName(record.doctors?.name);
+              if (!doctorName) return;
+
+              const key = `${record.patient_id}::${record.date}`;
+              if (!treatmentDoctorByPatientAndDate.has(key)) {
+                treatmentDoctorByPatientAndDate.set(key, doctorName);
+              }
+            });
+          }
+        }
+
         // Flatten the response to match the Appointment interface
-        return (data || []).map((apt: any) => ({
+        return appointments.map((apt: any) => ({
           ...apt,
           patient_name: apt.patients?.name || apt.guest_name || 'Unknown',
-          doctor_name: apt.doctors?.name || undefined
+          doctor_name: getAppointmentDoctorDisplayName(
+            apt,
+            apt.patient_id ? treatmentDoctorByPatientAndDate.get(`${apt.patient_id}::${apt.date}`) : undefined
+          )
         }));
       } catch (err) {
         console.warn("Error fetching appointments:", err);
@@ -2051,7 +2112,11 @@ export const api = {
   },
 
   finance: {
-    processPayment: async (patientId: string, amount: number) => {
+    processPayment: async (
+      patientId: string,
+      amount: number,
+      options?: { discountAmount?: number; clearedAmount?: number }
+    ) => {
       // Fetch current balance
       const { data: patient, error: fetchError } = await supabase
         .from('patients')
@@ -2061,8 +2126,15 @@ export const api = {
 
       if (fetchError) throw new Error(fetchError.message);
 
+      const normalizedAmount = Math.max(0, Number(amount || 0));
+      const normalizedDiscount = Math.max(0, Number(options?.discountAmount || 0));
+      const normalizedClearedAmount = Math.max(
+        0,
+        Number(options?.clearedAmount ?? (normalizedAmount + normalizedDiscount))
+      );
+
       const currentBal = patient?.balance || 0;
-      const newBal = Math.max(0, currentBal - amount);
+      const newBal = Math.max(0, currentBal - normalizedClearedAmount);
 
       const { error: updateError } = await supabase
         .from('patients')
@@ -2071,7 +2143,13 @@ export const api = {
 
       if (updateError) throw new Error(updateError.message);
       
-      return { status: "success", new_balance: newBal };
+      return {
+        status: "success",
+        new_balance: newBal,
+        amount_collected: normalizedAmount,
+        discount_amount: normalizedDiscount,
+        cleared_amount: normalizedClearedAmount
+      };
     }
   },
 

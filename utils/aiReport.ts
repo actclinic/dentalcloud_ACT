@@ -1,4 +1,4 @@
-import { ClinicalRecord, Expense, Medicine, MedicineSale } from '../types';
+import { ClinicalRecord, Expense, Medicine, MedicineSale, PaymentRecord } from '../types';
 import { Currency, formatCurrency } from './currency';
 import { multiplyMoney, sumMoney } from './money';
 
@@ -119,7 +119,8 @@ export const buildFinancialReport = (
   medicines: Medicine[],
   currency: Currency,
   todayOverride?: string,
-  medicineSales: MedicineSale[] = []
+  medicineSales: MedicineSale[] = [],
+  paymentRecords: PaymentRecord[] = []
 ): FinancialReport => {
   const today = todayOverride || getToday();
   const weeklyStart = getWeeklyStart(today);
@@ -151,9 +152,35 @@ export const buildFinancialReport = (
     currency
   );
 
-  const revenueDaily = sumMoney([treatmentDaily, medicineDaily], currency);
-  const revenueWeekly = sumMoney([treatmentWeekly, medicineWeekly], currency);
-  const revenueMonthly = sumMoney([treatmentMonthly, medicineMonthly], currency);
+  const paymentDaily = sumMoney(
+    paymentRecords.filter(payment => payment.date === today).map(payment => payment.amount),
+    currency
+  );
+  const paymentWeekly = sumMoney(
+    paymentRecords.filter(payment => payment.date >= weeklyStart).map(payment => payment.amount),
+    currency
+  );
+  const paymentMonthly = sumMoney(
+    paymentRecords.filter(payment => isSameMonth(payment.date, now)).map(payment => payment.amount),
+    currency
+  );
+
+  const discountDaily = sumMoney(
+    paymentRecords.filter(payment => payment.date === today).map(payment => payment.discountAmount || 0),
+    currency
+  );
+  const discountWeekly = sumMoney(
+    paymentRecords.filter(payment => payment.date >= weeklyStart).map(payment => payment.discountAmount || 0),
+    currency
+  );
+  const discountMonthly = sumMoney(
+    paymentRecords.filter(payment => isSameMonth(payment.date, now)).map(payment => payment.discountAmount || 0),
+    currency
+  );
+
+  const revenueDaily = sumMoney([treatmentDaily, medicineDaily, paymentDaily, -discountDaily], currency);
+  const revenueWeekly = sumMoney([treatmentWeekly, medicineWeekly, paymentWeekly, -discountWeekly], currency);
+  const revenueMonthly = sumMoney([treatmentMonthly, medicineMonthly, paymentMonthly, -discountMonthly], currency);
 
   const expenseDaily = sumMoney(
     expenses.filter(exp => exp.date === today).map(exp => exp.amount),

@@ -132,9 +132,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     [filteredPaymentRecords]
   );
 
+  const rangeDiscounts = useMemo(
+    () => filteredPaymentRecords.reduce((sum, payment) => sum + (payment.discountAmount || 0), 0),
+    [filteredPaymentRecords]
+  );
+
   const rangeRevenue = useMemo(
-    () => rangeTreatmentRevenue + rangeCollectedPayments,
-    [rangeTreatmentRevenue, rangeCollectedPayments]
+    () => rangeTreatmentRevenue + rangeCollectedPayments - rangeDiscounts,
+    [rangeTreatmentRevenue, rangeCollectedPayments, rangeDiscounts]
   );
 
   const rangeExpenses = useMemo(
@@ -163,7 +168,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       const collectedPayment = filteredPaymentRecords
         .filter(payment => payment.date === dateStr)
         .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const revenue = treatmentRevenue + collectedPayment;
+      const discounts = filteredPaymentRecords
+        .filter(payment => payment.date === dateStr)
+        .reduce((sum, payment) => sum + (payment.discountAmount || 0), 0);
+      const revenue = treatmentRevenue + collectedPayment - discounts;
       const totalExpense = filteredExpenses
         .filter(expense => expense.date === dateStr)
         .reduce((sum, expense) => sum + (expense.amount || 0), 0);
@@ -186,7 +194,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       const collectedPayment = filteredPaymentRecords
         .filter(payment => payment.date === dateStr)
         .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const revenue = treatmentRevenue + collectedPayment;
+      const discounts = filteredPaymentRecords
+        .filter(payment => payment.date === dateStr)
+        .reduce((sum, payment) => sum + (payment.discountAmount || 0), 0);
+      const revenue = treatmentRevenue + collectedPayment - discounts;
       const appointmentsCount = filteredAppointments.filter(apt => apt.date === dateStr).length;
       return { name: dateLabel, revenue, appointments: appointmentsCount, date: dateStr };
     });

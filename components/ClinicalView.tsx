@@ -29,7 +29,7 @@ interface ClinicalViewProps {
   onDoctorChange: (doctorId: string) => void;
   onDeselectAll: () => void;
   onTreatmentSubmit: (t: TreatmentType) => void;
-  onPaymentRequest: (amount: number) => void;
+  onPaymentRequest: (treatments: ClinicalRecord[]) => void;
   onClosePatient: () => void;
   onOpenDirectory: () => void;
   onUploadFiles: (files: FileList | File[]) => void;
@@ -666,7 +666,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                     </p>
                     {selectedPatient.balance > 0 && (
                       <button
-                        onClick={() => onPaymentRequest(selectedPatient.balance)}
+                        onClick={() => onPaymentRequest(treatmentHistory)}
                         className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm"
                       >
                         Collect Payment

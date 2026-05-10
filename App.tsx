@@ -101,6 +101,12 @@ const ALL_BRANCHES_VALUE = '__all_branches__';
 const PAYMENT_RECORDS_STORAGE_KEY = 'dentalcloud_payment_records_v1';
 const THEME_STORAGE_KEY = 'dentalcloud_hover_theme_v1';
 
+type PaymentDraft = {
+  treatments: ClinicalRecord[];
+  selectedTreatmentIds: string[];
+  discountAmount: number;
+};
+
 type HoverTheme = 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 
 const THEME_OPTIONS: Array<{ value: HoverTheme; label: string }> = [
@@ -299,6 +305,8 @@ const App: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; show: boolean }>({ message: '', type: 'success', show: false });
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
+  const [lastPaymentOriginalAmount, setLastPaymentOriginalAmount] = useState<number>(0);
+  const [lastPaymentDiscountAmount, setLastPaymentDiscountAmount] = useState<number>(0);
   const [selectedTreatmentsForReceipt, setSelectedTreatmentsForReceipt] = useState<ClinicalRecord[]>([]);
   const [selectedMedicineSalesForReceipt, setSelectedMedicineSalesForReceipt] = useState<MedicineSale[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'MMK'>(() => {
@@ -437,7 +445,11 @@ const App: React.FC = () => {
   const [recordsInitialFilter, setRecordsInitialFilter] = useState<'all' | 'appointments' | 'treatments'>('all');
   
   // -- Form State --
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>({
+    treatments: [],
+    selectedTreatmentIds: [],
+    discountAmount: 0
+  });
   const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({ 
       name: '', 
       email: '', 
@@ -466,6 +478,20 @@ const App: React.FC = () => {
   // Service deletion confirmation state
   const [deleteServiceConfirmOpen, setDeleteServiceConfirmOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<{id: string, name: string} | null>(null);
+
+  const selectedPaymentTreatments = useMemo(
+    () => paymentDraft.treatments.filter((treatment) => paymentDraft.selectedTreatmentIds.includes(treatment.id)),
+    [paymentDraft.selectedTreatmentIds, paymentDraft.treatments]
+  );
+
+  const paymentOriginalAmount = useMemo(
+    () => selectedPaymentTreatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0),
+    [selectedPaymentTreatments]
+  );
+
+  const paymentDiscountAmount = Math.min(paymentOriginalAmount, Math.max(0, Number(paymentDraft.discountAmount || 0)));
+  const paymentFinalAmount = Math.max(0, paymentOriginalAmount - paymentDiscountAmount);
+  const paymentClearedAmount = Math.min(paymentOriginalAmount, paymentFinalAmount + paymentDiscountAmount);
 
   // Filter doctors based on search query
   const filteredDoctors = doctors.filter(doctor => {
@@ -1103,6 +1129,7 @@ const App: React.FC = () => {
 
   const buildDailyReportEmailBody = async (task: ScheduledTask) => {
     const locationId = task.location_id || currentLocationId || undefined;
+    const scopedPayments = readPaymentRecords().filter((record) => !locationId || record.location_id === locationId);
     const [reportTreatments, reportExpenses, reportMedicines, reportMedicineSales] = await Promise.all([
       api.treatments.getAllRecords(locationId),
       api.expenses.getAll(locationId),
@@ -1114,7 +1141,7 @@ const App: React.FC = () => {
       ? task.payload.currency
       : currency;
 
-    const report = buildFinancialReport(reportTreatments, reportExpenses, reportMedicines, taskCurrency, undefined, reportMedicineSales);
+    const report = buildFinancialReport(reportTreatments, reportExpenses, reportMedicines, taskCurrency, undefined, reportMedicineSales, scopedPayments);
     const reportMarkdown = renderFinancialReportMarkdown(report, taskCurrency);
     const clinicLabel = locations.find(loc => loc.id === locationId)?.name || 'Dental Clinic';
 
@@ -1356,6 +1383,30 @@ const App: React.FC = () => {
       alert(err.message || 'Failed to delete patient.');
       throw err;
     }
+  };
+
+  const handleOpenPaymentModal = (treatments: ClinicalRecord[]) => {
+    const selectedTreatmentIds = treatments.map((treatment) => treatment.id);
+
+    setPaymentDraft({
+      treatments,
+      selectedTreatmentIds,
+      discountAmount: 0
+    });
+    setShowPaymentModal(true);
+  };
+
+  const handleTogglePaymentTreatment = (treatmentId: string) => {
+    setPaymentDraft((prev) => {
+      const nextSelectedIds = prev.selectedTreatmentIds.includes(treatmentId)
+        ? prev.selectedTreatmentIds.filter((id) => id !== treatmentId)
+        : [...prev.selectedTreatmentIds, treatmentId];
+
+      return {
+        ...prev,
+        selectedTreatmentIds: nextSelectedIds
+      };
+    });
   };
 
   const parseTargetTeethInput = (input: string): number[] => {
@@ -1996,19 +2047,20 @@ const App: React.FC = () => {
       setTreatmentHistory([res.record, ...treatmentHistory]);
       if (res.completed_appointment_ids?.length) {
         const completedAppointmentIds = new Set(res.completed_appointment_ids);
+        const completedDoctorName = res.record.doctor_name?.trim() || undefined;
         setAppointments(prev => prev.map(appointment =>
           completedAppointmentIds.has(appointment.id)
-            ? { ...appointment, status: 'Completed' }
+            ? { ...appointment, status: 'Completed', doctor_name: completedDoctorName || appointment.doctor_name }
             : appointment
         ));
         setDashboardAppointments(prev => prev.map(appointment =>
           completedAppointmentIds.has(appointment.id)
-            ? { ...appointment, status: 'Completed' }
+            ? { ...appointment, status: 'Completed', doctor_name: completedDoctorName || appointment.doctor_name }
             : appointment
         ));
         setAssistantAppointments(prev => prev.map(appointment =>
           completedAppointmentIds.has(appointment.id)
-            ? { ...appointment, status: 'Completed' }
+            ? { ...appointment, status: 'Completed', doctor_name: completedDoctorName || appointment.doctor_name }
             : appointment
         ));
         setToast({
@@ -2094,15 +2146,30 @@ const App: React.FC = () => {
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatient) return;
+    if (selectedPaymentTreatments.length === 0) {
+      alert('Please select at least one treatment service.');
+      return;
+    }
+    if (paymentFinalAmount <= 0) {
+      alert('Final amount must be greater than 0.');
+      return;
+    }
     try {
-      const res = await api.finance.processPayment(selectedPatient.id, paymentAmount);
+      const res = await api.finance.processPayment(selectedPatient.id, paymentFinalAmount, {
+        discountAmount: paymentDiscountAmount,
+        clearedAmount: paymentClearedAmount
+      });
       const paymentRecord: PaymentRecord = {
         id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         location_id: selectedPatient.location_id,
         patientId: selectedPatient.id,
-        amount: paymentAmount,
+        amount: paymentFinalAmount,
+        originalAmount: paymentOriginalAmount,
+        discountAmount: paymentDiscountAmount,
+        clearedAmount: paymentClearedAmount,
+        treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
         date: toLocalISODate(new Date()),
-        type: paymentAmount >= (selectedPatient.balance || 0) ? 'FULL' : 'PARTIAL',
+        type: paymentClearedAmount >= (selectedPatient.balance || 0) ? 'FULL' : 'PARTIAL',
         remainingBalance: res.new_balance
       };
       const allPaymentRecords = [paymentRecord, ...readPaymentRecords()];
@@ -2114,10 +2181,13 @@ const App: React.FC = () => {
       }
 
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
-      setLastPaymentAmount(paymentAmount);
-      setSelectedTreatmentsForReceipt([]);
+      setLastPaymentAmount(paymentFinalAmount);
+      setLastPaymentOriginalAmount(paymentOriginalAmount);
+      setLastPaymentDiscountAmount(paymentDiscountAmount);
+      setSelectedTreatmentsForReceipt(selectedPaymentTreatments);
       setSelectedMedicineSalesForReceipt([]);
       setShowPaymentModal(false);
+      setPaymentDraft({ treatments: [], selectedTreatmentIds: [], discountAmount: 0 });
       // Ask whether to generate a receipt after posting payment.
       setShowReceiptPrompt(true);
       fetchInitialData(); 
@@ -2137,10 +2207,14 @@ const App: React.FC = () => {
     setSelectedTreatmentsForReceipt([]);
     setSelectedMedicineSalesForReceipt([]);
     setLastPaymentAmount(0);
+    setLastPaymentOriginalAmount(0);
+    setLastPaymentDiscountAmount(0);
   };
 
   const handleGenerateReceipt = () => {
     setLastPaymentAmount(0);
+    setLastPaymentOriginalAmount(0);
+    setLastPaymentDiscountAmount(0);
     setSelectedTreatmentsForReceipt([]);
     setSelectedMedicineSalesForReceipt([]);
     setShowTreatmentSelection(true);
@@ -2837,7 +2911,7 @@ const App: React.FC = () => {
                 onDoctorChange={setSelectedDoctorId}
                 onDeselectAll={() => setSelectedTeeth([])}
                 onTreatmentSubmit={handleTreatmentSubmit}
-                onPaymentRequest={(amount) => { setPaymentAmount(amount); setShowPaymentModal(true); }}
+                onPaymentRequest={handleOpenPaymentModal}
                 onClosePatient={handleClosePatient}
                 onOpenDirectory={() => setCurrentView('patients')}
                 onGenerateReceipt={handleGenerateReceipt}
@@ -3675,15 +3749,106 @@ const App: React.FC = () => {
       )}
 
       {showPaymentModal && (
-        <Modal title="Financial Processing" onClose={() => setShowPaymentModal(false)}>
-          <div className="mb-8 p-4 bg-gray-50 rounded-2xl border border-gray-100 text-center">
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">Outstanding Balance</p>
-            <p className="text-3xl font-black text-gray-900">{formatCurrency(selectedPatient?.balance || 0, currency)}</p>
+        <Modal
+          title="Financial Processing"
+          onClose={() => {
+            setShowPaymentModal(false);
+            setPaymentDraft({ treatments: [], selectedTreatmentIds: [], discountAmount: 0 });
+          }}
+        >
+          <div className="mb-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Outstanding Balance</p>
+              <p className="mt-1 text-2xl font-black text-gray-900">{formatCurrency(selectedPatient?.balance || 0, currency)}</p>
+            </div>
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-indigo-500">Actual Treatment Amount</p>
+              <p className="mt-1 text-2xl font-black text-indigo-700">{formatCurrency(paymentOriginalAmount, currency)}</p>
+            </div>
           </div>
+
           <form onSubmit={handlePaymentSubmit} className="space-y-5">
-            <Input label={`Payment Amount Recieved (${getCurrencySymbol(currency)})`} type="number" required min="0.01" step="0.01" max={selectedPatient?.balance}
-              value={paymentAmount} onChange={(e: any) => setPaymentAmount(parseFloat(e.target.value))} />
-            <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-green-600/20">Post Payment & Clear Balance</button>
+            <div className="rounded-2xl border border-gray-100 bg-white">
+              <div className="border-b border-gray-100 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">Selected Services</p>
+                    <p className="text-xs text-gray-500">Choose the treatments included in this payment.</p>
+                  </div>
+                  <div className="text-xs font-semibold text-gray-500">
+                    {paymentDraft.selectedTreatmentIds.length} of {paymentDraft.treatments.length} selected
+                  </div>
+                </div>
+              </div>
+              <div className="max-h-64 space-y-2 overflow-y-auto p-4 custom-scrollbar">
+                {paymentDraft.treatments.length === 0 ? (
+                  <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                    No treatment services are available for this patient yet.
+                  </p>
+                ) : (
+                  paymentDraft.treatments.map((treatment) => {
+                    const isSelected = paymentDraft.selectedTreatmentIds.includes(treatment.id);
+                    return (
+                      <label
+                        key={treatment.id}
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                          isSelected ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleTogglePaymentTreatment(treatment.id)}
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{treatment.description}</p>
+                              <p className="text-xs text-gray-500">{treatment.date}</p>
+                            </div>
+                            <p className="whitespace-nowrap text-sm font-bold text-gray-900">
+                              {formatCurrency(treatment.cost || 0, currency)}
+                            </p>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label={`Manual Discount (${getCurrencySymbol(currency)})`}
+                type="number"
+                min="0"
+                step="0.01"
+                max={paymentOriginalAmount || undefined}
+                value={paymentDiscountAmount}
+                onChange={(e: any) => {
+                  const rawValue = Number.parseFloat(e.target.value);
+                  const normalizedValue = Number.isFinite(rawValue) ? rawValue : 0;
+                  setPaymentDraft((prev) => ({
+                    ...prev,
+                    discountAmount: Math.max(0, Math.min(paymentOriginalAmount, normalizedValue))
+                  }));
+                }}
+              />
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">Final Amount</p>
+                <p className="mt-1 text-xl font-black text-emerald-700">{formatCurrency(paymentFinalAmount, currency)}</p>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={selectedPaymentTreatments.length === 0 || paymentFinalAmount <= 0}
+              className="w-full rounded-xl bg-green-600 py-3 font-bold text-white shadow-lg shadow-green-600/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Post Payment
+            </button>
           </form>
         </Modal>
       )}
@@ -3706,6 +3871,8 @@ const App: React.FC = () => {
             treatments={selectedTreatmentsForReceipt.length > 0 ? selectedTreatmentsForReceipt : treatmentHistory}
             medicines={selectedMedicineSalesForReceipt}
             paymentAmount={lastPaymentAmount}
+            originalPaymentAmount={lastPaymentOriginalAmount}
+            paymentDiscountAmount={lastPaymentDiscountAmount}
             currency={currency}
             appName={appName}
             receiptInfo={receiptInfo}

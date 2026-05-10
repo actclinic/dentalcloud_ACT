@@ -73,6 +73,10 @@ export interface PaymentRecord {
   location_id?: string;
   patientId: string;
   amount: number;
+  originalAmount?: number;
+  discountAmount?: number;
+  clearedAmount?: number;
+  treatmentIds?: string[];
   date: string;
   type: 'FULL' | 'PARTIAL';
   remainingBalance: number;

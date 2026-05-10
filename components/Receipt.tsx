@@ -9,6 +9,8 @@ interface ReceiptProps {
   treatments: ClinicalRecord[];
   medicines?: MedicineSale[];
   paymentAmount?: number;
+  originalPaymentAmount?: number;
+  paymentDiscountAmount?: number;
   currency: Currency;
   appName?: string;
   receiptInfo?: { email: string; phone: string };
@@ -16,7 +18,19 @@ interface ReceiptProps {
   onClose: () => void;
 }
 
-const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, medicines = [], paymentAmount, currency, appName = 'DentalCloud Pro', receiptInfo, receiptSize = 'A4', onClose }) => {
+const Receipt: React.FC<ReceiptProps> = ({
+  patient,
+  treatments,
+  medicines = [],
+  paymentAmount,
+  originalPaymentAmount,
+  paymentDiscountAmount,
+  currency,
+  appName = 'DentalCloud Pro',
+  receiptInfo,
+  receiptSize = 'A4',
+  onClose
+}) => {
   const receiptEmail = receiptInfo?.email || 'info@dentflowpro.com';
   const receiptPhone = receiptInfo?.phone || '(555) 123-4567';
   const receiptNumber = `REC-${Date.now().toString().slice(-8)}`;
@@ -30,6 +44,8 @@ const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, medicines = [], 
   const totalMedicineCost = medicines.reduce((sum, medicine) => sum + (medicine.total_price || 0), 0);
   const grandTotal = totalTreatmentCost + totalMedicineCost;
   const totalPaid = paymentAmount || 0;
+  const paymentOriginal = originalPaymentAmount || totalPaid;
+  const paymentDiscount = paymentDiscountAmount || 0;
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
   // Otherwise, calculate balance based on selected treatments
@@ -295,6 +311,16 @@ const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, medicines = [], 
             <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-lg">
               <p className="text-sm font-semibold text-gray-900 mb-2">Payment Details:</p>
               <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Original Amount:</span>
+                <span className="font-semibold text-gray-900">{formatCurrency(paymentOriginal, currency)}</span>
+              </div>
+              {paymentDiscount > 0 && (
+                <div className="flex justify-between text-sm mt-1">
+                  <span className="text-gray-600">Discount Given:</span>
+                  <span className="font-semibold text-amber-700">-{formatCurrency(paymentDiscount, currency)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Payment Amount:</span>
                 <span className="font-semibold text-gray-900">{formatCurrency(totalPaid, currency)}</span>
               </div>
@@ -522,6 +548,16 @@ const Receipt: React.FC<ReceiptProps> = ({ patient, treatments, medicines = [], 
         {totalPaid > 0 && (
           <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-lg" style={{ padding: '16px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
             <p className="text-sm font-semibold text-gray-900 mb-2">Payment Details:</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Original Amount:</span>
+              <span className="font-semibold text-gray-900">{formatCurrency(paymentOriginal, currency)}</span>
+            </div>
+            {paymentDiscount > 0 && (
+              <div className="flex justify-between text-sm mt-1">
+                <span className="text-gray-600">Discount Given:</span>
+                <span className="font-semibold text-amber-700">-{formatCurrency(paymentDiscount, currency)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Payment Amount:</span>
               <span className="font-semibold text-gray-900">{formatCurrency(totalPaid, currency)}</span>
