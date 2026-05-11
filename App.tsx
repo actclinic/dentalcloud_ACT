@@ -103,7 +103,7 @@ const THEME_STORAGE_KEY = 'dentalcloud_hover_theme_v1';
 
 type PaymentDraft = {
   treatments: ClinicalRecord[];
-  selectedTreatmentIds: string[];
+  amountTendered: number;
   discountAmount: number;
 };
 
@@ -119,6 +119,50 @@ const THEME_OPTIONS: Array<{ value: HoverTheme; label: string }> = [
 
 const isHoverTheme = (value: unknown): value is HoverTheme => {
   return value === 'blue' || value === 'green' || value === 'yellow' || value === 'brown' || value === 'dark';
+};
+
+const normalizeHexColor = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed;
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return `#${trimmed.slice(1).split('').map((char) => `${char}${char}`).join('')}`;
+  }
+  return null;
+};
+
+const parseCssColorToRgb = (value: string): { r: number; g: number; b: number } | null => {
+  const hex = normalizeHexColor(value);
+  if (hex) {
+    return {
+      r: Number.parseInt(hex.slice(1, 3), 16),
+      g: Number.parseInt(hex.slice(3, 5), 16),
+      b: Number.parseInt(hex.slice(5, 7), 16)
+    };
+  }
+
+  const rgbMatch = value.trim().match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (!rgbMatch) return null;
+
+  return {
+    r: Number.parseInt(rgbMatch[1], 10),
+    g: Number.parseInt(rgbMatch[2], 10),
+    b: Number.parseInt(rgbMatch[3], 10)
+  };
+};
+
+const getContrastAwareTextColor = (backgroundColor: string): string => {
+  const rgb = parseCssColorToRgb(backgroundColor);
+  if (!rgb) return '#ffffff';
+
+  const toLinear = (channel: number) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+
+  const luminance = 0.2126 * toLinear(rgb.r) + 0.7152 * toLinear(rgb.g) + 0.0722 * toLinear(rgb.b);
+  return luminance > 0.42 ? '#1f2937' : '#ffffff';
 };
 
 const LEAD_SOURCE_OPTIONS = ['Marketing Team', 'Hotline', 'Tiktok', 'Tiktok Hotline', 'Facebook', 'Phone Call', 'Walk-in', 'Referral'];
@@ -447,7 +491,7 @@ const App: React.FC = () => {
   // -- Form State --
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>({
     treatments: [],
-    selectedTreatmentIds: [],
+    amountTendered: 0,
     discountAmount: 0
   });
   const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({ 
@@ -479,19 +523,32 @@ const App: React.FC = () => {
   const [deleteServiceConfirmOpen, setDeleteServiceConfirmOpen] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<{id: string, name: string} | null>(null);
 
-  const selectedPaymentTreatments = useMemo(
-    () => paymentDraft.treatments.filter((treatment) => paymentDraft.selectedTreatmentIds.includes(treatment.id)),
-    [paymentDraft.selectedTreatmentIds, paymentDraft.treatments]
-  );
+  const selectedPaymentTreatments = useMemo(() => paymentDraft.treatments, [paymentDraft.treatments]);
+  const paymentOriginalAmount = Math.max(0, Number(selectedPatient?.balance || 0));
+  const paymentAmountTendered = Math.min(paymentOriginalAmount, Math.max(0, Number(paymentDraft.amountTendered || 0)));
+  const paymentDiscountAmount = Math.min(paymentAmountTendered, Math.max(0, Number(paymentDraft.discountAmount || 0)));
+  const paymentFinalAmount = Math.max(0, paymentAmountTendered - paymentDiscountAmount);
+  const paymentClearedAmount = Math.min(paymentOriginalAmount, paymentAmountTendered);
+  const paymentThemeColors = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        primary: '#4f46e5',
+        primaryHover: '#4338ca',
+        onPrimary: '#ffffff'
+      };
+    }
 
-  const paymentOriginalAmount = useMemo(
-    () => selectedPaymentTreatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0),
-    [selectedPaymentTreatments]
-  );
+    const styles = window.getComputedStyle(document.documentElement);
+    const primary = styles.getPropertyValue('--hover-600').trim() || '#4f46e5';
+    const primaryHover = styles.getPropertyValue('--hover-700').trim() || primary;
+    const onPrimary = getContrastAwareTextColor(primary);
 
-  const paymentDiscountAmount = Math.min(paymentOriginalAmount, Math.max(0, Number(paymentDraft.discountAmount || 0)));
-  const paymentFinalAmount = Math.max(0, paymentOriginalAmount - paymentDiscountAmount);
-  const paymentClearedAmount = Math.min(paymentOriginalAmount, paymentFinalAmount + paymentDiscountAmount);
+    return {
+      primary,
+      primaryHover,
+      onPrimary
+    };
+  }, [hoverTheme]);
 
   // Filter doctors based on search query
   const filteredDoctors = doctors.filter(doctor => {
@@ -1386,27 +1443,12 @@ const App: React.FC = () => {
   };
 
   const handleOpenPaymentModal = (treatments: ClinicalRecord[]) => {
-    const selectedTreatmentIds = treatments.map((treatment) => treatment.id);
-
     setPaymentDraft({
       treatments,
-      selectedTreatmentIds,
+      amountTendered: Math.max(0, Number(selectedPatient?.balance || 0)),
       discountAmount: 0
     });
     setShowPaymentModal(true);
-  };
-
-  const handleTogglePaymentTreatment = (treatmentId: string) => {
-    setPaymentDraft((prev) => {
-      const nextSelectedIds = prev.selectedTreatmentIds.includes(treatmentId)
-        ? prev.selectedTreatmentIds.filter((id) => id !== treatmentId)
-        : [...prev.selectedTreatmentIds, treatmentId];
-
-      return {
-        ...prev,
-        selectedTreatmentIds: nextSelectedIds
-      };
-    });
   };
 
   const parseTargetTeethInput = (input: string): number[] => {
@@ -2146,12 +2188,16 @@ const App: React.FC = () => {
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatient) return;
-    if (selectedPaymentTreatments.length === 0) {
-      alert('Please select at least one treatment service.');
+    if (paymentOriginalAmount <= 0) {
+      alert('This patient does not have an outstanding balance to collect.');
+      return;
+    }
+    if (paymentAmountTendered <= 0) {
+      alert('Amount tendered must be greater than 0.');
       return;
     }
     if (paymentFinalAmount <= 0) {
-      alert('Final amount must be greater than 0.');
+      alert('Final amount must be greater than 0 after discount.');
       return;
     }
     try {
@@ -2164,7 +2210,7 @@ const App: React.FC = () => {
         location_id: selectedPatient.location_id,
         patientId: selectedPatient.id,
         amount: paymentFinalAmount,
-        originalAmount: paymentOriginalAmount,
+        originalAmount: paymentAmountTendered,
         discountAmount: paymentDiscountAmount,
         clearedAmount: paymentClearedAmount,
         treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
@@ -2182,12 +2228,12 @@ const App: React.FC = () => {
 
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
       setLastPaymentAmount(paymentFinalAmount);
-      setLastPaymentOriginalAmount(paymentOriginalAmount);
+      setLastPaymentOriginalAmount(paymentAmountTendered);
       setLastPaymentDiscountAmount(paymentDiscountAmount);
       setSelectedTreatmentsForReceipt(selectedPaymentTreatments);
       setSelectedMedicineSalesForReceipt([]);
       setShowPaymentModal(false);
-      setPaymentDraft({ treatments: [], selectedTreatmentIds: [], discountAmount: 0 });
+      setPaymentDraft({ treatments: [], amountTendered: 0, discountAmount: 0 });
       // Ask whether to generate a receipt after posting payment.
       setShowReceiptPrompt(true);
       fetchInitialData(); 
@@ -3750,104 +3796,125 @@ const App: React.FC = () => {
 
       {showPaymentModal && (
         <Modal
-          title="Financial Processing"
+          title="Collect Payment"
+          maxWidthClassName="max-w-2xl"
           onClose={() => {
             setShowPaymentModal(false);
-            setPaymentDraft({ treatments: [], selectedTreatmentIds: [], discountAmount: 0 });
+            setPaymentDraft({ treatments: [], amountTendered: 0, discountAmount: 0 });
           }}
         >
-          <div className="mb-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Outstanding Balance</p>
-              <p className="mt-1 text-2xl font-black text-gray-900">{formatCurrency(selectedPatient?.balance || 0, currency)}</p>
-            </div>
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-500">Actual Treatment Amount</p>
-              <p className="mt-1 text-2xl font-black text-indigo-700">{formatCurrency(paymentOriginalAmount, currency)}</p>
-            </div>
-          </div>
-
-          <form onSubmit={handlePaymentSubmit} className="space-y-5">
-            <div className="rounded-2xl border border-gray-100 bg-white">
-              <div className="border-b border-gray-100 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">Selected Services</p>
-                    <p className="text-xs text-gray-500">Choose the treatments included in this payment.</p>
-                  </div>
-                  <div className="text-xs font-semibold text-gray-500">
-                    {paymentDraft.selectedTreatmentIds.length} of {paymentDraft.treatments.length} selected
-                  </div>
+          <form onSubmit={handlePaymentSubmit} className="space-y-6">
+            <div
+              className="rounded-[2rem] border p-6 shadow-xl"
+              style={{
+                backgroundColor: paymentThemeColors.primary,
+                borderColor: paymentThemeColors.primary,
+                color: paymentThemeColors.onPrimary
+              }}
+            >
+              <p
+                className="text-xs font-black uppercase tracking-[0.24em]"
+                style={{ color: paymentThemeColors.onPrimary, opacity: 0.78 }}
+              >
+                Patient Info
+              </p>
+              <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h4 className="text-2xl font-black tracking-tight">{selectedPatient?.name || 'Unknown Patient'}</h4>
+                  <p className="text-sm font-semibold" style={{ color: paymentThemeColors.onPrimary, opacity: 0.86 }}>
+                    ID: {selectedPatient?.id || '-'}
+                  </p>
+                </div>
+                <div className="sm:text-right">
+                  <p
+                    className="text-[11px] font-black uppercase tracking-[0.24em]"
+                    style={{ color: paymentThemeColors.onPrimary, opacity: 0.72 }}
+                  >
+                    Current Outstanding Balance
+                  </p>
+                  <p className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
+                    {formatCurrency(paymentOriginalAmount, currency)}
+                  </p>
                 </div>
               </div>
-              <div className="max-h-64 space-y-2 overflow-y-auto p-4 custom-scrollbar">
-                {paymentDraft.treatments.length === 0 ? (
-                  <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                    No treatment services are available for this patient yet.
-                  </p>
-                ) : (
-                  paymentDraft.treatments.map((treatment) => {
-                    const isSelected = paymentDraft.selectedTreatmentIds.includes(treatment.id);
-                    return (
-                      <label
-                        key={treatment.id}
-                        className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
-                          isSelected ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleTogglePaymentTreatment(treatment.id)}
-                          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{treatment.description}</p>
-                              <p className="text-xs text-gray-500">{treatment.date}</p>
-                            </div>
-                            <p className="whitespace-nowrap text-sm font-bold text-gray-900">
-                              {formatCurrency(treatment.cost || 0, currency)}
-                            </p>
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label={`Manual Discount (${getCurrencySymbol(currency)})`}
-                type="number"
-                min="0"
-                step="0.01"
-                max={paymentOriginalAmount || undefined}
-                value={paymentDiscountAmount}
-                onChange={(e: any) => {
-                  const rawValue = Number.parseFloat(e.target.value);
-                  const normalizedValue = Number.isFinite(rawValue) ? rawValue : 0;
-                  setPaymentDraft((prev) => ({
-                    ...prev,
-                    discountAmount: Math.max(0, Math.min(paymentOriginalAmount, normalizedValue))
-                  }));
-                }}
-              />
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-emerald-600">Final Amount</p>
-                <p className="mt-1 text-xl font-black text-emerald-700">{formatCurrency(paymentFinalAmount, currency)}</p>
+            <div className="space-y-5 rounded-[2rem] border border-slate-200 bg-slate-50 p-6">
+              <div>
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+                  Amount Tendered ({getCurrencySymbol(currency)})
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  max={paymentOriginalAmount || undefined}
+                  autoFocus
+                  value={paymentAmountTendered}
+                  onChange={(e: any) => {
+                    const rawValue = Number.parseFloat(e.target.value);
+                    const normalizedValue = Number.isFinite(rawValue) ? rawValue : 0;
+                    setPaymentDraft((prev) => ({
+                      ...prev,
+                      amountTendered: Math.max(0, Math.min(paymentOriginalAmount, normalizedValue))
+                    }));
+                  }}
+                  className="payment-flat-number-input w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-3xl font-black tracking-tight text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                />
+                <p className="mt-2 text-sm text-slate-500">Defaulted to the full balance for quick settlement. Reduce it here for a partial collection.</p>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                <span className="shrink-0 text-[11px] font-black uppercase tracking-[0.24em] text-slate-500">
+                  Discount Amount ({getCurrencySymbol(currency)})
+                </span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  max={paymentAmountTendered || undefined}
+                  value={paymentDiscountAmount}
+                  onChange={(e: any) => {
+                    const rawValue = Number.parseFloat(e.target.value);
+                    const normalizedValue = Number.isFinite(rawValue) ? rawValue : 0;
+                    setPaymentDraft((prev) => {
+                      const nextDiscountAmount = Math.max(0, Math.min(prev.amountTendered, normalizedValue));
+                      return {
+                        ...prev,
+                        discountAmount: nextDiscountAmount
+                      };
+                    });
+                  }}
+                  className="payment-flat-number-input min-w-0 flex-1 border-0 bg-transparent text-right text-xl font-black text-slate-900 outline-none placeholder:text-slate-300"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">Final Amount</p>
+                <div className="mt-2 flex items-end justify-between gap-4">
+                  <p className="text-3xl font-black tracking-tight text-emerald-900">
+                    {formatCurrency(paymentFinalAmount, currency)}
+                  </p>
+                  <p className="text-sm font-semibold text-emerald-700">
+                    {paymentDiscountAmount > 0 ? 'Amount tendered minus discount' : 'No discount applied'}
+                  </p>
+                </div>
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={selectedPaymentTreatments.length === 0 || paymentFinalAmount <= 0}
-              className="w-full rounded-xl bg-green-600 py-3 font-bold text-white shadow-lg shadow-green-600/20 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={paymentAmountTendered <= 0 || paymentFinalAmount <= 0 || paymentClearedAmount <= 0}
+              className="w-full rounded-2xl py-4 text-base font-black shadow-lg transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundColor: paymentThemeColors.primary,
+                color: paymentThemeColors.onPrimary,
+                boxShadow: `0 18px 36px -18px ${paymentThemeColors.primaryHover}`
+              }}
             >
-              Post Payment
+              Confirm Payment
             </button>
           </form>
         </Modal>

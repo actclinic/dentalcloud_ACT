@@ -553,3 +553,14 @@ body {
 .calendar-dot-today {
   animation: dot-pulse 2s ease-in-out infinite;
 }
+
+.payment-flat-number-input::-webkit-outer-spin-button,
+.payment-flat-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.payment-flat-number-input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

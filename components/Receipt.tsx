@@ -443,10 +443,12 @@ const Receipt: React.FC<ReceiptProps> = ({
 
           {/* Payment Details */}
           {totalPaid > 0 && (
-            <div style={{ marginBottom: '6px', fontSize: '8px' }}>
-              <div style={{ fontWeight: 700, marginBottom: '2px' }}>-- PAYMENT DETAILS --</div>
-              {thermalLine('Amount:', formatCurrency(totalPaid, currency))}
-              {thermalLine('Date:', today)}
+            <div style={{ marginBottom: '6px', fontSize: '8px', lineHeight: '1.35' }}>
+              <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
+              {thermalLine('Original:', formatCurrency(paymentOriginal, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
+              {paymentDiscount > 0 && thermalLine('Discount:', `-${formatCurrency(paymentDiscount, currency)}`, { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700, color: '#b45309' })}
+              {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
+              {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
               {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
             </div>
           )}
@@ -659,10 +661,12 @@ const Receipt: React.FC<ReceiptProps> = ({
 
         {/* Payment Details */}
         {totalPaid > 0 && (
-          <div style={{ marginBottom: '6px', fontSize: '8px' }}>
-            <div style={{ fontWeight: 700, marginBottom: '2px' }}>-- PAYMENT DETAILS --</div>
-            {thermalLine('Amount:', formatCurrency(totalPaid, currency))}
-            {thermalLine('Date:', today)}
+          <div style={{ marginBottom: '6px', fontSize: '8px', lineHeight: '1.35' }}>
+            <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
+            {thermalLine('Original:', formatCurrency(paymentOriginal, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
+            {paymentDiscount > 0 && thermalLine('Discount:', `-${formatCurrency(paymentDiscount, currency)}`, { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700, color: '#b45309' })}
+            {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
+            {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
             {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
           </div>
         )}
