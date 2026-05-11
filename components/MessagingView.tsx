@@ -8,6 +8,7 @@ import { supabase } from '../services/supabase';
 interface MessagingViewProps {
   patients: Patient[];
   messagingEnabled: boolean;
+  locationId?: string;
 }
 
 type SidebarMode = 'chats' | 'new';
@@ -64,7 +65,7 @@ const getInitials = (value?: string) => {
   return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('') || 'P';
 };
 
-const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnabled }) => {
+const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnabled, locationId }) => {
   const staffSession = auth.getCurrentUser();
   const adminId = staffSession && staffSession.role !== 'patient' ? staffSession.userId : undefined;
 
@@ -147,7 +148,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
         setLoading(true);
       }
 
-      const nextConversations = await api.messages.getConversations(adminId, 'admin');
+      const nextConversations = await api.messages.getConversations(adminId, 'admin', locationId);
       const patientConversations = nextConversations.filter((conversation) => (conversation.participant_type || 'patient') !== 'doctor');
       setConversations(patientConversations);
 
@@ -195,7 +196,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
 
     try {
       await api.messages.markAsRead(conversationId, adminId, 'admin');
-      const refreshedConversations = await api.messages.getConversations(adminId, 'admin');
+      const refreshedConversations = await api.messages.getConversations(adminId, 'admin', locationId);
       setConversations(refreshedConversations.filter((conversation) => (conversation.participant_type || 'patient') !== 'doctor'));
     } catch (err) {
       console.error('Failed to mark messages as read:', err);
@@ -354,7 +355,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
 
     try {
       setStartingConversation(patientId);
-      const conversation = await api.messages.createConversation(patientId, adminId, 'patient');
+      const conversation = await api.messages.createConversation(patientId, adminId, 'patient', locationId);
       await loadConversations(false);
       setSelectedConversationId(conversation.id);
       setSidebarMode('chats');

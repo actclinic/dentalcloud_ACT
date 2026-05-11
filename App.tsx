@@ -968,7 +968,7 @@ const App: React.FC = () => {
   const fetchUsers = async () => {
     if (!isAdmin) return;
     try {
-      const usersData = await api.users.getAll();
+      const usersData = await api.users.getAll(currentLocationId || undefined);
       setUsers(usersData);
     } catch (err: any) {
       console.warn('Error fetching users:', err);
@@ -1642,9 +1642,9 @@ const App: React.FC = () => {
 
   const handleDeleteAllRecords = async () => {
     try {
-      await api.treatments.deleteAllRecords();
+      await api.treatments.deleteAllRecords(currentLocationId || undefined);
       fetchGlobalRecords();
-      alert('All audit log records have been deleted successfully.');
+      alert('All audit log records for the current branch have been deleted successfully.');
     } catch (err: any) {
       alert(err.message || 'Failed to delete records');
     }
@@ -1996,13 +1996,13 @@ const App: React.FC = () => {
   };
 
   const handleResetAllLoyaltyPoints = async () => {
-    if (!confirm('CRITICAL ACTION: This will permanently reset ALL loyalty points for ALL patients across the entire system. Transaction history will also be cleared. Continue?')) return;
+    if (!confirm('CRITICAL ACTION: This will permanently reset ALL loyalty points for ALL patients in the current branch. Transaction history for this branch will also be cleared. Continue?')) return;
     
     setLoading(true);
     try {
-      await api.loyalty.resetAllPoints();
+      await api.loyalty.resetAllPoints(currentLocationId || undefined);
       fetchInitialData();
-      alert('System-wide loyalty reset successful.');
+      alert('Branch-wide loyalty reset successful.');
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -2926,6 +2926,7 @@ const App: React.FC = () => {
             {currentView === 'messaging' && canAccessView('messaging') && <MessagingView 
               patients={patients} 
               messagingEnabled={messagingEnabled}
+              locationId={currentLocationId || undefined}
             />}
             {currentView === 'recalls' && canAccessView('recalls') && <RecallsView
               recalls={recalls}

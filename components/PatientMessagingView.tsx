@@ -78,7 +78,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         setLoading(true);
       }
 
-      const nextConversations = await api.messages.getConversations(patientId, 'patient');
+      const nextConversations = await api.messages.getConversations(patientId, 'patient', patientLocationId || undefined);
       setConversations(nextConversations);
       setSelectedConversationId((currentId) => {
         if (nextConversations.length === 0) {
@@ -124,7 +124,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
 
     try {
       await api.messages.markAsRead(conversationId, patientId, 'patient');
-      const refreshedConversations = await api.messages.getConversations(patientId, 'patient');
+      const refreshedConversations = await api.messages.getConversations(patientId, 'patient', patientLocationId || undefined);
       setConversations(refreshedConversations);
     } catch (err) {
       console.error('Failed to mark patient messages as read:', err);
@@ -298,7 +298,7 @@ const PatientMessagingView: React.FC<PatientMessagingViewProps> = ({ currentUser
         throw new Error('No administrator is available for messaging right now.');
       }
 
-      const conversation = await api.messages.createConversation(patientId, adminId);
+      const conversation = await api.messages.createConversation(patientId, adminId, 'patient', patientLocationId || undefined);
       await loadConversations(false);
       setSelectedConversationId(conversation.id);
       setError(null);

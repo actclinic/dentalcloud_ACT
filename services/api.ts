@@ -1405,18 +1405,22 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
-    cleanupOld: async (daysOld: number = 4): Promise<number> => {
-      // Calculate the cutoff date (4 days ago)
+    cleanupOld: async (daysOld: number = 4, locationId?: string): Promise<number> => {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysOld);
       const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
 
-      // Delete appointments older than the cutoff date
-      const { data, error } = await supabase
+      let query = supabase
         .from('appointments')
         .delete()
         .lt('date', cutoffDateStr)
         .select();
+
+      if (locationId) {
+        query = query.eq('location_id', locationId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw new Error(error.message);
       
@@ -1517,11 +1521,17 @@ export const api = {
         return [];
       }
     },
-    deleteAllRecords: async (): Promise<void> => {
-      const { error } = await supabase
+    deleteAllRecords: async (locationId?: string): Promise<void> => {
+      let query = supabase
         .from('treatments')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all (using a condition that's always true)
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (locationId) {
+        query = query.eq('location_id', locationId);
+      }
+
+      const { error } = await query;
 
       if (error) throw new Error(error.message);
     },
@@ -3000,16 +3010,22 @@ export const api = {
   },
 
   users: {
-    getAll: async (): Promise<User[]> => {
+    getAll: async (locationId?: string): Promise<User[]> => {
       try {
         const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
         const supportsDoctorId = await detectUsersDoctorIdSupport();
-        const { data, error } = await supabase
+        let query = supabase
           .from('users')
           .select(supportsAllowedTabs
             ? `id, location_id, username, role, allowed_tabs, created_at, updated_at${supportsDoctorId ? ', doctor_id' : ''}`
             : `id, location_id, username, role, created_at, updated_at${supportsDoctorId ? ', doctor_id' : ''}`)
           .order('created_at', { ascending: false });
+
+        if (locationId) {
+          query = query.eq('location_id', locationId);
+        }
+
+        const { data, error } = await query;
         
         if (error) throw error;
         return (data || []).map((u: any) => ({
@@ -3797,21 +3813,30 @@ export const api = {
         .eq('id', id);
       if (error) throw new Error(error.message);
     },
-    resetAllPoints: async (): Promise<void> => {
-      // 1. Reset points on all patients
-      // We add a dummy filter to satisfy the "WHERE clause" requirement for bulk updates
-      const { error: patientError } = await supabase
+    resetAllPoints: async (locationId?: string): Promise<void> => {
+      let patientQuery = supabase
         .from('patients')
         .update({ loyalty_points: 0 })
         .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (locationId) {
+        patientQuery = patientQuery.eq('location_id', locationId);
+      }
+
+      const { error: patientError } = await patientQuery;
       
       if (patientError) throw new Error(patientError.message);
 
-      // 2. Clear transaction history
-      const { error: txError } = await supabase
+      let txQuery = supabase
         .from('loyalty_transactions')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (locationId) {
+        txQuery = txQuery.eq('location_id', locationId);
+      }
+
+      const { error: txError } = await txQuery;
 
       if (txError) throw new Error(txError.message);
     }
@@ -4019,7 +4044,7 @@ export const api = {
     },
 
     // Get conversations for a user
-    getConversations: async (userId: string, userType: 'patient' | 'admin'): Promise<Conversation[]> => {
+    getConversations: async (userId: string, userType: 'patient' | 'admin', locationId?: string): Promise<Conversation[]> => {
       // Perform automatic cleanup before fetching conversations
       await api.messages.performAutomaticCleanup();
       
@@ -4062,6 +4087,10 @@ export const api = {
         query = query.eq('patient_id', userId);
       } else {
         query = query.eq('admin_id', userId);
+      }
+
+      if (locationId) {
+        query = query.eq('location_id', locationId);
       }
 
       const { data: conversations, error } = await query;
@@ -4262,7 +4291,8 @@ export const api = {
     createConversation: async (
       participantId: string,
       adminId: string,
-      participantType: 'patient' | 'doctor' = 'patient'
+      participantType: 'patient' | 'doctor' = 'patient',
+      locationId?: string
     ): Promise<Conversation> => {
       // Perform automatic cleanup before creating new conversation
       await api.messages.performAutomaticCleanup();
@@ -4330,6 +4360,9 @@ export const api = {
         insertPayload.doctor_user_id = participantId;
       } else {
         insertPayload.patient_id = participantId;
+      }
+      if (locationId) {
+        insertPayload.location_id = locationId;
       }
 
       const { data: conversation, error } = await supabase
