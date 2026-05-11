@@ -316,6 +316,8 @@ const App: React.FC = () => {
   const [medicineSales, setMedicineSales] = useState<MedicineSale[]>([]);
   const [recalls, setRecalls] = useState<Recall[]>([]);
   const scheduledTaskProcessorRef = React.useRef<boolean>(false);
+  const locationInitializedRef = React.useRef<boolean>(false);
+  const fetchingDataRef = React.useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1045,6 +1047,8 @@ const App: React.FC = () => {
   };
 
   const fetchInitialData = async (overrideLocationId?: string) => {
+    if (fetchingDataRef.current) return;
+    fetchingDataRef.current = true;
     try {
       setLoading(true);
       setError(null);
@@ -1146,6 +1150,7 @@ const App: React.FC = () => {
       setError(err.message || "Failed to connect to database. Please check your network.");
     } finally {
       setLoading(false);
+      fetchingDataRef.current = false;
     }
   };
 
@@ -1154,6 +1159,16 @@ const App: React.FC = () => {
     localStorage.setItem('currentLocationId', locId);
     await fetchInitialData(locId);
   };
+
+  useEffect(() => {
+    if (!locationInitializedRef.current) {
+      locationInitializedRef.current = true;
+      return;
+    }
+    if (currentLocationId && !fetchingDataRef.current) {
+      fetchInitialData(currentLocationId);
+    }
+  }, [currentLocationId]);
 
   const handleDashboardLocationChange = async (locId: string) => {
     try {
