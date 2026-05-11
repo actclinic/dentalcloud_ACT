@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload, Tags, CalendarRange } from 'lucide-react';
+import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload, Tags, CalendarRange, Activity, MessageCircle, Mail, HardDrive, Palette, Shield, Info } from 'lucide-react';
 import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize, PatientType, AppointmentType } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
@@ -56,6 +56,13 @@ interface ManagerContact {
   updatedAt: string;
 }
 
+interface SettingsTab {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  adminOnly: boolean;
+}
+
 const SettingsView: React.FC<SettingsViewProps> = ({ 
   currency, 
   onCurrencyChange, 
@@ -96,6 +103,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   hoverTheme,
   onHoverThemeChange
 }) => {
+  const tabs: SettingsTab[] = [
+    { id: 'general', label: 'General', icon: <SettingsIcon size={18} />, adminOnly: false },
+    { id: 'clinical', label: 'Clinical', icon: <Activity size={18} />, adminOnly: true },
+    { id: 'rewards', label: 'Loyalty', icon: <Award size={18} />, adminOnly: false },
+    { id: 'messaging', label: 'Messaging', icon: <MessageCircle size={18} />, adminOnly: true },
+    { id: 'email', label: 'Email', icon: <Mail size={18} />, adminOnly: true },
+    { id: 'storage', label: 'Storage', icon: <HardDrive size={18} />, adminOnly: true },
+    { id: 'branding', label: 'Branding', icon: <Palette size={18} />, adminOnly: false },
+    { id: 'system', label: 'System', icon: <Shield size={18} />, adminOnly: true },
+  ];
+
+  const [activeTab, setActiveTab] = useState<string>('general');
+
   const themeOptions: Array<{ value: 'blue' | 'green' | 'yellow' | 'brown' | 'dark'; label: string }> = [
     { value: 'blue', label: 'Blue' },
     { value: 'green', label: 'Green' },
@@ -515,10 +535,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   useEffect(() => {
-    // Clean up legacy mock outbox data
     localStorage.removeItem('dc_email_outbox');
 
-    // Migrate legacy settings shape if present
     const stored = localStorage.getItem(EMAIL_SETTINGS_KEY);
     if (stored) {
       try {
@@ -543,7 +561,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     let isMounted = true;
     
-    // Load S3 settings
     api.appSettings.getS3Settings()
       .then((settings) => {
         if (isMounted) {
@@ -554,7 +571,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         console.warn('Failed to load S3 settings:', error);
       });
     
-    // Load Supabase Storage settings
     api.appSettings.getSupabaseStorage()
       .then((settings) => {
         if (isMounted) {
@@ -639,6 +655,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     setEditingRuleId(null);
     setNewRule({ name: '', event_type: 'TREATMENT', points_per_unit: 0.001, active: true });
   };
+
   const currencySymbols = {
     USD: '$',
     MMK: 'Ks'
@@ -649,495 +666,470 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     MMK: 'Myanmar Kyat'
   };
 
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
-      <div className="p-6 border-b border-gray-100">
-        <div className="flex items-start justify-between gap-4 mb-2">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-100 p-2 rounded-lg">
-              <SettingsIcon className="w-6 h-6 text-indigo-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-800">System Settings</h2>
-              <p className="text-sm text-gray-500">Customize your clinic management system</p>
-            </div>
+  const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin);
+
+  useEffect(() => {
+    const firstVisible = visibleTabs[0]?.id;
+    if (firstVisible && !visibleTabs.find(t => t.id === activeTab)) {
+      setActiveTab(firstVisible);
+    }
+  }, [isAdmin, activeTab, visibleTabs]);
+
+  const renderGeneralTab = () => (
+    <div className="space-y-6">
+      <div className="border border-emerald-100 rounded-xl p-6 bg-gradient-to-r from-emerald-50 to-white">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 mb-2">Connected Database</p>
+            <h3 className="text-lg font-semibold text-gray-900">High Performance</h3>
+            <p className="text-sm text-gray-600 mt-1">Your clinic system is connected and running with the primary database service.</p>
           </div>
-          <div className="min-w-[140px]">
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">Theme</p>
-            <select
-              value={hoverTheme}
-              onChange={(event) => onHoverThemeChange(event.target.value as 'blue' | 'green' | 'yellow' | 'brown' | 'dark')}
-              className="theme-select theme-accent-text w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold focus:outline-none"
-              aria-label="Select hover color"
-            >
-              {themeOptions.map((themeOption) => (
-                <option key={themeOption.value} value={themeOption.value}>
-                  {themeOption.label}
-                </option>
-              ))}
-            </select>
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Online
           </div>
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
-        <div className="border border-emerald-100 rounded-xl p-6 bg-gradient-to-r from-emerald-50 to-white">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 mb-2">Connected Database</p>
-              <h3 className="text-lg font-semibold text-gray-900">High Performance</h3>
-              <p className="text-sm text-gray-600 mt-1">Your clinic system is connected and running with the primary database service.</p>
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <DollarSign className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Currency Settings</h3>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Select the currency to display throughout the system for all financial transactions and reports.
+        </p>
+        
+        <div className="space-y-3">
+          <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            style={{ borderColor: currency === 'USD' ? '#4F46E5' : '#E5E7EB' }}>
+            <input
+              type="radio"
+              name="currency"
+              value="USD"
+              checked={currency === 'USD'}
+              onChange={() => onCurrencyChange('USD')}
+              className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900">{currencyNames.USD}</div>
+              <div className="text-sm text-gray-500">Symbol: {currencySymbols.USD}</div>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Online
+            {currency === 'USD' && (
+              <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+            )}
+          </label>
+
+          <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            style={{ borderColor: currency === 'MMK' ? '#4F46E5' : '#E5E7EB' }}>
+            <input
+              type="radio"
+              name="currency"
+              value="MMK"
+              checked={currency === 'MMK'}
+              onChange={() => onCurrencyChange('MMK')}
+              className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900">{currencyNames.MMK}</div>
+              <div className="text-sm text-gray-500">Symbol: {currencySymbols.MMK}</div>
             </div>
-          </div>
+            {currency === 'MMK' && (
+              <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+            )}
+          </label>
         </div>
 
-        {/* Currency Settings */}
+        <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+          <p className="text-xs text-indigo-700">
+            <strong>Note:</strong> Currency changes will be applied immediately across all views including receipts, invoices, and financial reports.
+          </p>
+        </div>
+      </div>
+
+      {isAdmin && (
         <div className="border border-gray-200 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-4">
             <DollarSign className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-semibold text-gray-800">Currency Settings</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Patient Registration Clinical Fee</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Select the currency to display throughout the system for all financial transactions and reports.
+            Configure a default fee that can be applied to newly registered patients.
           </p>
-          
-          <div className="space-y-3">
-            <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
-              style={{ borderColor: currency === 'USD' ? '#4F46E5' : '#E5E7EB' }}>
+
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
               <input
-                type="radio"
-                name="currency"
-                value="USD"
-                checked={currency === 'USD'}
-                onChange={() => onCurrencyChange('USD')}
-                className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+                type="checkbox"
+                checked={clinicalFeeForm.enabled}
+                onChange={(e) => {
+                  setClinicalFeeMessage('');
+                  setClinicalFeeForm({ ...clinicalFeeForm, enabled: e.target.checked });
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
               />
-              <div className="flex-1">
-                <div className="font-semibold text-gray-900">{currencyNames.USD}</div>
-                <div className="text-sm text-gray-500">Symbol: {currencySymbols.USD}</div>
-              </div>
-              {currency === 'USD' && (
-                <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-              )}
+              <span className="text-sm font-medium text-gray-700">Enable clinical fee for new patient registration by default</span>
             </label>
 
-            <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
-              style={{ borderColor: currency === 'MMK' ? '#4F46E5' : '#E5E7EB' }}>
-              <input
-                type="radio"
-                name="currency"
-                value="MMK"
-                checked={currency === 'MMK'}
-                onChange={() => onCurrencyChange('MMK')}
-                className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
-              />
-              <div className="flex-1">
-                <div className="font-semibold text-gray-900">{currencyNames.MMK}</div>
-                <div className="text-sm text-gray-500">Symbol: {currencySymbols.MMK}</div>
-              </div>
-              {currency === 'MMK' && (
-                <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-              )}
-            </label>
-          </div>
+            <Input
+              label={`Clinical Fee Amount (${currencySymbols[currency]})`}
+              type="number"
+              min="0"
+              step="0.01"
+              value={clinicalFeeForm.amount}
+              onChange={(e: any) => {
+                setClinicalFeeMessage('');
+                setClinicalFeeForm({ ...clinicalFeeForm, amount: parseFloat(e.target.value) || 0 });
+              }}
+            />
 
-          <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-            <p className="text-xs text-indigo-700">
-              <strong>Note:</strong> Currency changes will be applied immediately across all views including receipts, invoices, and financial reports.
-            </p>
+            <button
+              type="button"
+              onClick={handleSaveClinicalFee}
+              className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+            >
+              Save Clinical Fee Settings
+            </button>
+
+            {clinicalFeeMessage && (
+              <p className={`text-xs ${clinicalFeeMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+                {clinicalFeeMessage}
+              </p>
+            )}
           </div>
         </div>
+      )}
+    </div>
+  );
 
-        {/* Patient Registration Clinical Fee */}
-        {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <DollarSign className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Patient Registration Clinical Fee</h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Configure a default fee that can be applied to newly registered patients.
-            </p>
+  const renderClinicalTab = () => (
+    <div className="space-y-6">
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Tags className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Patient Type Management</h3>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Manage the patient type options shown in patient registration and profile edit forms.
+        </p>
 
-            <div className="space-y-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={clinicalFeeForm.enabled}
-                  onChange={(e) => {
-                    setClinicalFeeMessage('');
-                    setClinicalFeeForm({ ...clinicalFeeForm, enabled: e.target.checked });
-                  }}
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Enable clinical fee for new patient registration by default</span>
-              </label>
-
-              <Input
-                label={`Clinical Fee Amount (${currencySymbols[currency]})`}
-                type="number"
-                min="0"
-                step="0.01"
-                value={clinicalFeeForm.amount}
-                onChange={(e: any) => {
-                  setClinicalFeeMessage('');
-                  setClinicalFeeForm({ ...clinicalFeeForm, amount: parseFloat(e.target.value) || 0 });
-                }}
-              />
-
-              <button
-                type="button"
-                onClick={handleSaveClinicalFee}
-                className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-              >
-                Save Clinical Fee Settings
-              </button>
-
-              {clinicalFeeMessage && (
-                <p className={`text-xs ${clinicalFeeMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {clinicalFeeMessage}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Tags className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Patient Type Management</h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Manage the patient type options shown in patient registration and profile edit forms.
-            </p>
-
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
-              <div className="space-y-3">
-                {patientTypes.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
-                    No patient types found yet.
-                  </div>
-                ) : (
-                  patientTypes.map((patientType) => (
-                    <div key={patientType.id} className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-gray-900">{patientType.name}</h4>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${patientType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
-                            {patientType.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">Display order: {patientType.sort_order ?? 0}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEditPatientType(patientType)}
-                          className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePatientType(patientType)}
-                          className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+          <div className="space-y-3">
+            {patientTypes.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                No patient types found yet.
               </div>
-
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 h-fit">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="font-semibold text-gray-900">{editingPatientTypeId ? 'Edit Patient Type' : 'Add Patient Type'}</h4>
-                  {editingPatientTypeId && (
-                    <button
-                      type="button"
-                      onClick={resetPatientTypeForm}
-                      className="text-xs font-bold text-gray-500 hover:text-gray-700"
-                    >
-                      Cancel Edit
-                    </button>
-                  )}
-                </div>
-
-                <Input
-                  label="Patient Type Name"
-                  value={patientTypeForm.name}
-                  onChange={(e: any) => {
-                    setPatientTypeMessage('');
-                    setPatientTypeForm({ ...patientTypeForm, name: e.target.value });
-                  }}
-                  placeholder="e.g. Facebook Ads"
-                />
-
-                <Input
-                  label="Display Order"
-                  type="number"
-                  min="0"
-                  value={patientTypeForm.sort_order}
-                  onChange={(e: any) => {
-                    setPatientTypeMessage('');
-                    setPatientTypeForm({ ...patientTypeForm, sort_order: e.target.value });
-                  }}
-                />
-
-                <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={patientTypeForm.is_active}
-                    onChange={(e) => {
-                      setPatientTypeMessage('');
-                      setPatientTypeForm({ ...patientTypeForm, is_active: e.target.checked });
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  Show this type in patient forms
-                </label>
-
-                <button
-                  type="button"
-                  onClick={handleSavePatientType}
-                  className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-                >
-                  {editingPatientTypeId ? 'Update Patient Type' : 'Create Patient Type'}
-                </button>
-
-                {patientTypeMessage && (
-                  <p className={`text-xs ${patientTypeMessage.toLowerCase().includes('failed') || patientTypeMessage.toLowerCase().includes('cannot') || patientTypeMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {patientTypeMessage}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <CalendarRange className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Appointment Type Management</h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Manage the options shown in the appointment form Type field without affecting your treatment service table.
-            </p>
-
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
-              <div className="space-y-3">
-                {appointmentTypes.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
-                    No appointment types found yet.
-                  </div>
-                ) : (
-                  appointmentTypes.map((appointmentType) => (
-                    <div key={appointmentType.id} className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-gray-900">{appointmentType.name}</h4>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${appointmentType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
-                            {appointmentType.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">Display order: {appointmentType.sort_order ?? 0}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEditAppointmentType(appointmentType)}
-                          className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAppointmentType(appointmentType)}
-                          className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 h-fit">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="font-semibold text-gray-900">{editingAppointmentTypeId ? 'Edit Appointment Type' : 'Add Appointment Type'}</h4>
-                  {editingAppointmentTypeId && (
-                    <button
-                      type="button"
-                      onClick={resetAppointmentTypeForm}
-                      className="text-xs font-bold text-gray-500 hover:text-gray-700"
-                    >
-                      Cancel Edit
-                    </button>
-                  )}
-                </div>
-
-                <Input
-                  label="Appointment Type Name"
-                  value={appointmentTypeForm.name}
-                  onChange={(e: any) => {
-                    setAppointmentTypeMessage('');
-                    setAppointmentTypeForm({ ...appointmentTypeForm, name: e.target.value });
-                  }}
-                  placeholder="e.g. Follow-up"
-                />
-
-                <Input
-                  label="Display Order"
-                  type="number"
-                  min="0"
-                  value={appointmentTypeForm.sort_order}
-                  onChange={(e: any) => {
-                    setAppointmentTypeMessage('');
-                    setAppointmentTypeForm({ ...appointmentTypeForm, sort_order: e.target.value });
-                  }}
-                />
-
-                <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={appointmentTypeForm.is_active}
-                    onChange={(e) => {
-                      setAppointmentTypeMessage('');
-                      setAppointmentTypeForm({ ...appointmentTypeForm, is_active: e.target.checked });
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  Show this type in appointment forms
-                </label>
-
-                <button
-                  type="button"
-                  onClick={handleSaveAppointmentType}
-                  className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-                >
-                  {editingAppointmentTypeId ? 'Update Appointment Type' : 'Create Appointment Type'}
-                </button>
-
-                {appointmentTypeMessage && (
-                  <p className={`text-xs ${appointmentTypeMessage.toLowerCase().includes('failed') || appointmentTypeMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {appointmentTypeMessage}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Location Management */}
-        {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <MapPin className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-lg font-semibold text-gray-800">Clinic Locations</h3>
-              </div>
-              <button 
-                onClick={() => setShowLocModal(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                <Plus size={14} /> Add Location
-              </button>
-            </div>
-            
-            {/* Location Switcher */}
-            <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
-                <MapPin size={10} /> Active Location
-              </p>
-              <select
-                value={currentLocationId || ''}
-                onChange={(e) => {
-                  const locId = e.target.value;
-                  if (locId) {
-                    onLocationChange(locId);
-                  }
-                }}
-                className="w-full bg-white text-gray-800 text-sm border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="">Select a location</option>
-                {locations.map(loc => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name} {currentLocationId === loc.id ? '(Current)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {locations.map(loc => (
-                <div key={loc.id} className="p-4 border border-gray-100 rounded-xl bg-gray-50 flex justify-between items-start">
+            ) : (
+              patientTypes.map((patientType) => (
+                <div key={patientType.id} className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between gap-4">
                   <div>
-                    <h4 className="font-bold text-gray-900">{loc.name}</h4>
-                    <p className="text-xs text-gray-500 mt-1">{loc.address}</p>
-                    <p className="text-xs text-gray-500">{loc.phone}</p>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-gray-900">{patientType.name}</h4>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${patientType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+                        {patientType.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Display order: {patientType.sort_order ?? 0}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEditPatientType(patientType)}
+                      className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePatientType(patientType)}
+                      className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
+              ))
+            )}
           </div>
-        )}
 
-        {/* Loyalty Program Settings */}
-        <div className="border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Award className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Loyalty Rewards Program</h3>
-            </div>
-            <div className="flex items-center gap-4">
-              {isAdmin && (
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="sr-only peer" 
-                    checked={loyaltyEnabled}
-                    onChange={(e) => onToggleLoyalty(e.target.checked)}
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  <span className="ml-3 text-sm font-medium text-gray-700">{loyaltyEnabled ? 'System Enabled' : 'System Disabled'}</span>
-                </label>
-              )}
-              {isAdmin && loyaltyEnabled && (
-                <button 
-                  onClick={() => {
-                    setEditingRuleId(null);
-                    setNewRule({ name: '', event_type: 'TREATMENT', points_per_unit: 0.001, active: true });
-                    setShowRuleModal(true);
-                  }}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 h-fit">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-semibold text-gray-900">{editingPatientTypeId ? 'Edit Patient Type' : 'Add Patient Type'}</h4>
+              {editingPatientTypeId && (
+                <button
+                  type="button"
+                  onClick={resetPatientTypeForm}
+                  className="text-xs font-bold text-gray-500 hover:text-gray-700"
                 >
-                  <Plus size={14} /> Add Rule
+                  Cancel Edit
                 </button>
               )}
             </div>
-          </div>
-          
-          {!loyaltyEnabled ? (
-            <div className="bg-gray-50 border border-gray-200 p-8 rounded-xl text-center">
-              <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">Loyalty points system is currently disabled for this practice.</p>
-              <p className="text-xs text-gray-400 mt-1">Enable it to start rewarding patients for their visits and treatments.</p>
-            </div>
-          ) : (
-            <>
-              <p className="text-sm text-gray-600 mb-6">
-                Configure how patients earn points for treatments and purchases.
+
+            <Input
+              label="Patient Type Name"
+              value={patientTypeForm.name}
+              onChange={(e: any) => {
+                setPatientTypeMessage('');
+                setPatientTypeForm({ ...patientTypeForm, name: e.target.value });
+              }}
+              placeholder="e.g. Facebook Ads"
+            />
+
+            <Input
+              label="Display Order"
+              type="number"
+              min="0"
+              value={patientTypeForm.sort_order}
+              onChange={(e: any) => {
+                setPatientTypeMessage('');
+                setPatientTypeForm({ ...patientTypeForm, sort_order: e.target.value });
+              }}
+            />
+
+            <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={patientTypeForm.is_active}
+                onChange={(e) => {
+                  setPatientTypeMessage('');
+                  setPatientTypeForm({ ...patientTypeForm, is_active: e.target.checked });
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Show this type in patient forms
+            </label>
+
+            <button
+              type="button"
+              onClick={handleSavePatientType}
+              className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+            >
+              {editingPatientTypeId ? 'Update Patient Type' : 'Create Patient Type'}
+            </button>
+
+            {patientTypeMessage && (
+              <p className={`text-xs ${patientTypeMessage.toLowerCase().includes('failed') || patientTypeMessage.toLowerCase().includes('cannot') || patientTypeMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
+                {patientTypeMessage}
               </p>
-              
-              <div className="space-y-4">
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <CalendarRange className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Appointment Type Management</h3>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Manage the options shown in the appointment form Type field without affecting your treatment service table.
+        </p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+          <div className="space-y-3">
+            {appointmentTypes.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500 text-center">
+                No appointment types found yet.
+              </div>
+            ) : (
+              appointmentTypes.map((appointmentType) => (
+                <div key={appointmentType.id} className="rounded-xl border border-gray-200 bg-white p-4 flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-gray-900">{appointmentType.name}</h4>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${appointmentType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+                        {appointmentType.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Display order: {appointmentType.sort_order ?? 0}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEditAppointmentType(appointmentType)}
+                      className="px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAppointmentType(appointmentType)}
+                      className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 h-fit">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-semibold text-gray-900">{editingAppointmentTypeId ? 'Edit Appointment Type' : 'Add Appointment Type'}</h4>
+              {editingAppointmentTypeId && (
+                <button
+                  type="button"
+                  onClick={resetAppointmentTypeForm}
+                  className="text-xs font-bold text-gray-500 hover:text-gray-700"
+                >
+                  Cancel Edit
+                </button>
+              )}
+            </div>
+
+            <Input
+              label="Appointment Type Name"
+              value={appointmentTypeForm.name}
+              onChange={(e: any) => {
+                setAppointmentTypeMessage('');
+                setAppointmentTypeForm({ ...appointmentTypeForm, name: e.target.value });
+              }}
+              placeholder="e.g. Follow-up"
+            />
+
+            <Input
+              label="Display Order"
+              type="number"
+              min="0"
+              value={appointmentTypeForm.sort_order}
+              onChange={(e: any) => {
+                setAppointmentTypeMessage('');
+                setAppointmentTypeForm({ ...appointmentTypeForm, sort_order: e.target.value });
+              }}
+            />
+
+            <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={appointmentTypeForm.is_active}
+                onChange={(e) => {
+                  setAppointmentTypeMessage('');
+                  setAppointmentTypeForm({ ...appointmentTypeForm, is_active: e.target.checked });
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Show this type in appointment forms
+            </label>
+
+            <button
+              type="button"
+              onClick={handleSaveAppointmentType}
+              className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+            >
+              {editingAppointmentTypeId ? 'Update Appointment Type' : 'Create Appointment Type'}
+            </button>
+
+            {appointmentTypeMessage && (
+              <p className={`text-xs ${appointmentTypeMessage.toLowerCase().includes('failed') || appointmentTypeMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
+                {appointmentTypeMessage}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Clinic Locations</h3>
+          </div>
+          <button 
+            onClick={() => setShowLocModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Plus size={14} /> Add Location
+          </button>
+        </div>
+        
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+            <MapPin size={10} /> Active Location
+          </p>
+          <select
+            value={currentLocationId || ''}
+            onChange={(e) => {
+              const locId = e.target.value;
+              if (locId) {
+                onLocationChange(locId);
+              }
+            }}
+            className="w-full bg-white text-gray-800 text-sm border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            <option value="">Select a location</option>
+            {locations.map(loc => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name} {currentLocationId === loc.id ? '(Current)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {locations.map(loc => (
+            <div key={loc.id} className="p-4 border border-gray-100 rounded-xl bg-gray-50 flex justify-between items-start">
+              <div>
+                <h4 className="font-bold text-gray-900">{loc.name}</h4>
+                <p className="text-xs text-gray-500 mt-1">{loc.address}</p>
+                <p className="text-xs text-gray-500">{loc.phone}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderRewardsTab = () => (
+    <div className="border border-gray-200 rounded-xl p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <Award className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Loyalty Rewards Program</h3>
+        </div>
+        <div className="flex items-center gap-4">
+          {isAdmin && (
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                className="sr-only peer" 
+                checked={loyaltyEnabled}
+                onChange={(e) => onToggleLoyalty(e.target.checked)}
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              <span className="ml-3 text-sm font-medium text-gray-700">{loyaltyEnabled ? 'System Enabled' : 'System Disabled'}</span>
+            </label>
+          )}
+          {isAdmin && loyaltyEnabled && (
+            <button 
+              onClick={() => {
+                setEditingRuleId(null);
+                setNewRule({ name: '', event_type: 'TREATMENT', points_per_unit: 0.001, active: true });
+                setShowRuleModal(true);
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Plus size={14} /> Add Rule
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {!loyaltyEnabled ? (
+        <div className="bg-gray-50 border border-gray-200 p-8 rounded-xl text-center">
+          <Award className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">Loyalty points system is currently disabled for this practice.</p>
+          <p className="text-xs text-gray-400 mt-1">Enable it to start rewarding patients for their visits and treatments.</p>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm text-gray-600 mb-6">
+            Configure how patients earn points for treatments and purchases.
+          </p>
+          
+          <div className="space-y-4">
             {loyaltyRules.length === 0 ? (
               <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl">
                 <div className="flex items-center gap-2 text-amber-800 font-bold text-sm mb-2">
@@ -1192,625 +1184,691 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             )}
           </div>
-          </>
+        </>
+      )}
+    </div>
+  );
+
+  const renderMessagingTab = () => (
+    <div className="border border-gray-200 rounded-xl p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <MessageCircle className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Messaging System</h3>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input 
+            type="checkbox" 
+            className="sr-only peer" 
+            checked={messagingEnabled}
+            onChange={(e) => onToggleMessaging(e.target.checked)}
+          />
+          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+          <span className="ml-3 text-sm font-medium text-gray-700">{messagingEnabled ? 'System Enabled' : 'System Disabled'}</span>
+        </label>
+      </div>
+      
+      <p className="text-sm text-gray-600 mb-4">
+        {messagingEnabled 
+          ? 'Messaging system is currently enabled for patients and administrators.'
+          : 'Messaging system is currently disabled. Patients will not be able to send messages.'}
+      </p>
+      
+      <div className="flex gap-3">
+        <button 
+          onClick={onRemoveAllMessages}
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition-colors"
+        >
+          <Trash2 size={16} /> Remove All Messages
+        </button>
+      </div>
+      
+      <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+        <p className="text-xs text-amber-700">
+          <strong>Warning:</strong> Removing all messages will permanently delete all conversations and cannot be undone.
+        </p>
+      </div>
+    </div>
+  );
+
+  const renderEmailTab = () => (
+    <div className="border border-gray-200 rounded-xl p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <Mail className="w-5 h-5 text-indigo-600" />
+        <h3 className="text-lg font-semibold text-gray-800">Email Delivery</h3>
+      </div>
+
+      <p className="text-sm text-gray-600 mb-4">
+        Email delivery uses Supabase Edge Functions with Resend. Configure the sender and enable delivery here.
+      </p>
+
+      <div className="flex items-center justify-between mb-4">
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={emailSettings.enabled}
+            onChange={(e) => updateEmailSettings({ enabled: e.target.checked })}
+          />
+          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+          <span className="ml-3 text-sm font-medium text-gray-700">{emailSettings.enabled ? 'Delivery Enabled' : 'Delivery Disabled'}</span>
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Input
+          label="Sender Name"
+          value={emailSettings.senderName || ''}
+          onChange={(e: any) => updateEmailSettings({ senderName: e.target.value })}
+          placeholder="DentalCloud"
+        />
+        <Input
+          label="Sender Email"
+          type="email"
+          value={emailSettings.senderEmail || ''}
+          onChange={(e: any) => updateEmailSettings({ senderEmail: e.target.value })}
+          placeholder="no-reply@yourdomain.com"
+        />
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <button
+          type="button"
+          onClick={handleSaveEmailSettings}
+          className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+        >
+          Save Email Settings
+        </button>
+        {emailSettingsMessage && (
+          <p className="text-xs text-emerald-600">{emailSettingsMessage}</p>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-800">Patient Message Reply Alerts</h4>
+            <p className="mt-1 text-xs text-gray-500">
+              Send one email when staff posts the first unread reply in a conversation. More replies wait until the patient opens the chat again.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={emailSettings.messageNotificationsEnabled}
+              onChange={(e) => updateEmailSettings({ messageNotificationsEnabled: e.target.checked })}
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+        <p className="text-xs text-amber-700">
+          <strong>Resend note:</strong> The sender email must be from a verified domain in Resend. If you don't have a domain yet, use a verified sender provided by Resend (for example, `onboarding@resend.dev` for testing).
+        </p>
+      </div>
+
+      <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+        <h4 className="text-sm font-semibold text-gray-800 mb-3">Send Test Email</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div className="md:col-span-2">
+            <Input
+              label="Recipient Email"
+              type="email"
+              value={testEmail}
+              onChange={(e: any) => setTestEmail(e.target.value)}
+              placeholder="manager@example.com"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSendTestEmail}
+            disabled={testStatus === 'sending'}
+            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-60"
+          >
+            {testStatus === 'sending' ? 'Sending...' : 'Send Test'}
+          </button>
+        </div>
+        {testMessage && (
+          <p className={`text-xs mt-2 ${testStatus === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+            {testMessage}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-gray-800">Manager Emails</h4>
+          <button
+            type="button"
+            onClick={() => setManagerForm(prev => ({ ...prev, primary: !prev.primary }))}
+            className={`text-[10px] uppercase font-bold px-2 py-1 rounded-full border ${managerForm.primary ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
+          >
+            {managerForm.primary ? 'Primary' : 'Set Primary'}
+          </button>
+        </div>
+
+        <form onSubmit={handleAddManager} className="space-y-3">
+          <Input
+            label="Email"
+            type="email"
+            value={managerForm.email}
+            onChange={(e: any) => setManagerForm(prev => ({ ...prev, email: e.target.value }))}
+            placeholder="boss@example.com"
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input
+              label="Name (Optional)"
+              value={managerForm.name}
+              onChange={(e: any) => setManagerForm(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Dr. Boss"
+            />
+            <Input
+              label="Role (Optional)"
+              value={managerForm.role}
+              onChange={(e: any) => setManagerForm(prev => ({ ...prev, role: e.target.value }))}
+              placeholder="manager"
+            />
+          </div>
+          {managerError && (
+            <p className="text-xs text-red-600">{managerError}</p>
+          )}
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 text-white py-2 rounded-xl font-bold shadow-lg shadow-indigo-600/20"
+          >
+            Save Manager Email
+          </button>
+        </form>
+
+        <div className="mt-4 space-y-2">
+          {managerContacts.length === 0 ? (
+            <p className="text-xs text-gray-500">No manager emails saved yet.</p>
+          ) : (
+            managerContacts.map(contact => (
+              <div key={contact.id} className="flex items-start justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {contact.name ? `${contact.name} <${contact.email}>` : contact.email}
+                  </p>
+                  {contact.role && (
+                    <p className="text-xs text-gray-500">{contact.role}</p>
+                  )}
+                  {contact.isPrimary && (
+                    <span className="text-[10px] uppercase font-bold text-indigo-600">Primary</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {!contact.isPrimary && (
+                    <button
+                      type="button"
+                      onClick={() => handleSetPrimaryManager(contact.email)}
+                      className="text-xs text-indigo-600 font-bold"
+                    >
+                      Set Primary
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveManager(contact.email)}
+                    className="text-xs text-red-600 font-bold"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStorageTab = () => (
+    <div className="space-y-6">
+      <div className="border border-emerald-200 rounded-xl p-6 bg-emerald-50/30">
+        <div className="flex items-center gap-3 mb-4">
+          <HardDrive className="w-5 h-5 text-emerald-600" />
+          <h3 className="text-lg font-semibold text-emerald-800">Supabase Storage (Recommended)</h3>
+          <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">Easy Setup</span>
+        </div>
+
+        <p className="text-sm text-emerald-700 mb-4">
+          Use Supabase Storage REST API directly. No signature calculation needed — more reliable and easier to configure.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Storage URL"
+            value={supabaseStorage.storageUrl}
+            onChange={(e: any) => updateSupabaseStorage({ storageUrl: e.target.value })}
+            placeholder="https://your-project.supabase.co"
+          />
+          <Input
+            label="Bucket Name"
+            value={supabaseStorage.bucket}
+            onChange={(e: any) => updateSupabaseStorage({ bucket: e.target.value })}
+            placeholder="patient_files"
+          />
+          <Input
+            label="Anon/Publishable Key"
+            value={supabaseStorage.anonKey}
+            onChange={(e: any) => updateSupabaseStorage({ anonKey: e.target.value })}
+            placeholder="sb_publishable_..."
+          />
+          <Input
+            label="Service Role Key"
+            type="password"
+            value={supabaseStorage.serviceKey}
+            onChange={(e: any) => updateSupabaseStorage({ serviceKey: e.target.value })}
+            placeholder="sb_secret_..."
+          />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <button
+            type="button"
+            onClick={handleSaveSupabaseStorage}
+            className="w-full md:w-auto rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
+          >
+            Save Supabase Storage Settings
+          </button>
+          {supabaseStorageMessage && (
+            <p className={`text-xs ${supabaseStorageMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+              {supabaseStorageMessage}
+            </p>
           )}
         </div>
 
-        {/* Messaging Settings */}
-        {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <h3 className="text-lg font-semibold text-gray-800">Messaging System</h3>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer" 
-                  checked={messagingEnabled}
-                  onChange={(e) => onToggleMessaging(e.target.checked)}
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                <span className="ml-3 text-sm font-medium text-gray-700">{messagingEnabled ? 'System Enabled' : 'System Disabled'}</span>
-              </label>
-            </div>
-            
-            <p className="text-sm text-gray-600 mb-4">
-              {messagingEnabled 
-                ? 'Messaging system is currently enabled for patients and administrators.'
-                : 'Messaging system is currently disabled. Patients will not be able to send messages.'}
-            </p>
-            
-            <div className="flex gap-3">
-              <button 
-                onClick={onRemoveAllMessages}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <Trash2 size={16} /> Remove All Messages
-              </button>
-            </div>
-            
-            <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
-              <p className="text-xs text-amber-700">
-                <strong>Warning:</strong> Removing all messages will permanently delete all conversations and cannot be undone.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Email Delivery Settings */}
-        {isAdmin && (
-          <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-800">Email Delivery</h3>
-            </div>
-
-            <p className="text-sm text-gray-600 mb-4">
-              Email delivery uses Supabase Edge Functions with Resend. Configure the sender and enable delivery here.
-            </p>
-
-            <div className="flex items-center justify-between mb-4">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={emailSettings.enabled}
-                  onChange={(e) => updateEmailSettings({ enabled: e.target.checked })}
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                <span className="ml-3 text-sm font-medium text-gray-700">{emailSettings.enabled ? 'Delivery Enabled' : 'Delivery Disabled'}</span>
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Sender Name"
-                value={emailSettings.senderName || ''}
-                onChange={(e: any) => updateEmailSettings({ senderName: e.target.value })}
-                placeholder="DentalCloud"
-              />
-              <Input
-                label="Sender Email"
-                type="email"
-                value={emailSettings.senderEmail || ''}
-                onChange={(e: any) => updateEmailSettings({ senderEmail: e.target.value })}
-                placeholder="no-reply@yourdomain.com"
-              />
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <button
-                type="button"
-                onClick={handleSaveEmailSettings}
-                className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-              >
-                Save Email Settings
-              </button>
-              {emailSettingsMessage && (
-                <p className="text-xs text-emerald-600">{emailSettingsMessage}</p>
-              )}
-            </div>
-
-            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-800">Patient Message Reply Alerts</h4>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Send one email when staff posts the first unread reply in a conversation. More replies wait until the patient opens the chat again.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={emailSettings.messageNotificationsEnabled}
-                    onChange={(e) => updateEmailSettings({ messageNotificationsEnabled: e.target.checked })}
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                </label>
-              </div>
-            </div>
-
-            <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
-              <p className="text-xs text-amber-700">
-                <strong>Resend note:</strong> The sender email must be from a verified domain in Resend. If you don’t have a domain yet, use a verified sender provided by Resend (for example, `onboarding@resend.dev` for testing).
-              </p>
-            </div>
-
-            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <h4 className="text-sm font-semibold text-gray-800 mb-3">Send Test Email</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                <div className="md:col-span-2">
-                  <Input
-                    label="Recipient Email"
-                    type="email"
-                    value={testEmail}
-                    onChange={(e: any) => setTestEmail(e.target.value)}
-                    placeholder="manager@example.com"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSendTestEmail}
-                  disabled={testStatus === 'sending'}
-                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-60"
-                >
-                  {testStatus === 'sending' ? 'Sending...' : 'Send Test'}
-                </button>
-              </div>
-              {testMessage && (
-                <p className={`text-xs mt-2 ${testStatus === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                  {testMessage}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-semibold text-gray-800">Manager Emails</h4>
-                <button
-                  type="button"
-                  onClick={() => setManagerForm(prev => ({ ...prev, primary: !prev.primary }))}
-                  className={`text-[10px] uppercase font-bold px-2 py-1 rounded-full border ${managerForm.primary ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
-                >
-                  {managerForm.primary ? 'Primary' : 'Set Primary'}
-                </button>
-              </div>
-
-              <form onSubmit={handleAddManager} className="space-y-3">
-                <Input
-                  label="Email"
-                  type="email"
-                  value={managerForm.email}
-                  onChange={(e: any) => setManagerForm(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="boss@example.com"
-                />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Input
-                    label="Name (Optional)"
-                    value={managerForm.name}
-                    onChange={(e: any) => setManagerForm(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Dr. Boss"
-                  />
-                  <Input
-                    label="Role (Optional)"
-                    value={managerForm.role}
-                    onChange={(e: any) => setManagerForm(prev => ({ ...prev, role: e.target.value }))}
-                    placeholder="manager"
-                  />
-                </div>
-                {managerError && (
-                  <p className="text-xs text-red-600">{managerError}</p>
-                )}
-                <button
-                  type="submit"
-                  className="w-full bg-indigo-600 text-white py-2 rounded-xl font-bold shadow-lg shadow-indigo-600/20"
-                >
-                  Save Manager Email
-                </button>
-              </form>
-
-              <div className="mt-4 space-y-2">
-                {managerContacts.length === 0 ? (
-                  <p className="text-xs text-gray-500">No manager emails saved yet.</p>
-                ) : (
-                  managerContacts.map(contact => (
-                    <div key={contact.id} className="flex items-start justify-between p-3 bg-white border border-gray-200 rounded-lg">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {contact.name ? `${contact.name} <${contact.email}>` : contact.email}
-                        </p>
-                        {contact.role && (
-                          <p className="text-xs text-gray-500">{contact.role}</p>
-                        )}
-                        {contact.isPrimary && (
-                          <span className="text-[10px] uppercase font-bold text-indigo-600">Primary</span>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        {!contact.isPrimary && (
-                          <button
-                            type="button"
-                            onClick={() => handleSetPrimaryManager(contact.email)}
-                            className="text-xs text-indigo-600 font-bold"
-                          >
-                            Set Primary
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveManager(contact.email)}
-                          className="text-xs text-red-600 font-bold"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Storage Settings */}
-        {isAdmin && (
-          <>
-            {/* Supabase Storage (Recommended) */}
-            <div className="border border-emerald-200 rounded-xl p-6 bg-emerald-50/30">
-              <div className="flex items-center gap-3 mb-4">
-                <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-                <h3 className="text-lg font-semibold text-emerald-800">Supabase Storage (Recommended)</h3>
-                <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">Easy Setup</span>
-              </div>
-
-              <p className="text-sm text-emerald-700 mb-4">
-                Use Supabase Storage REST API directly. No signature calculation needed - more reliable and easier to configure.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Storage URL"
-                  value={supabaseStorage.storageUrl}
-                  onChange={(e: any) => updateSupabaseStorage({ storageUrl: e.target.value })}
-                  placeholder="https://your-project.supabase.co"
-                />
-                <Input
-                  label="Bucket Name"
-                  value={supabaseStorage.bucket}
-                  onChange={(e: any) => updateSupabaseStorage({ bucket: e.target.value })}
-                  placeholder="patient_files"
-                />
-                <Input
-                  label="Anon/Publishable Key"
-                  value={supabaseStorage.anonKey}
-                  onChange={(e: any) => updateSupabaseStorage({ anonKey: e.target.value })}
-                  placeholder="sb_publishable_..."
-                />
-                <Input
-                  label="Service Role Key"
-                  type="password"
-                  value={supabaseStorage.serviceKey}
-                  onChange={(e: any) => updateSupabaseStorage({ serviceKey: e.target.value })}
-                  placeholder="sb_secret_..."
-                />
-              </div>
-
-              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <button
-                  type="button"
-                  onClick={handleSaveSupabaseStorage}
-                  className="w-full md:w-auto rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
-                >
-                  Save Supabase Storage Settings
-                </button>
-                {supabaseStorageMessage && (
-                  <p className={`text-xs ${supabaseStorageMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {supabaseStorageMessage}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-4 p-3 bg-emerald-100/50 rounded-lg border border-emerald-200">
-                <p className="text-xs text-emerald-700">
-                  <strong>Note:</strong> This method uses the Supabase REST API directly - no AWS Signature V4 required. Make sure the <code className="bg-white px-1 rounded">patient_files</code> bucket exists in your Supabase Storage dashboard.
-                </p>
-              </div>
-            </div>
-
-            {/* S3 Setting (Advanced) */}
-            <div className="border border-gray-200 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" />
-                </svg>
-                <h3 className="text-lg font-semibold text-gray-800">S3-Compatible Storage (Advanced)</h3>
-                <span className="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">AWS Signature V4</span>
-              </div>
-
-              <p className="text-sm text-gray-600 mb-4">
-                Configure an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, etc.). Uses AWS Signature V4 signing.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="S3 URL"
-                  value={s3Settings.url}
-                  onChange={(e: any) => updateS3Settings({ url: e.target.value })}
-                  placeholder="https://your-bucket.s3.ap-southeast-1.amazonaws.com"
-                />
-                <Input
-                  label="Region"
-                  value={s3Settings.region}
-                  onChange={(e: any) => updateS3Settings({ region: e.target.value })}
-                  placeholder="ap-southeast-1"
-                />
-                <Input
-                  label="Access Key"
-                  value={s3Settings.accessKey}
-                  onChange={(e: any) => updateS3Settings({ accessKey: e.target.value })}
-                  placeholder="AKIA..."
-                />
-                <Input
-                  label="Secret Key"
-                  type="password"
-                  value={s3Settings.secretKey}
-                  onChange={(e: any) => updateS3Settings({ secretKey: e.target.value })}
-                  placeholder="********"
-                />
-              </div>
-
-              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <button
-                  type="button"
-                  onClick={handleSaveS3Settings}
-                  className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-                >
-                  Save S3 Settings
-                </button>
-                {s3SettingsMessage && (
-                  <p className={`text-xs ${s3SettingsMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {s3SettingsMessage}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
-                <p className="text-xs text-amber-700">
-                  <strong>Advanced:</strong> Requires proper AWS Signature V4 implementation. May not work with all S3-compatible services (e.g., Supabase S3 API).
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* System Operations */}
-        {isAdmin && onResetAllLoyaltyPoints && (
-          <div className="border border-red-200 rounded-xl p-6 bg-red-50/30">
-            <div className="flex items-center gap-3 mb-4">
-              <RotateCcw className="w-5 h-5 text-red-600" />
-              <h3 className="text-lg font-semibold text-red-800">Critical Operations</h3>
-            </div>
-            <p className="text-sm text-red-700 mb-6">
-              These actions are irreversible and affect the entire system. Please proceed with caution.
-            </p>
-            
-            <button 
-              onClick={onResetAllLoyaltyPoints}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
-            >
-              <RotateCcw size={18} /> Restart All System Points
-            </button>
-          </div>
-        )}
-
-        {/* App Branding Section */}
-        <div className="border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <ImageIcon className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-semibold text-gray-800">Clinic Logo</h3>
-          </div>
-          
-          <p className="text-sm text-gray-600 mb-4">
-            Upload a PNG logo to replace the app name in the header and sidebar. Browser tab names, receipts, and other document text stay unchanged.
+        <div className="mt-4 p-3 bg-emerald-100/50 rounded-lg border border-emerald-200">
+          <p className="text-xs text-emerald-700">
+            <strong>Note:</strong> This method uses the Supabase REST API directly — no AWS Signature V4 required. Make sure the <code className="bg-white px-1 rounded">patient_files</code> bucket exists in your Supabase Storage dashboard.
           </p>
-          
-          <div className="flex flex-col md:flex-row gap-4 md:items-center">
-            <div className="flex h-24 w-full md:w-56 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 p-4">
-              {appLogoUrl ? (
-                <img src={appLogoUrl} alt={`${appName} logo`} className="max-h-full max-w-full object-contain" />
-              ) : (
-                <div className="text-center text-xs font-semibold text-gray-400">No logo uploaded</div>
-              )}
-            </div>
-            <div className="flex-1">
-              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[var(--hover-600)]/20 transition ${isUploadingLogo ? 'bg-[var(--hover-600)] cursor-wait opacity-70' : 'bg-[var(--hover-600)] hover:bg-[var(--hover-700)]'}`}>
-                <Upload size={16} />
-                {isUploadingLogo ? 'Uploading Logo...' : 'Upload PNG Logo'}
-                <input
-                  type="file"
-                  accept="image/png,.png"
-                  disabled={isUploadingLogo}
-                  className="hidden"
-                  onChange={(event) => {
-                    void handleAppLogoUpload(event.target.files?.[0]);
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-              <p className="mt-2 text-xs text-gray-500">PNG only. Transparent-background logos work best.</p>
-              {appLogoUrl && (
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteAppLogo()}
-                  disabled={isDeletingLogo}
-                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-70"
-                >
-                  <Trash2 size={14} />
-                  {isDeletingLogo ? 'Removing Logo...' : 'Remove Logo'}
-                </button>
-              )}
-              {appLogoMessage && (
-                <p className={`mt-2 text-xs ${appLogoMessage.toLowerCase().includes('failed') || appLogoMessage.toLowerCase().includes('only png') ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {appLogoMessage}
-                </p>
-              )}
-            </div>
-          </div>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <HardDrive className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">S3-Compatible Storage (Advanced)</h3>
+          <span className="ml-auto text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">AWS Signature V4</span>
         </div>
 
-        {/* Receipt Info Section */}
-        <div className="border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <h3 className="text-lg font-semibold text-gray-800">Receipt Contact Info</h3>
-          </div>
-          
-          <p className="text-sm text-gray-600 mb-4">
-            Customize the contact information displayed on printed receipts and invoices.
-          </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Receipt Email"
-              type="email"
-              value={receiptEmailInput}
-              onChange={(e: any) => {
-                setReceiptEmailInput(e.target.value);
-                setReceiptInfoMessage(null);
-              }}
-              placeholder="info@dentflowpro.com"
-            />
-            <Input
-              label="Receipt Phone"
-              value={receiptPhoneInput}
-              onChange={(e: any) => {
-                setReceiptPhoneInput(e.target.value);
-                setReceiptInfoMessage(null);
-              }}
-              placeholder="(555) 123-4567"
-            />
-          </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Configure an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, etc.). Uses AWS Signature V4 signing.
+        </p>
 
-          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await onSaveReceiptInfo({
-                    email: receiptEmailInput,
-                    phone: receiptPhoneInput
-                  });
-                  setReceiptInfoMessage('Receipt contact info saved successfully!');
-                } catch (err: any) {
-                  setReceiptInfoMessage('Failed to save receipt info: ' + (err?.message || 'Unknown error'));
-                }
-              }}
-              className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
-            >
-              Save Receipt Info
-            </button>
-            {receiptInfoMessage && (
-              <p className={`text-xs ${receiptInfoMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-                {receiptInfoMessage}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="S3 URL"
+            value={s3Settings.url}
+            onChange={(e: any) => updateS3Settings({ url: e.target.value })}
+            placeholder="https://your-bucket.s3.ap-southeast-1.amazonaws.com"
+          />
+          <Input
+            label="Region"
+            value={s3Settings.region}
+            onChange={(e: any) => updateS3Settings({ region: e.target.value })}
+            placeholder="ap-southeast-1"
+          />
+          <Input
+            label="Access Key"
+            value={s3Settings.accessKey}
+            onChange={(e: any) => updateS3Settings({ accessKey: e.target.value })}
+            placeholder="AKIA..."
+          />
+          <Input
+            label="Secret Key"
+            type="password"
+            value={s3Settings.secretKey}
+            onChange={(e: any) => updateS3Settings({ secretKey: e.target.value })}
+            placeholder="********"
+          />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <button
+            type="button"
+            onClick={handleSaveS3Settings}
+            className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+          >
+            Save S3 Settings
+          </button>
+          {s3SettingsMessage && (
+            <p className={`text-xs ${s3SettingsMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+              {s3SettingsMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+          <p className="text-xs text-amber-700">
+            <strong>Advanced:</strong> Requires proper AWS Signature V4 implementation. May not work with all S3-compatible services (e.g., Supabase S3 API).
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderBrandingTab = () => (
+    <div className="space-y-6">
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <ImageIcon className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Clinic Logo</h3>
+        </div>
+        
+        <p className="text-sm text-gray-600 mb-4">
+          Upload a PNG logo to replace the app name in the header and sidebar. Browser tab names, receipts, and other document text stay unchanged.
+        </p>
+        
+        <div className="flex flex-col md:flex-row gap-4 md:items-center">
+          <div className="flex h-24 w-full md:w-56 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 p-4">
+            {appLogoUrl ? (
+              <img src={appLogoUrl} alt={`${appName} logo`} className="max-h-full max-w-full object-contain" />
+            ) : (
+              <div className="text-center text-xs font-semibold text-gray-400">No logo uploaded</div>
+            )}
+          </div>
+          <div className="flex-1">
+            <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[var(--hover-600)]/20 transition ${isUploadingLogo ? 'bg-[var(--hover-600)] cursor-wait opacity-70' : 'bg-[var(--hover-600)] hover:bg-[var(--hover-700)]'}`}>
+              <Upload size={16} />
+              {isUploadingLogo ? 'Uploading Logo...' : 'Upload PNG Logo'}
+              <input
+                type="file"
+                accept="image/png,.png"
+                disabled={isUploadingLogo}
+                className="hidden"
+                onChange={(event) => {
+                  void handleAppLogoUpload(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            <p className="mt-2 text-xs text-gray-500">PNG only. Transparent-background logos work best.</p>
+            {appLogoUrl && (
+              <button
+                type="button"
+                onClick={() => void handleDeleteAppLogo()}
+                disabled={isDeletingLogo}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-70"
+              >
+                <Trash2 size={14} />
+                {isDeletingLogo ? 'Removing Logo...' : 'Remove Logo'}
+              </button>
+            )}
+            {appLogoMessage && (
+              <p className={`mt-2 text-xs ${appLogoMessage.toLowerCase().includes('failed') || appLogoMessage.toLowerCase().includes('only png') ? 'text-red-600' : 'text-emerald-600'}`}>
+                {appLogoMessage}
               </p>
             )}
           </div>
+        </div>
+      </div>
 
-          <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-            <p className="text-xs text-indigo-700">
-              <strong>Note:</strong> Changes will be applied to all new receipts and invoices generated after saving.
-            </p>
-          </div>
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Info className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Receipt Contact Info</h3>
+        </div>
+        
+        <p className="text-sm text-gray-600 mb-4">
+          Customize the contact information displayed on printed receipts and invoices.
+        </p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Receipt Email"
+            type="email"
+            value={receiptEmailInput}
+            onChange={(e: any) => {
+              setReceiptEmailInput(e.target.value);
+              setReceiptInfoMessage(null);
+            }}
+            placeholder="info@dentflowpro.com"
+          />
+          <Input
+            label="Receipt Phone"
+            value={receiptPhoneInput}
+            onChange={(e: any) => {
+              setReceiptPhoneInput(e.target.value);
+              setReceiptInfoMessage(null);
+            }}
+            placeholder="(555) 123-4567"
+          />
         </div>
 
-        {/* Receipt Size Selection */}
-        <div className="border border-gray-200 rounded-xl p-6">
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await onSaveReceiptInfo({
+                  email: receiptEmailInput,
+                  phone: receiptPhoneInput
+                });
+                setReceiptInfoMessage('Receipt contact info saved successfully!');
+              } catch (err: any) {
+                setReceiptInfoMessage('Failed to save receipt info: ' + (err?.message || 'Unknown error'));
+              }
+            }}
+            className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+          >
+            Save Receipt Info
+          </button>
+          {receiptInfoMessage && (
+            <p className={`text-xs ${receiptInfoMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+              {receiptInfoMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+          <p className="text-xs text-indigo-700">
+            <strong>Note:</strong> Changes will be applied to all new receipts and invoices generated after saving.
+          </p>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Printer className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Receipt Format</h3>
+        </div>
+        
+        <p className="text-sm text-gray-600 mb-4">
+          Select the default receipt output format. A4 is suitable for standard document printing. 55mm Thermal is optimized for thermal receipt printers.
+        </p>
+        
+        <div className="space-y-3">
+          <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            style={{ borderColor: receiptSize === 'A4' ? '#4F46E5' : '#E5E7EB' }}>
+            <input
+              type="radio"
+              name="receiptSize"
+              value="A4"
+              checked={receiptSize === 'A4'}
+              onChange={() => onReceiptSizeChange('A4')}
+              className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900">A4 Receipt</div>
+              <div className="text-sm text-gray-500">Standard 210mm x 297mm format for document printers</div>
+            </div>
+            {receiptSize === 'A4' && (
+              <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+            )}
+          </label>
+
+          <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            style={{ borderColor: receiptSize === 'THERMAL_55MM' ? '#4F46E5' : '#E5E7EB' }}>
+            <input
+              type="radio"
+              name="receiptSize"
+              value="THERMAL_55MM"
+              checked={receiptSize === 'THERMAL_55MM'}
+              onChange={() => onReceiptSizeChange('THERMAL_55MM')}
+              className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900">55mm Thermal Receipt</div>
+              <div className="text-sm text-gray-500">Optimized for 58mm wide thermal receipt printers (48–56mm printable width)</div>
+            </div>
+            {receiptSize === 'THERMAL_55MM' && (
+              <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+            )}
+          </label>
+        </div>
+
+        <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+          <p className="text-xs text-indigo-700">
+            <strong>Note:</strong> The selected format will be used when generating receipts. Thermal format uses condensed layout, smaller fonts, and monospace styling suitable for thermal roll paper.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderSystemTab = () => (
+    <div className="space-y-6">
+      {onResetAllLoyaltyPoints && (
+        <div className="border border-red-200 rounded-xl p-6 bg-red-50/30">
           <div className="flex items-center gap-3 mb-4">
-            <Printer className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-semibold text-gray-800">Receipt Format</h3>
+            <RotateCcw className="w-5 h-5 text-red-600" />
+            <h3 className="text-lg font-semibold text-red-800">Critical Operations</h3>
           </div>
-          
-          <p className="text-sm text-gray-600 mb-4">
-            Select the default receipt output format. A4 is suitable for standard document printing. 55mm Thermal is optimized for thermal receipt printers.
+          <p className="text-sm text-red-700 mb-6">
+            These actions are irreversible and affect the entire system. Please proceed with caution.
           </p>
           
-          <div className="space-y-3">
-            <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
-              style={{ borderColor: receiptSize === 'A4' ? '#4F46E5' : '#E5E7EB' }}>
-              <input
-                type="radio"
-                name="receiptSize"
-                value="A4"
-                checked={receiptSize === 'A4'}
-                onChange={() => onReceiptSizeChange('A4')}
-                className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
-              />
-              <div className="flex-1">
-                <div className="font-semibold text-gray-900">A4 Receipt</div>
-                <div className="text-sm text-gray-500">Standard 210mm × 297mm format for document printers</div>
-              </div>
-              {receiptSize === 'A4' && (
-                <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-              )}
-            </label>
+          <button 
+            onClick={onResetAllLoyaltyPoints}
+            className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+          >
+            <RotateCcw size={18} /> Restart All System Points
+          </button>
+        </div>
+      )}
 
-            <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
-              style={{ borderColor: receiptSize === 'THERMAL_55MM' ? '#4F46E5' : '#E5E7EB' }}>
-              <input
-                type="radio"
-                name="receiptSize"
-                value="THERMAL_55MM"
-                checked={receiptSize === 'THERMAL_55MM'}
-                onChange={() => onReceiptSizeChange('THERMAL_55MM')}
-                className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
-              />
-              <div className="flex-1">
-                <div className="font-semibold text-gray-900">55mm Thermal Receipt</div>
-                <div className="text-sm text-gray-500">Optimized for 58mm wide thermal receipt printers (48-56mm printable width)</div>
-              </div>
-              {receiptSize === 'THERMAL_55MM' && (
-                <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-              )}
-            </label>
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Info className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">About {appName}</h3>
+        </div>
+        
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+          <p className="text-sm text-gray-700 leading-relaxed">
+            This is the product developed by <span className="font-semibold text-indigo-600">WinterArc Myanmar Company Limited</span>. 
+            If there is any issues, renew or upgrade the software, contact us:
+          </p>
+          
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-800">Phone:</span>
+              <a href="tel:+959977144320" className="text-sm text-indigo-600 hover:underline">+959977144320</a>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-800">Email:</span>
+              <a href="mailto:winterarcmyanmar@yahoo.com" className="text-sm text-indigo-600 hover:underline">winterarcmyanmar@yahoo.com</a>
+            </div>
           </div>
-
-          <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-            <p className="text-xs text-indigo-700">
-              <strong>Note:</strong> The selected format will be used when generating receipts. Thermal format uses condensed layout, smaller fonts, and monospace styling suitable for thermal roll paper.
+          
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-xs text-gray-500">
+              &copy; {new Date().getFullYear()} WinterArc Myanmar Company Limited. All rights reserved.
             </p>
           </div>
         </div>
+      </div>
+    </div>
+  );
 
-        {/* About Us Section */}
-        <div className="border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-            <h3 className="text-lg font-semibold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">About {appName}</h3>
-          </div>
-          
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-            <p className="text-sm text-gray-700 leading-relaxed">
-              This is the product developed by <span className="font-semibold text-indigo-600">WinterArc Myanmar Company Limited</span>. 
-              If there is any issues, renew or upgrade the software, contact us:
-            </p>
-            
-            <div className="mt-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-800">Phone:</span>
-                <a href="tel:+959977144320" className="text-sm text-indigo-600 hover:underline">+959977144320</a>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-800">Email:</span>
-                <a href="mailto:winterarcmyanmar@yahoo.com" className="text-sm text-indigo-600 hover:underline">winterarcmyanmar@yahoo.com</a>
-              </div>
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
+      <div className="p-6 border-b border-gray-100">
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-100 p-2 rounded-lg">
+              <SettingsIcon className="w-6 h-6 text-indigo-600" />
             </div>
-            
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <p className="text-xs text-gray-500">
-                © {new Date().getFullYear()} WinterArc Myanmar Company Limited. All rights reserved.
-              </p>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">System Settings</h2>
+              <p className="text-sm text-gray-500">Customize your clinic management system</p>
             </div>
           </div>
+          <div className="min-w-[140px]">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">Theme</p>
+            <select
+              value={hoverTheme}
+              onChange={(event) => onHoverThemeChange(event.target.value as 'blue' | 'green' | 'yellow' | 'brown' | 'dark')}
+              className="theme-select theme-accent-text w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold focus:outline-none"
+              aria-label="Select hover color"
+            >
+              {themeOptions.map((themeOption) => (
+                <option key={themeOption.value} value={themeOption.value}>
+                  {themeOption.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-emerald-100 mx-6 mt-6 rounded-xl p-5 bg-gradient-to-r from-emerald-50 to-white">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 mb-1">System Status</p>
+            <p className="text-sm text-gray-600">Your clinic system is connected and running with the primary database service.</p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 shrink-0">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Online
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-0">
+        <div className="md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-gray-100">
+          <nav className="flex md:flex-col overflow-x-auto md:overflow-x-visible p-2 md:p-3 gap-1" role="tablist" aria-label="Settings categories">
+            {visibleTabs.map((tab) => (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent'
+                }`}
+              >
+                <span className={`${activeTab === tab.id ? 'text-indigo-600' : 'text-gray-400'}`}>
+                  {tab.icon}
+                </span>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex-1 min-w-0 p-6">
+          {activeTab === 'general' && renderGeneralTab()}
+          {activeTab === 'clinical' && renderClinicalTab()}
+          {activeTab === 'rewards' && renderRewardsTab()}
+          {activeTab === 'messaging' && renderMessagingTab()}
+          {activeTab === 'email' && renderEmailTab()}
+          {activeTab === 'storage' && renderStorageTab()}
+          {activeTab === 'branding' && renderBrandingTab()}
+          {activeTab === 'system' && renderSystemTab()}
         </div>
       </div>
 
@@ -1899,4 +1957,3 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 };
 
 export default SettingsView;
-
