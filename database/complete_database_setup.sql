@@ -323,6 +323,7 @@ CREATE TABLE conversations (
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
   doctor_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   admin_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
   last_message TEXT,
   last_message_time TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -333,6 +334,8 @@ CREATE TABLE conversations (
   )
 );
 
+CREATE INDEX IF NOT EXISTS idx_conversations_location_id ON conversations(location_id);
+
 -- Messages (Messaging)
 CREATE TABLE messages (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -341,11 +344,14 @@ CREATE TABLE messages (
   sender_type VARCHAR(10) CHECK (sender_type IN ('patient', 'admin')) NOT NULL,
   recipient_id UUID NOT NULL,
   recipient_type VARCHAR(10) CHECK (recipient_type IN ('patient', 'admin')) NOT NULL,
+  location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
   content TEXT NOT NULL,
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_messages_location_id ON messages(location_id);
 
 -- Assistant Memory (per admin)
 CREATE TABLE assistant_memory (
