@@ -146,6 +146,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const [showLocModal, setShowLocModal] = useState(false);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(currentLocationId);
+  const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
+
+  useEffect(() => {
+    setSelectedBranchId(currentLocationId);
+  }, [currentLocationId]);
+
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [newLoc, setNewLoc] = useState<Partial<Location>>({ name: '', address: '', phone: '' });
   const [newRule, setNewRule] = useState<Partial<LoyaltyRule>>({ 
@@ -1032,25 +1039,44 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         
         <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
           <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
-            <MapPin size={10} /> Active Location
+            <MapPin size={10} /> Change Active Branch
           </p>
-          <select
-            value={currentLocationId || ''}
-            onChange={(e) => {
-              const locId = e.target.value;
-              if (locId) {
-                onLocationChange(locId);
-              }
-            }}
-            className="w-full bg-white text-gray-800 text-sm border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          >
-            <option value="">Select a location</option>
-            {locations.map(loc => (
-              <option key={loc.id} value={loc.id}>
-                {loc.name} {currentLocationId === loc.id ? '(Current)' : ''}
-              </option>
-            ))}
-          </select>
+          <p className="text-xs text-gray-500 mb-3">
+            Select a branch and click Save to switch. All data (patients, appointments, doctors, etc.) will reload for the selected branch.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <select
+              value={selectedBranchId || ''}
+              onChange={(e) => setSelectedBranchId(e.target.value)}
+              className="flex-1 bg-white text-gray-800 text-sm border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              disabled={isSwitchingBranch}
+            >
+              <option value="">Select a branch</option>
+              {locations.map(loc => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name} {currentLocationId === loc.id ? '(Current)' : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedBranchId || selectedBranchId === currentLocationId) return;
+                setIsSwitchingBranch(true);
+                onLocationChange(selectedBranchId);
+                setTimeout(() => setIsSwitchingBranch(false), 800);
+              }}
+              disabled={!selectedBranchId || selectedBranchId === currentLocationId || isSwitchingBranch}
+              className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {isSwitchingBranch ? 'Switching...' : 'Save Branch'}
+            </button>
+          </div>
+          {selectedBranchId && selectedBranchId !== currentLocationId && (
+            <p className="mt-2 text-xs text-amber-600">
+              You have unsaved changes. Click "Save Branch" to switch to <strong>{locations.find(l => l.id === selectedBranchId)?.name || selectedBranchId}</strong>.
+            </p>
+          )}
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
