@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Suspense, useMemo, useRef, useTransition } from 'react';
+import React, { useState, useEffect, useLayoutEffect, Suspense, useMemo, useRef, useTransition } from 'react';
 import {
   Home,
   LayoutDashboard,
@@ -275,7 +275,7 @@ const App: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', 'blue');
     document.documentElement.setAttribute('data-hover-theme', hoverTheme);
     localStorage.setItem(THEME_STORAGE_KEY, hoverTheme);
@@ -529,25 +529,23 @@ const App: React.FC = () => {
   const paymentDiscountAmount = Math.min(paymentAmountTendered, Math.max(0, Number(paymentDraft.discountAmount || 0)));
   const paymentFinalAmount = Math.max(0, paymentAmountTendered - paymentDiscountAmount);
   const paymentClearedAmount = Math.min(paymentOriginalAmount, paymentAmountTendered);
-  const paymentThemeColors = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return {
-        primary: '#4f46e5',
-        primaryHover: '#4338ca',
-        onPrimary: '#ffffff'
-      };
-    }
+  const [paymentThemeColors, setPaymentThemeColors] = useState(() => ({
+    primary: '#4f46e5',
+    primaryHover: '#4338ca',
+    onPrimary: '#ffffff'
+  }));
 
-    const styles = window.getComputedStyle(document.documentElement);
-    const primary = styles.getPropertyValue('--hover-600').trim() || '#4f46e5';
-    const primaryHover = styles.getPropertyValue('--hover-700').trim() || primary;
+  useLayoutEffect(() => {
+    const rootStyles = window.getComputedStyle(document.documentElement);
+    const primary = rootStyles.getPropertyValue('--hover-600').trim() || '#4f46e5';
+    const primaryHover = rootStyles.getPropertyValue('--hover-700').trim() || primary;
     const onPrimary = getContrastAwareTextColor(primary);
 
-    return {
+    setPaymentThemeColors({
       primary,
       primaryHover,
       onPrimary
-    };
+    });
   }, [hoverTheme]);
 
   // Filter doctors based on search query
