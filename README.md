@@ -126,7 +126,7 @@ To deploy this application using Docker:
 ---
 
 ## 👨‍💻 Author
-**Min Thuta Saw Naing**
+**Min Thuta Saw Naing (Eric)**
 * GitHub: [@MinThutaSawNaing](https://github.com/MinThutaSawNaing)
 * Project Link: [DentalCloud](https://dentalcloudbythuta.netlify.app/)
 
