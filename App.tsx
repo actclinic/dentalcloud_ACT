@@ -4059,7 +4059,8 @@ const App: React.FC = () => {
                   min="0"
                   step="0.01"
                   max={paymentAmountTendered || undefined}
-                  value={paymentDiscountAmount}
+                  value={paymentDiscountAmount > 0 ? paymentDiscountAmount : ''}
+                  placeholder="0"
                   onChange={(e: any) => {
                     const rawValue = Number.parseFloat(e.target.value);
                     const normalizedValue = Number.isFinite(rawValue) ? rawValue : 0;
