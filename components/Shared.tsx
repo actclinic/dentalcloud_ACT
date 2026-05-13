@@ -152,6 +152,19 @@ export const Input = ({ label, ...props }: InputProps) => (
 
 type Meridiem = 'AM' | 'PM';
 
+const TIME_VALUE_PATTERN = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/;
+
+const normalizeStoredTime = (value: string): string => {
+  const match = value.trim().match(TIME_VALUE_PATTERN);
+  if (!match) return value;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return value;
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
 const toTwentyFourHourTime = (hours: number, minutes: number, meridiem: Meridiem) => {
   if (minutes > 59) return null;
   if (hours < 1 || hours > 12) return null;
@@ -164,14 +177,15 @@ const toTwentyFourHourTime = (hours: number, minutes: number, meridiem: Meridiem
 };
 
 const getMeridiemFromValue = (value: string): Meridiem => {
-  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  const match = normalizeStoredTime(value).match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return 'AM';
 
   return Number(match[1]) >= 12 ? 'PM' : 'AM';
 };
 
 const getDisplayTimeValue = (value: string) => {
-  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  const normalizedValue = normalizeStoredTime(value);
+  const match = normalizedValue.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return value.replace(/\s*([ap])\.?m?\.?$/i, '').trim();
 
   const hours = Number(match[1]);
@@ -183,11 +197,20 @@ const formatTypedTime = (rawValue: string, meridiem: Meridiem, completeOnly = fa
   const raw = rawValue.trim();
   if (!raw) return '';
 
+  const explicitMeridiemMatch = raw.match(/\b([ap])\.?m?\.?$/i);
+  const effectiveMeridiem = explicitMeridiemMatch
+    ? (explicitMeridiemMatch[1].toUpperCase() === 'P' ? 'PM' : 'AM')
+    : meridiem;
   const sanitized = raw.replace(/[^\d:]/g, '');
   const colonMatch = sanitized.match(/^(\d{1,2}):(\d{1,2})$/);
 
   if (colonMatch && (colonMatch[2].length === 2 || completeOnly)) {
-    const formatted = toTwentyFourHourTime(Number(colonMatch[1]), Number(colonMatch[2].padEnd(2, '0')), meridiem);
+    const hours = Number(colonMatch[1]);
+    const minutes = Number(colonMatch[2].padEnd(2, '0'));
+    if (hours > 12 && hours <= 23 && minutes <= 59) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+    const formatted = toTwentyFourHourTime(hours, minutes, effectiveMeridiem);
     if (formatted) return formatted;
   }
 
@@ -195,12 +218,21 @@ const formatTypedTime = (rawValue: string, meridiem: Meridiem, completeOnly = fa
   if (/^\d{3,4}$/.test(digitsOnly)) {
     const hours = digitsOnly.length === 3 ? digitsOnly.slice(0, 1) : digitsOnly.slice(0, 2);
     const minutes = digitsOnly.slice(-2);
-    const formatted = toTwentyFourHourTime(Number(hours), Number(minutes), meridiem);
+    const numericHours = Number(hours);
+    const numericMinutes = Number(minutes);
+    if (numericHours > 12 && numericHours <= 23 && numericMinutes <= 59) {
+      return `${String(numericHours).padStart(2, '0')}:${String(numericMinutes).padStart(2, '0')}`;
+    }
+    const formatted = toTwentyFourHourTime(numericHours, numericMinutes, effectiveMeridiem);
     if (formatted) return formatted;
   }
 
   if (completeOnly && /^\d{1,2}$/.test(digitsOnly)) {
-    const formatted = toTwentyFourHourTime(Number(digitsOnly), 0, meridiem);
+    const numericHours = Number(digitsOnly);
+    if (numericHours > 12 && numericHours <= 23) {
+      return `${String(numericHours).padStart(2, '0')}:00`;
+    }
+    const formatted = toTwentyFourHourTime(numericHours, 0, effectiveMeridiem);
     if (formatted) return formatted;
   }
 
@@ -216,7 +248,7 @@ export const TimeInput = ({ value = '', onChange, onBlur, placeholder = 'HH:MM',
   const [meridiem, setMeridiem] = React.useState<Meridiem>(() => getMeridiemFromValue(value));
 
   React.useEffect(() => {
-    if (/^(\d{1,2}):(\d{2})$/.test(value)) {
+    if (TIME_VALUE_PATTERN.test(value)) {
       setMeridiem(getMeridiemFromValue(value));
     }
   }, [value]);
@@ -234,13 +266,26 @@ export const TimeInput = ({ value = '', onChange, onBlur, placeholder = 'HH:MM',
           type="text"
           inputMode="numeric"
           placeholder={placeholder}
-          pattern="^((0?[1-9]|1[0-2]):[0-5][0-9]|(0?[1-9]|1[0-2])[0-5][0-9])$"
-          maxLength={5}
+          pattern="^((0?[1-9]|1[0-2]):[0-5][0-9]|(0?[1-9]|1[0-2])[0-5][0-9]|(0?[1-9]|1[0-2])\\s*([aApP]\\.?[mM]?\\.?)?)$"
+          maxLength={8}
           value={displayValue}
-          onChange={(e) => onChange(formatTypedTime(e.target.value, meridiem))}
+          onChange={(e) => {
+            const explicitMeridiemMatch = e.target.value.match(/\b([ap])\.?m?\.?$/i);
+            if (explicitMeridiemMatch) {
+              setMeridiem(explicitMeridiemMatch[1].toUpperCase() === 'P' ? 'PM' : 'AM');
+            }
+            onChange(formatTypedTime(e.target.value, meridiem));
+          }}
           onBlur={(e) => {
             onChange(formatTypedTime(e.target.value, meridiem, true));
             onBlur?.(e);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const formatted = formatTypedTime(e.currentTarget.value, meridiem, true);
+              if (formatted) onChange(formatted);
+            }
+            props.onKeyDown?.(e);
           }}
           className="min-w-0 flex-1 border-0 p-3 text-sm font-medium outline-none placeholder:text-gray-300"
         />

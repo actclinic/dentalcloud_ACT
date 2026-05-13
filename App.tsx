@@ -3354,7 +3354,7 @@ const App: React.FC = () => {
                   }}
                   className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${appointmentPatientMode === 'lead' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
                 >
-                  New Lead
+                  New Patient
                 </button>
               </div>
             </div>
