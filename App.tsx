@@ -2266,10 +2266,14 @@ const App: React.FC = () => {
 
   const handleTreatmentSubmit = async (treatment: TreatmentType) => {
     if (!selectedPatient) return;
+    if (!useFlatRate && selectedTeeth.length === 0) {
+      alert('Please select at least one tooth, or enable ALL TEETH before recording this treatment.');
+      return;
+    }
     
     // If flat rate is enabled, use treatment cost as-is (not multiplied by teeth count)
     // Otherwise, multiply by number of selected teeth
-    const totalCost = useFlatRate ? treatment.cost : (treatment.cost * (selectedTeeth.length || 1));
+    const totalCost = useFlatRate ? treatment.cost : (treatment.cost * selectedTeeth.length);
     
     try {
       const res = await api.treatments.record({
