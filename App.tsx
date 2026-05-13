@@ -209,14 +209,27 @@ const writePaymentRecords = (records: PaymentRecord[]) => {
   localStorage.setItem(PAYMENT_RECORDS_STORAGE_KEY, JSON.stringify(records));
 };
 
-const readPersistedBranchId = (): string => {
+const getActiveBranchStorageKey = (userId?: string | null): string => {
+  return userId ? `${ACTIVE_BRANCH_STORAGE_KEY}:${userId}` : ACTIVE_BRANCH_STORAGE_KEY;
+};
+
+const readPersistedBranchId = (userId?: string | null): string => {
   const dashboardLocation = localStorage.getItem('dashboardLocationId') || '';
   return (
+    (userId ? localStorage.getItem(getActiveBranchStorageKey(userId)) : '') ||
     localStorage.getItem(ACTIVE_BRANCH_STORAGE_KEY) ||
     localStorage.getItem('currentLocationId') ||
     (dashboardLocation === ALL_BRANCHES_VALUE ? '' : dashboardLocation) ||
     ''
   );
+};
+
+const persistActiveBranchId = (branchId: string, userId?: string | null) => {
+  localStorage.setItem('currentLocationId', branchId);
+  localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, branchId);
+  if (userId) {
+    localStorage.setItem(getActiveBranchStorageKey(userId), branchId);
+  }
 };
 
 const isRecoveryFlowActive = (): boolean => {
@@ -260,7 +273,20 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string>('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [currentLocationId, setCurrentLocationId] = useState<string>(() => readPersistedBranchId());
-  const getStoredBranchId = () => readPersistedBranchId();
+  const canUseSavedActiveBranch = (session: ReturnType<typeof auth.getSession>): boolean => {
+    if (!session || session.role === 'patient' || session.role === 'doctor') return false;
+    return session.role === 'admin' || resolveAllowedTabs(session.role, session.allowed_tabs).includes('settings');
+  };
+  const getSessionRestrictedLocationId = (session: ReturnType<typeof auth.getSession>): string => {
+    if (!session) return '';
+    if (session.role === 'patient' || session.role === 'doctor') return session.location_id || '';
+    return canUseSavedActiveBranch(session) ? '' : (session.location_id || '');
+  };
+  const getPreferredSessionBranchId = (session: ReturnType<typeof auth.getSession>): string => {
+    if (!session) return readPersistedBranchId();
+    const storedBranchId = canUseSavedActiveBranch(session) ? readPersistedBranchId(session.userId) : '';
+    return storedBranchId || session.location_id || '';
+  };
   const [hoverTheme, setHoverTheme] = useState<HoverTheme>(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as HoverTheme | null;
     if (savedTheme && THEME_OPTIONS.some(option => option.value === savedTheme)) {
@@ -752,8 +778,7 @@ const App: React.FC = () => {
 
     if (updatedSession.location_id) {
       setCurrentLocationId(updatedSession.location_id);
-      localStorage.setItem('currentLocationId', updatedSession.location_id);
-      localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, updatedSession.location_id);
+      persistActiveBranchId(updatedSession.location_id, updatedSession.userId);
       setDashboardLocationId(updatedSession.location_id);
       localStorage.setItem('dashboardLocationId', updatedSession.location_id);
       await fetchInitialData(updatedSession.location_id);
@@ -775,13 +800,13 @@ const App: React.FC = () => {
   // Check authentication on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const storedBranchId = getStoredBranchId();
       const session = auth.getSession();
       if (session) {
         applySessionState(session);
+        const preferredBranchId = getPreferredSessionBranchId(session);
         // Initialize default admin and fetch data
         await auth.initializeDefaultAdmin();
-        fetchInitialData(session.location_id || storedBranchId || undefined);
+        fetchInitialData(preferredBranchId || undefined);
         fetchUsers();
         return;
       }
@@ -789,9 +814,10 @@ const App: React.FC = () => {
       const restoredSession = await auth.restoreSupabaseSession();
       if (restoredSession) {
         applySessionState(restoredSession);
+        const preferredBranchId = getPreferredSessionBranchId(restoredSession);
 
         if (restoredSession.role !== 'patient') {
-          fetchInitialData(restoredSession.location_id || storedBranchId || undefined);
+          fetchInitialData(preferredBranchId || undefined);
           fetchUsers();
         }
         return;
@@ -899,22 +925,22 @@ const App: React.FC = () => {
       applySessionState(session);
 
       const canSeeAllBranches = session.role === 'admin' && !session.location_id;
+      const preferredBranchId = getPreferredSessionBranchId(session);
       const initialDashboardScope = canSeeAllBranches
         ? ALL_BRANCHES_VALUE
-        : (session.location_id || currentLocationId || localStorage.getItem('currentLocationId') || '');
+        : (preferredBranchId || currentLocationId || '');
       setDashboardLocationId(initialDashboardScope);
       localStorage.setItem('dashboardLocationId', initialDashboardScope);
       
       // If user is restricted to a location, set it
       if (session.location_id) {
         setCurrentLocationId(session.location_id);
-        localStorage.setItem('currentLocationId', session.location_id);
-        localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, session.location_id);
+        persistActiveBranchId(session.location_id, session.userId);
       }
       
       // For patients, don't fetch admin data
       if (session.role !== 'patient') {
-        fetchInitialData(session.location_id || localStorage.getItem('currentLocationId') || undefined);
+        fetchInitialData(getPreferredSessionBranchId(session) || undefined);
         fetchUsers();
       }
     }
@@ -997,7 +1023,7 @@ const App: React.FC = () => {
   const fetchDashboardData = async (scopeLocationId?: string, knownLocations?: Location[]) => {
     const requestId = ++dashboardFetchRequestRef.current;
     const session = auth.getSession();
-    const restrictedLocationId = session?.location_id || '';
+    const restrictedLocationId = getSessionRestrictedLocationId(session);
     const availableLocations = knownLocations || locations;
     const requestedScope = restrictedLocationId || scopeLocationId || currentLocationId || availableLocations[0]?.id || '';
     const hasMatchingLocation = availableLocations.some(loc => loc.id === requestedScope);
@@ -1030,7 +1056,7 @@ const App: React.FC = () => {
 
   const fetchAssistantData = async () => {
     const session = auth.getSession();
-    const restrictedLocationId = session?.location_id || '';
+    const restrictedLocationId = getSessionRestrictedLocationId(session);
     const queryLocationId = restrictedLocationId || currentLocationId || undefined;
     const assistantLocationId = queryLocationId;
 
@@ -1076,17 +1102,16 @@ const App: React.FC = () => {
       setPatientTypes(patientTypeData);
       setAppointmentTypes(appointmentTypeData);
       const session = auth.getSession();
-      const restrictedLocationId = session?.location_id || '';
-      const storedLocationId = readPersistedBranchId();
+      const restrictedLocationId = getSessionRestrictedLocationId(session);
+      const storedLocationId = canUseSavedActiveBranch(session) ? readPersistedBranchId(session?.userId) : '';
 
       if (restrictedLocationId && currentLocationId !== restrictedLocationId) {
         setCurrentLocationId(restrictedLocationId);
-        localStorage.setItem('currentLocationId', restrictedLocationId);
-        localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, restrictedLocationId);
+        persistActiveBranchId(restrictedLocationId, session?.userId);
       }
       
-      // Resolve branch in stable order: restricted > explicit override > current state > persisted storage.
-      let locId = restrictedLocationId || overrideLocationId || currentLocationId || storedLocationId;
+      // Resolve branch in stable order: locked session branch > explicit override > persisted storage > current state.
+      let locId = restrictedLocationId || overrideLocationId || storedLocationId || currentLocationId;
       if (!restrictedLocationId && locId && !locData.some((loc) => loc.id === locId)) {
         locId = '';
       }
@@ -1095,8 +1120,7 @@ const App: React.FC = () => {
       if (!locId && locData.length > 0) {
         locId = locData[0].id;
         setCurrentLocationId(locId);
-        localStorage.setItem('currentLocationId', locId);
-        localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, locId);
+        persistActiveBranchId(locId, session?.userId);
       }
       
       // If still no location, try to create a default one
@@ -1109,8 +1133,7 @@ const App: React.FC = () => {
           });
           locId = defaultLocation.id;
           setCurrentLocationId(locId);
-          localStorage.setItem('currentLocationId', locId);
-          localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, locId);
+          persistActiveBranchId(locId, session?.userId);
           setLocations([defaultLocation]);
         } catch (createError) {
           console.error('Failed to create default location:', createError);
@@ -1121,8 +1144,7 @@ const App: React.FC = () => {
       // whenever a location is resolved (stored/override/restricted/default), sync state + storage.
       if (locId && currentLocationId !== locId) {
         setCurrentLocationId(locId);
-        localStorage.setItem('currentLocationId', locId);
-        localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, locId);
+        persistActiveBranchId(locId, session?.userId);
       }
       
       // Only fetch data if we have a valid location
@@ -1186,9 +1208,9 @@ const App: React.FC = () => {
   };
 
   const handleLocationChange = async (locId: string) => {
+    const session = auth.getSession();
     setCurrentLocationId(locId);
-    localStorage.setItem('currentLocationId', locId);
-    localStorage.setItem(ACTIVE_BRANCH_STORAGE_KEY, locId);
+    persistActiveBranchId(locId, session?.userId);
     setDashboardLocationId(locId);
     localStorage.setItem('dashboardLocationId', locId);
     setSelectedPatient(null);
