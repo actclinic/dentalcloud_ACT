@@ -216,8 +216,14 @@ CREATE TABLE treatments (
   teeth INTEGER[],
   description TEXT,
   cost DECIMAL(12,2),
+  standard_cost DECIMAL(12,2),
+  discount_amount DECIMAL(12,2) DEFAULT 0,
+  pricing_note VARCHAR(20),
   date DATE DEFAULT CURRENT_DATE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT treatments_standard_cost_check CHECK (standard_cost IS NULL OR standard_cost >= 0),
+  CONSTRAINT treatments_discount_amount_check CHECK (discount_amount >= 0),
+  CONSTRAINT treatments_pricing_note_check CHECK (pricing_note IS NULL OR pricing_note IN ('FOC', 'DISCOUNT'))
 );
 
 -- Appointments

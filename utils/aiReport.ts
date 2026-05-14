@@ -165,22 +165,9 @@ export const buildFinancialReport = (
     currency
   );
 
-  const discountDaily = sumMoney(
-    paymentRecords.filter(payment => payment.date === today).map(payment => payment.discountAmount || 0),
-    currency
-  );
-  const discountWeekly = sumMoney(
-    paymentRecords.filter(payment => payment.date >= weeklyStart).map(payment => payment.discountAmount || 0),
-    currency
-  );
-  const discountMonthly = sumMoney(
-    paymentRecords.filter(payment => isSameMonth(payment.date, now)).map(payment => payment.discountAmount || 0),
-    currency
-  );
-
-  const revenueDaily = sumMoney([treatmentDaily, medicineDaily, paymentDaily, -discountDaily], currency);
-  const revenueWeekly = sumMoney([treatmentWeekly, medicineWeekly, paymentWeekly, -discountWeekly], currency);
-  const revenueMonthly = sumMoney([treatmentMonthly, medicineMonthly, paymentMonthly, -discountMonthly], currency);
+  const revenueDaily = sumMoney([treatmentDaily, medicineDaily, paymentDaily], currency);
+  const revenueWeekly = sumMoney([treatmentWeekly, medicineWeekly, paymentWeekly], currency);
+  const revenueMonthly = sumMoney([treatmentMonthly, medicineMonthly, paymentMonthly], currency);
 
   const expenseDaily = sumMoney(
     expenses.filter(exp => exp.date === today).map(exp => exp.amount),

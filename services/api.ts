@@ -1528,6 +1528,9 @@ export const api = {
       if (error) throw new Error(error.message);
       return (data || []).map((rec: any) => ({
         ...rec,
+        standardCost: rec.standard_cost ?? null,
+        discountAmount: Number(rec.discount_amount || 0),
+        pricingNote: rec.pricing_note || null,
         doctor_name: rec.doctors?.name || undefined
       }));
     },
@@ -1549,6 +1552,9 @@ export const api = {
 
         return (data || []).map((rec: any) => ({
           ...rec,
+          standardCost: rec.standard_cost ?? null,
+          discountAmount: Number(rec.discount_amount || 0),
+          pricingNote: rec.pricing_note || null,
           patient_name: rec.patients?.name || 'Unknown',
           doctor_name: rec.doctors?.name || undefined
         }));
@@ -1578,6 +1584,9 @@ export const api = {
       teeth: number[];
       description: string;
       cost: number;
+      standardCost?: number;
+      discountAmount?: number;
+      pricingNote?: 'FOC' | 'DISCOUNT' | null;
       medications?: { id: string; qty: number }[]
     }) => {
       if (!data.location_id) throw new Error('location_id is required');
@@ -1622,7 +1631,7 @@ export const api = {
 
       // 4. Insert Treatment Record
       const treatmentDate = getLocalISODate();
-      const treatmentData = {
+      const legacyTreatmentData = {
         location_id: data.location_id,
         patient_id: data.patient_id,
         doctor_id: data.doctor_id || null,
@@ -1631,12 +1640,36 @@ export const api = {
         cost: data.cost,
         date: treatmentDate
       };
+      const treatmentData = {
+        ...legacyTreatmentData,
+        standard_cost: data.standardCost ?? data.cost,
+        discount_amount: data.discountAmount ?? 0,
+        pricing_note: data.pricingNote || null
+      };
       
-      const { data: result, error: insertError } = await supabase
+      let { data: result, error: insertError } = await supabase
         .from('treatments')
         .insert(treatmentData)
         .select()
         .single();
+
+      if (insertError && /standard_cost|discount_amount|pricing_note|schema cache/i.test(insertError.message || '')) {
+        const legacyInsert = await supabase
+          .from('treatments')
+          .insert(legacyTreatmentData)
+          .select()
+          .single();
+
+        result = legacyInsert.data
+          ? {
+              ...legacyInsert.data,
+              standard_cost: data.standardCost ?? data.cost,
+              discount_amount: data.discountAmount ?? 0,
+              pricing_note: data.pricingNote || null
+            }
+          : legacyInsert.data;
+        insertError = legacyInsert.error;
+      }
       
       if (insertError) throw new Error(`Treatment recording failed: ${insertError.message}`);
 
@@ -1714,6 +1747,9 @@ export const api = {
         completed_appointment_ids: completedAppointmentIds,
         record: {
           ...result,
+          standardCost: result?.standard_cost ?? null,
+          discountAmount: Number(result?.discount_amount || 0),
+          pricingNote: result?.pricing_note || null,
           doctor_name: doctorName
         }
       };
@@ -2158,11 +2194,7 @@ export const api = {
   },
 
   finance: {
-    processPayment: async (
-      patientId: string,
-      amount: number,
-      options?: { discountAmount?: number; clearedAmount?: number }
-    ) => {
+    processPayment: async (patientId: string, amount: number) => {
       // Fetch current balance
       const { data: patient, error: fetchError } = await supabase
         .from('patients')
@@ -2173,14 +2205,9 @@ export const api = {
       if (fetchError) throw new Error(fetchError.message);
 
       const normalizedAmount = Math.max(0, Number(amount || 0));
-      const normalizedDiscount = Math.max(0, Number(options?.discountAmount || 0));
-      const normalizedClearedAmount = Math.max(
-        0,
-        Number(options?.clearedAmount ?? (normalizedAmount + normalizedDiscount))
-      );
 
       const currentBal = patient?.balance || 0;
-      const newBal = Math.max(0, currentBal - normalizedClearedAmount);
+      const newBal = Math.max(0, currentBal - normalizedAmount);
 
       const { error: updateError } = await supabase
         .from('patients')
@@ -2193,8 +2220,7 @@ export const api = {
         status: "success",
         new_balance: newBal,
         amount_collected: normalizedAmount,
-        discount_amount: normalizedDiscount,
-        cleared_amount: normalizedClearedAmount
+        cleared_amount: normalizedAmount
       };
     }
   },

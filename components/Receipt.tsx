@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Printer } from 'lucide-react';
-import { Patient, ClinicalRecord, MedicineSale, ReceiptSize } from '../types';
+import { Patient, ClinicalRecord, MedicineSale, ReceiptSize, TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 
@@ -9,8 +9,7 @@ interface ReceiptProps {
   treatments: ClinicalRecord[];
   medicines?: MedicineSale[];
   paymentAmount?: number;
-  originalPaymentAmount?: number;
-  paymentDiscountAmount?: number;
+  treatmentTypes?: TreatmentType[];
   currency: Currency;
   appName?: string;
   receiptInfo?: { email: string; phone: string };
@@ -23,8 +22,7 @@ const Receipt: React.FC<ReceiptProps> = ({
   treatments,
   medicines = [],
   paymentAmount,
-  originalPaymentAmount,
-  paymentDiscountAmount,
+  treatmentTypes = [],
   currency,
   appName = 'DentalCloud Pro',
   receiptInfo,
@@ -40,12 +38,44 @@ const Receipt: React.FC<ReceiptProps> = ({
     day: 'numeric' 
   });
 
+  const getTreatmentPricing = (treatment: ClinicalRecord) => {
+    const finalCost = Number(treatment.cost || 0);
+    const explicitStandard = Number((treatment as any).standardCost ?? (treatment as any).standard_cost);
+    const explicitDiscount = Number((treatment as any).discountAmount ?? (treatment as any).discount_amount ?? 0);
+    const matchedType = treatmentTypes.find((type) => {
+      return (type.name || '').trim().toLowerCase() === (treatment.description || '').trim().toLowerCase();
+    });
+    const derivedStandard = matchedType
+      ? Number(matchedType.cost || 0) * Math.max(1, treatment.teeth?.length || 1)
+      : finalCost;
+    const standardCost = Number.isFinite(explicitStandard) && explicitStandard >= finalCost
+      ? explicitStandard
+      : explicitDiscount > 0
+        ? finalCost + explicitDiscount
+        : derivedStandard > finalCost
+          ? derivedStandard
+          : finalCost;
+    const discountAmount = Math.max(0, explicitDiscount || (standardCost - finalCost));
+    const pricingNote = ((treatment as any).pricingNote || (treatment as any).pricing_note || '') as string;
+    const note = discountAmount > 0
+      ? (pricingNote === 'FOC' || finalCost === 0 ? 'FOC' : 'Discount')
+      : '';
+
+    return {
+      finalCost,
+      standardCost,
+      discountAmount,
+      note
+    };
+  };
+
   const totalTreatmentCost = treatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0);
+  const totalTreatmentDiscount = treatments.reduce((sum, treatment) => {
+    return sum + getTreatmentPricing(treatment).discountAmount;
+  }, 0);
   const totalMedicineCost = medicines.reduce((sum, medicine) => sum + (medicine.total_price || 0), 0);
   const grandTotal = totalTreatmentCost + totalMedicineCost;
   const totalPaid = paymentAmount || 0;
-  const paymentOriginal = originalPaymentAmount || totalPaid;
-  const paymentDiscount = paymentDiscountAmount || 0;
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
   // Otherwise, calculate balance based on selected treatments
@@ -68,37 +98,54 @@ const Receipt: React.FC<ReceiptProps> = ({
             <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Date</th>
             <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Description</th>
             <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Teeth</th>
+            <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Standard</th>
+            <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Adjustment</th>
             <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Amount</th>
           </tr>
         </thead>
         <tbody>
           {treatments.length === 0 ? (
             <tr>
-              <td colSpan={4} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
+              <td colSpan={6} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
                 No treatment services recorded
               </td>
             </tr>
           ) : (
-            treatments.map((treatment, index) => (
-              <tr key={index} className="border-b border-gray-200" style={isPrint ? { borderBottom: '1px solid #e5e7eb' } : undefined}>
-                <td className="py-3 px-4 text-sm text-gray-700" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                  {new Date(treatment.date).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })}
-                </td>
-                <td className="py-3 px-4 text-sm text-gray-900 font-medium" style={isPrint ? { padding: '12px 16px' } : undefined}>{treatment.description}</td>
-                <td className="py-3 px-4 text-sm text-gray-600" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                  {treatment.teeth && treatment.teeth.length > 0
-                    ? formatTeethWithPosition(treatment.teeth)
-                    : 'General'}
-                </td>
-                <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                  {formatCurrency(treatment.cost || 0, currency)}
-                </td>
-              </tr>
-            ))
+            treatments.map((treatment, index) => {
+              const pricing = getTreatmentPricing(treatment);
+              return (
+                <tr key={index} className="border-b border-gray-200" style={isPrint ? { borderBottom: '1px solid #e5e7eb' } : undefined}>
+                  <td className="py-3 px-4 text-sm text-gray-700" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                    {new Date(treatment.date).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 font-medium" style={isPrint ? { padding: '12px 16px' } : undefined}>{treatment.description}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                    {treatment.teeth && treatment.teeth.length > 0
+                      ? formatTeethWithPosition(treatment.teeth)
+                      : 'General'}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-700 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                    {formatCurrency(pricing.standardCost, currency)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                    {pricing.discountAmount > 0 ? (
+                      <span className={pricing.note === 'FOC' ? 'text-amber-700' : 'text-emerald-700'}>
+                        {pricing.note}: -{formatCurrency(pricing.discountAmount, currency)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                    {formatCurrency(pricing.finalCost, currency)}
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
@@ -174,18 +221,27 @@ const Receipt: React.FC<ReceiptProps> = ({
       {treatments.length === 0 ? (
         <div style={{ fontSize: '8px', fontStyle: 'italic', color: '#666' }}>No treatment services recorded</div>
       ) : (
-        treatments.map((treatment, idx) => (
-          <div key={idx} style={{ marginBottom: '2px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
-              <span style={{ flex: 1 }}>{treatment.description}</span>
-              <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(treatment.cost || 0, currency)}</span>
+        treatments.map((treatment, idx) => {
+          const pricing = getTreatmentPricing(treatment);
+          return (
+            <div key={idx} style={{ marginBottom: '3px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
+                <span style={{ flex: 1 }}>{treatment.description}</span>
+                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(pricing.finalCost, currency)}</span>
+              </div>
+              <div style={{ fontSize: '7px', color: '#555' }}>
+                {new Date(treatment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {treatment.teeth && treatment.teeth.length > 0 ? ` | ${formatTeethWithPosition(treatment.teeth)}` : ''}
+              </div>
+              {pricing.discountAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: pricing.note === 'FOC' ? '#b45309' : '#15803d' }}>
+                  <span>Std {formatCurrency(pricing.standardCost, currency)}</span>
+                  <span>{pricing.note}: -{formatCurrency(pricing.discountAmount, currency)}</span>
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: '7px', color: '#555' }}>
-              {new Date(treatment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              {treatment.teeth && treatment.teeth.length > 0 ? ` | ${formatTeethWithPosition(treatment.teeth)}` : ''}
-            </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
@@ -276,6 +332,14 @@ const Receipt: React.FC<ReceiptProps> = ({
                     {formatCurrency(totalTreatmentCost, currency)}
                   </span>
                 </div>
+                {totalTreatmentDiscount > 0 && (
+                  <div className="flex justify-between py-2 border-b border-gray-300">
+                    <span className="text-sm font-semibold text-gray-700">Treatment Adjustments:</span>
+                    <span className="text-sm font-semibold text-amber-700">
+                      -{formatCurrency(totalTreatmentDiscount, currency)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between py-2 border-b border-gray-300">
                   <span className="text-sm font-semibold text-gray-700">Medicines & Items:</span>
                   <span className="text-sm font-semibold text-gray-900">
@@ -310,16 +374,6 @@ const Receipt: React.FC<ReceiptProps> = ({
           {totalPaid > 0 && (
             <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-lg">
               <p className="text-sm font-semibold text-gray-900 mb-2">Payment Details:</p>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Original Amount:</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(paymentOriginal, currency)}</span>
-              </div>
-              {paymentDiscount > 0 && (
-                <div className="flex justify-between text-sm mt-1">
-                  <span className="text-gray-600">Discount Given:</span>
-                  <span className="font-semibold text-amber-700">-{formatCurrency(paymentDiscount, currency)}</span>
-                </div>
-              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Payment Amount:</span>
                 <span className="font-semibold text-gray-900">{formatCurrency(totalPaid, currency)}</span>
@@ -426,6 +480,7 @@ const Receipt: React.FC<ReceiptProps> = ({
           {/* Summary */}
           <div style={{ marginBottom: '6px' }}>
             {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, currency))}
+            {totalTreatmentDiscount > 0 && thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, currency)}`, undefined, { color: '#b45309' })}
             {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, currency))}
             {thermalDivider()}
             {thermalLine('Subtotal:', formatCurrency(grandTotal, currency), undefined, { fontWeight: 700 })}
@@ -445,8 +500,6 @@ const Receipt: React.FC<ReceiptProps> = ({
           {totalPaid > 0 && (
             <div style={{ marginBottom: '6px', fontSize: '8px', lineHeight: '1.35' }}>
               <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
-              {thermalLine('Original:', formatCurrency(paymentOriginal, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
-              {paymentDiscount > 0 && thermalLine('Discount:', `-${formatCurrency(paymentDiscount, currency)}`, { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700, color: '#b45309' })}
               {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
               {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
               {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
@@ -516,6 +569,14 @@ const Receipt: React.FC<ReceiptProps> = ({
                   {formatCurrency(totalTreatmentCost, currency)}
                 </span>
               </div>
+              {totalTreatmentDiscount > 0 && (
+                <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
+                  <span className="text-sm font-semibold text-gray-700">Treatment Adjustments:</span>
+                  <span className="text-sm font-semibold text-amber-700">
+                    -{formatCurrency(totalTreatmentDiscount, currency)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
                 <span className="text-sm font-semibold text-gray-700">Medicines & Items:</span>
                 <span className="text-sm font-semibold text-gray-900">
@@ -550,16 +611,6 @@ const Receipt: React.FC<ReceiptProps> = ({
         {totalPaid > 0 && (
           <div className="mb-8 p-4 bg-gray-50 border border-gray-200 rounded-lg" style={{ padding: '16px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
             <p className="text-sm font-semibold text-gray-900 mb-2">Payment Details:</p>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Original Amount:</span>
-              <span className="font-semibold text-gray-900">{formatCurrency(paymentOriginal, currency)}</span>
-            </div>
-            {paymentDiscount > 0 && (
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-gray-600">Discount Given:</span>
-                <span className="font-semibold text-amber-700">-{formatCurrency(paymentDiscount, currency)}</span>
-              </div>
-            )}
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Payment Amount:</span>
               <span className="font-semibold text-gray-900">{formatCurrency(totalPaid, currency)}</span>
@@ -644,6 +695,7 @@ const Receipt: React.FC<ReceiptProps> = ({
         {/* Summary */}
         <div style={{ marginBottom: '6px' }}>
           {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, currency))}
+          {totalTreatmentDiscount > 0 && thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, currency)}`, undefined, { color: '#b45309' })}
           {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, currency))}
           <div style={{ borderTop: '1px dashed #333', margin: '4px 0' }} />
           {thermalLine('Subtotal:', formatCurrency(grandTotal, currency), undefined, { fontWeight: 700 })}
@@ -663,8 +715,6 @@ const Receipt: React.FC<ReceiptProps> = ({
         {totalPaid > 0 && (
           <div style={{ marginBottom: '6px', fontSize: '8px', lineHeight: '1.35' }}>
             <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
-            {thermalLine('Original:', formatCurrency(paymentOriginal, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
-            {paymentDiscount > 0 && thermalLine('Discount:', `-${formatCurrency(paymentDiscount, currency)}`, { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700, color: '#b45309' })}
             {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
             {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
             {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}

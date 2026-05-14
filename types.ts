@@ -64,6 +64,9 @@ export interface ClinicalRecord {
   teeth: number[];
   description: string;
   cost: number;
+  standardCost?: number | null;
+  discountAmount?: number;
+  pricingNote?: 'FOC' | 'DISCOUNT' | null;
   date: string;
 }
 
@@ -73,7 +76,6 @@ export interface PaymentRecord {
   patientId: string;
   amount: number;
   originalAmount?: number;
-  discountAmount?: number;
   clearedAmount?: number;
   treatmentIds?: string[];
   date: string;

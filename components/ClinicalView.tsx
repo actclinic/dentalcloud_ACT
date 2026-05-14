@@ -28,7 +28,7 @@ interface ClinicalViewProps {
   onToggleTooth: (id: number) => void;
   onDoctorChange: (doctorId: string) => void;
   onDeselectAll: () => void;
-  onTreatmentSubmit: (t: TreatmentType) => void;
+  onTreatmentSubmit: (t: TreatmentType, customCost?: number) => void;
   onPaymentRequest: (treatments: ClinicalRecord[]) => void;
   onClosePatient: () => void;
   onOpenDirectory: () => void;
@@ -117,6 +117,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [showTreatmentDropdown, setShowTreatmentDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
+  const [selectedTreatmentForCharge, setSelectedTreatmentForCharge] = React.useState<TreatmentType | null>(null);
+  const [customTreatmentCostInput, setCustomTreatmentCostInput] = React.useState('');
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
   const [nextAppointmentFeedback, setNextAppointmentFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [nextAppointmentForm, setNextAppointmentForm] = React.useState<Partial<Appointment>>({
@@ -270,12 +272,41 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
   };
 
+  const getDefaultTreatmentCost = (treatment: TreatmentType) => {
+    const unitCost = Number(treatment.cost || 0);
+    return useFlatRate ? unitCost : unitCost * selectedTeeth.length;
+  };
+
+  const selectedTreatmentDefaultCost = selectedTreatmentForCharge
+    ? getDefaultTreatmentCost(selectedTreatmentForCharge)
+    : 0;
+
   const handleTreatmentSelect = (treatment: TreatmentType) => {
     if (!canApplyTreatment) return;
 
-    onTreatmentSubmit(treatment);
+    const defaultCost = getDefaultTreatmentCost(treatment);
+    setSelectedTreatmentForCharge(treatment);
+    setCustomTreatmentCostInput(String(defaultCost));
     setTreatmentSearchTerm('');
     setShowTreatmentDropdown(false);
+  };
+
+  const handleChargeModalClose = () => {
+    setSelectedTreatmentForCharge(null);
+    setCustomTreatmentCostInput('');
+  };
+
+  const handleConfirmTreatmentCharge = () => {
+    if (!selectedTreatmentForCharge) return;
+
+    const parsedCost = Number.parseFloat(customTreatmentCostInput);
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+      alert('Please enter a valid treatment charge of 0 or more.');
+      return;
+    }
+
+    onTreatmentSubmit(selectedTreatmentForCharge, parsedCost);
+    handleChargeModalClose();
   };
 
   const handleQuickDateApply = (daysAhead: number) => {
@@ -901,6 +932,90 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
                      </button>
                    </form>
+                 </Modal>
+               )}
+
+               {selectedTreatmentForCharge && selectedPatient && (
+                 <Modal title="Confirm Treatment Charge" onClose={handleChargeModalClose}>
+                   <div className="space-y-5">
+                     <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                       <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Treatment</p>
+                       <h4 className="mt-1 text-lg font-black text-indigo-950">{selectedTreatmentForCharge.name}</h4>
+                       <p className="mt-1 text-sm font-semibold text-indigo-700">
+                         {useFlatRate
+                           ? 'Flat-rate treatment'
+                           : `${selectedTeeth.length} tooth${selectedTeeth.length === 1 ? '' : ' teeth'} selected`}
+                       </p>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-3">
+                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Standard Charge</p>
+                         <p className="mt-1 text-xl font-black text-gray-900">
+                           {formatCurrency(selectedTreatmentDefaultCost, currency)}
+                         </p>
+                       </div>
+                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Patient Balance</p>
+                         <p className="mt-1 text-xl font-black text-gray-900">
+                           {formatCurrency(selectedPatient.balance || 0, currency)}
+                         </p>
+                       </div>
+                     </div>
+
+                     <Input
+                       label={`Final Treatment Charge (${currencySymbol})`}
+                       type="number"
+                       min="0"
+                       step="0.01"
+                       value={customTreatmentCostInput}
+                       onChange={(e: any) => setCustomTreatmentCostInput(e.target.value)}
+                       autoFocus
+                     />
+
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                       <button
+                         type="button"
+                         onClick={() => setCustomTreatmentCostInput(String(selectedTreatmentDefaultCost))}
+                         className="rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-black text-gray-700 hover:bg-gray-50"
+                       >
+                         Standard
+                       </button>
+                       {!useFlatRate && selectedTeeth.length > 1 && (
+                         <button
+                           type="button"
+                           onClick={() => setCustomTreatmentCostInput(String((selectedTreatmentForCharge.cost || 0) * (selectedTeeth.length - 1)))}
+                           className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-black text-indigo-700 hover:bg-indigo-100"
+                         >
+                           Charge {selectedTeeth.length - 1} of {selectedTeeth.length}
+                         </button>
+                       )}
+                       <button
+                         type="button"
+                         onClick={() => setCustomTreatmentCostInput('0')}
+                         className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-700 hover:bg-amber-100"
+                       >
+                         FOC
+                       </button>
+                     </div>
+
+                     <div className="flex gap-3 pt-1">
+                       <button
+                         type="button"
+                         onClick={handleChargeModalClose}
+                         className="flex-1 rounded-xl border border-gray-200 px-6 py-3 font-bold text-gray-500 hover:bg-gray-50"
+                       >
+                         Cancel
+                       </button>
+                       <button
+                         type="button"
+                         onClick={handleConfirmTreatmentCharge}
+                         className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700"
+                       >
+                         Record Treatment
+                       </button>
+                     </div>
+                   </div>
                  </Modal>
                )}
 
