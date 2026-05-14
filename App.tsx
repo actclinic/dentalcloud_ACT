@@ -166,10 +166,19 @@ const getContrastAwareTextColor = (backgroundColor: string): string => {
   return luminance > 0.42 ? '#1f2937' : '#ffffff';
 };
 
-const LEAD_SOURCE_OPTIONS = ['Marketing Team', 'Hotline', 'Tiktok', 'Tiktok Hotline', 'Facebook', 'Phone Call', 'Walk-in', 'Referral'];
+const mapLeadSourceToPatientType = (
+  source: string | null | undefined,
+  patientTypeOptions: string[]
+): Patient['patient_type'] => {
+  const trimmedSource = (source || '').trim();
+  if (!trimmedSource) return DEFAULT_PATIENT_TYPE_NAME;
 
-const mapLeadSourceToPatientType = (source?: string | null): Patient['patient_type'] => {
-  const normalized = (source || '').trim().toLowerCase();
+  const exactPatientType = patientTypeOptions.find(
+    (patientType) => patientType.toLowerCase() === trimmedSource.toLowerCase()
+  );
+  if (exactPatientType) return exactPatientType;
+
+  const normalized = trimmedSource.toLowerCase();
   if (normalized.includes('tiktok') && normalized.includes('hotline')) return 'Tiktok Hotline';
   if (normalized.includes('tiktok')) return 'Tiktok';
   if (normalized.includes('hotline')) return 'Hotline';
@@ -648,6 +657,14 @@ const App: React.FC = () => {
     }
     return [...activePatientTypeOptions, currentType];
   }, [activePatientTypeOptions, newPatientData.patient_type]);
+  const leadSourceOptionsForAppointment = useMemo(() => {
+    const currentSource = (newAppointmentData.guest_source || '').trim();
+    if (!currentSource || activePatientTypeOptions.includes(currentSource)) {
+      return activePatientTypeOptions;
+    }
+    return [...activePatientTypeOptions, currentSource];
+  }, [activePatientTypeOptions, newAppointmentData.guest_source]);
+  const isNewPatientAgeMissing = newPatientData.age === undefined || newPatientData.age === null;
   const townshipOptionsForNewPatient = useMemo(
     () => getTownshipsForCity(newPatientData.city || '').map((township) => ({ value: township, label: township })),
     [newPatientData.city]
@@ -2502,7 +2519,7 @@ const App: React.FC = () => {
       address: '',
       city: '',
       township: '',
-      patient_type: mapLeadSourceToPatientType(appointment.guest_source),
+      patient_type: mapLeadSourceToPatientType(appointment.guest_source, activePatientTypeOptions),
       location_id: currentLocationId || ''
     });
     setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
@@ -3203,7 +3220,6 @@ const App: React.FC = () => {
                   }
                 }}
                 onCreateAppointment={handleCreateAppointmentFromClinical}
-                onOpenAppointments={() => setCurrentView('appointments')}
                 loyaltyEnabled={loyaltyEnabled}
                 compactToothSelector={true}
                 doctorMobileView={isDoctor}
@@ -3266,9 +3282,10 @@ const App: React.FC = () => {
                   type="number"
                   min="0"
                   max="150"
+                  required
                   className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  value={newPatientData.age || ''}
-                  onChange={(e) => setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value) : undefined})}
+                  value={newPatientData.age ?? ''}
+                  onChange={(e) => setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value, 10) : undefined})}
                   placeholder="Enter age"
                 />
               </div>
@@ -3285,6 +3302,12 @@ const App: React.FC = () => {
                 </select>
               </div>
             </div>
+            {isNewPatientAgeMissing && (
+              <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>Please add the patient's age before finalizing registration.</span>
+              </div>
+            )}
 
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Branch / Location</label>
@@ -3468,7 +3491,7 @@ const App: React.FC = () => {
                     onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_source: e.target.value})}
                   >
                     <option value="">Select source</option>
-                    {LEAD_SOURCE_OPTIONS.map(source => (
+                    {leadSourceOptionsForAppointment.map(source => (
                       <option key={source} value={source}>{source}</option>
                     ))}
                   </select>

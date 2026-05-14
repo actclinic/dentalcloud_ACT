@@ -43,7 +43,6 @@ interface ClinicalViewProps {
   onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
   onUpdateAccount?: (patient: Patient, password: string) => void;
   onCreateAppointment?: (data: Partial<Appointment>) => Promise<void>;
-  onOpenAppointments?: () => void;
   loyaltyEnabled: boolean;
   compactToothSelector?: boolean;
   doctorMobileView?: boolean;
@@ -80,7 +79,6 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onUpdatePatient,
   onUpdateAccount,
   onCreateAppointment,
-  onOpenAppointments,
   loyaltyEnabled,
   compactToothSelector = false,
   doctorMobileView = false,
@@ -741,9 +739,41 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                       >
                         Collect Payment
                       </button>
-                    )}
+                  )}
                  </div>
                </div>
+
+               {selectedPatient && onCreateAppointment && (
+                 <div className="rounded-xl border border-indigo-100 bg-indigo-50/80 p-4 shadow-sm">
+                   <div className="flex items-center justify-between gap-3">
+                     <div className="flex min-w-0 items-center gap-3">
+                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                         <Calendar size={18} />
+                       </div>
+                       <div className="min-w-0">
+                         <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Next Appointment</p>
+                         <p className="truncate text-sm font-black text-indigo-950">Create New Appointment</p>
+                       </div>
+                     </div>
+                     <button
+                       onClick={() => setShowNextAppointmentModal(true)}
+                       className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-indigo-700"
+                     >
+                       New
+                     </button>
+                   </div>
+                   {nextAppointmentFeedback && (
+                     <div className={`mt-3 rounded-lg border px-3 py-2 text-xs font-semibold flex items-start gap-2 ${
+                       nextAppointmentFeedback.type === 'success'
+                         ? 'border-green-200 bg-green-50 text-green-700'
+                         : 'border-red-200 bg-red-50 text-red-700'
+                     }`}>
+                       {nextAppointmentFeedback.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
+                       <span>{nextAppointmentFeedback.message}</span>
+                     </div>
+                   )}
+                 </div>
+               )}
 
                {loyaltyEnabled && selectedPatient && (
                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
@@ -793,43 +823,6 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                >
                  <ReceiptIcon size={16} /> Generate Receipt
                </button>
-
-               {selectedPatient && onCreateAppointment && (
-                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                   <div className="flex items-center justify-between gap-2">
-                     <div className="min-w-0">
-                       <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Scheduling</p>
-                       <p className="text-sm font-bold text-gray-900">Next Appointment</p>
-                     </div>
-                     <div className="flex items-center gap-2">
-                       {onOpenAppointments && (
-                         <button
-                           onClick={onOpenAppointments}
-                           className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-100"
-                         >
-                           <Calendar size={13} /> View
-                         </button>
-                       )}
-                       <button
-                         onClick={() => setShowNextAppointmentModal(true)}
-                         className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
-                       >
-                         <Calendar size={13} /> New
-                       </button>
-                     </div>
-                   </div>
-                   {nextAppointmentFeedback && (
-                     <div className={`mt-3 rounded-lg border px-3 py-2 text-xs font-semibold flex items-start gap-2 ${
-                       nextAppointmentFeedback.type === 'success'
-                         ? 'border-green-200 bg-green-50 text-green-700'
-                         : 'border-red-200 bg-red-50 text-red-700'
-                     }`}>
-                       {nextAppointmentFeedback.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
-                       <span>{nextAppointmentFeedback.message}</span>
-                     </div>
-                   )}
-                 </div>
-               )}
                {onUpdatePatient && selectedPatient && (
                  <button 
                   className="w-full bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold text-sm mt-2 hover:bg-indigo-100 transition-all flex items-center justify-center gap-2 border border-indigo-100"
