@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
-import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment } from '../types';
+import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 import { Modal, Input, TimeInput } from './Shared';
@@ -28,7 +28,7 @@ interface ClinicalViewProps {
   onToggleTooth: (id: number) => void;
   onDoctorChange: (doctorId: string) => void;
   onDeselectAll: () => void;
-  onTreatmentSubmit: (t: TreatmentType, customCost?: number) => void;
+  onTreatmentSubmit: (t: TreatmentType, chargeLines?: TreatmentChargeLine[]) => void;
   onPaymentRequest: (treatments: ClinicalRecord[]) => void;
   onClosePatient: () => void;
   onOpenDirectory: () => void;
@@ -118,7 +118,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
   const [selectedTreatmentForCharge, setSelectedTreatmentForCharge] = React.useState<TreatmentType | null>(null);
-  const [customTreatmentCostInput, setCustomTreatmentCostInput] = React.useState('');
+  const [treatmentChargeInputs, setTreatmentChargeInputs] = React.useState<string[]>([]);
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
   const [nextAppointmentFeedback, setNextAppointmentFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [nextAppointmentForm, setNextAppointmentForm] = React.useState<Partial<Appointment>>({
@@ -277,36 +277,70 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     return useFlatRate ? unitCost : unitCost * selectedTeeth.length;
   };
 
-  const selectedTreatmentDefaultCost = selectedTreatmentForCharge
-    ? getDefaultTreatmentCost(selectedTreatmentForCharge)
+  const getTreatmentChargeLines = (treatment: TreatmentType): TreatmentChargeLine[] => {
+    const unitCost = Number(treatment.cost || 0);
+    if (useFlatRate || selectedTeeth.length <= 1) {
+      return [{
+        teeth: useFlatRate ? selectedTeeth : selectedTeeth.slice(0, 1),
+        cost: useFlatRate ? unitCost : unitCost,
+        standardCost: useFlatRate ? unitCost : unitCost
+      }];
+    }
+
+    return selectedTeeth.map((tooth) => ({
+      teeth: [tooth],
+      cost: unitCost,
+      standardCost: unitCost
+    }));
+  };
+
+  const selectedTreatmentStandardTotal = selectedTreatmentForCharge
+    ? getTreatmentChargeLines(selectedTreatmentForCharge).reduce((sum, line) => sum + line.standardCost, 0)
+    : 0;
+  const selectedTreatmentFinalTotal = selectedTreatmentForCharge
+    ? treatmentChargeInputs.reduce((sum, value) => {
+        const parsedValue = Number.parseFloat(value);
+        return sum + (Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0);
+      }, 0)
     : 0;
 
   const handleTreatmentSelect = (treatment: TreatmentType) => {
     if (!canApplyTreatment) return;
 
-    const defaultCost = getDefaultTreatmentCost(treatment);
+    const chargeLines = getTreatmentChargeLines(treatment);
     setSelectedTreatmentForCharge(treatment);
-    setCustomTreatmentCostInput(String(defaultCost));
+    setTreatmentChargeInputs(chargeLines.map((line) => String(line.cost)));
     setTreatmentSearchTerm('');
     setShowTreatmentDropdown(false);
   };
 
   const handleChargeModalClose = () => {
     setSelectedTreatmentForCharge(null);
-    setCustomTreatmentCostInput('');
+    setTreatmentChargeInputs([]);
   };
 
   const handleConfirmTreatmentCharge = () => {
     if (!selectedTreatmentForCharge) return;
 
-    const parsedCost = Number.parseFloat(customTreatmentCostInput);
-    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
-      alert('Please enter a valid treatment charge of 0 or more.');
-      return;
-    }
+    try {
+      const baseChargeLines = getTreatmentChargeLines(selectedTreatmentForCharge);
+      const chargeLines = baseChargeLines.map((line, index) => {
+        const parsedCost = Number.parseFloat(treatmentChargeInputs[index] || '');
+        if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+          throw new Error('Please enter a valid treatment charge of 0 or more for every treatment line.');
+        }
 
-    onTreatmentSubmit(selectedTreatmentForCharge, parsedCost);
-    handleChargeModalClose();
+        return {
+          ...line,
+          cost: Math.max(0, parsedCost)
+        };
+      });
+
+      onTreatmentSubmit(selectedTreatmentForCharge, chargeLines);
+      handleChargeModalClose();
+    } catch (error: any) {
+      alert(error?.message || 'Please enter valid treatment charges.');
+    }
   };
 
   const handleQuickDateApply = (daysAhead: number) => {
@@ -952,50 +986,98 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Standard Charge</p>
                          <p className="mt-1 text-xl font-black text-gray-900">
-                           {formatCurrency(selectedTreatmentDefaultCost, currency)}
+                           {formatCurrency(selectedTreatmentStandardTotal, currency)}
                          </p>
                        </div>
                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Patient Balance</p>
+                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Final Charge</p>
                          <p className="mt-1 text-xl font-black text-gray-900">
-                           {formatCurrency(selectedPatient.balance || 0, currency)}
+                           {formatCurrency(selectedTreatmentFinalTotal, currency)}
                          </p>
                        </div>
                      </div>
 
-                     <Input
-                       label={`Final Treatment Charge (${currencySymbol})`}
-                       type="number"
-                       min="0"
-                       step="0.01"
-                       value={customTreatmentCostInput}
-                       onChange={(e: any) => setCustomTreatmentCostInput(e.target.value)}
-                       autoFocus
-                     />
+                     <div className="space-y-3">
+                       {getTreatmentChargeLines(selectedTreatmentForCharge).map((line, index) => {
+                         const currentInput = treatmentChargeInputs[index] ?? String(line.cost);
+                         const currentCost = Number.parseFloat(currentInput);
+                         const finalCost = Number.isFinite(currentCost) ? Math.max(0, currentCost) : 0;
+                         const adjustment = Math.max(0, line.standardCost - finalCost);
+                         const lineLabel = line.teeth.length > 0
+                           ? `Tooth ${line.teeth.join(', ')}`
+                           : 'Flat-rate treatment';
 
-                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                         return (
+                           <div key={`${lineLabel}-${index}`} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                               <div>
+                                 <p className="text-sm font-black text-gray-900">{lineLabel}</p>
+                                 <p className="text-xs font-semibold text-gray-500">
+                                   Standard: {formatCurrency(line.standardCost, currency)}
+                                 </p>
+                               </div>
+                               {adjustment > 0 && (
+                                 <span className={`rounded-full px-3 py-1 text-xs font-black ${finalCost === 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                   {finalCost === 0 ? 'FOC' : 'Discount'} -{formatCurrency(adjustment, currency)}
+                                 </span>
+                               )}
+                             </div>
+                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                               <Input
+                                 label={`Final Charge (${currencySymbol})`}
+                                 type="number"
+                                 min="0"
+                                 step="0.01"
+                                 value={currentInput}
+                                 onChange={(e: any) => {
+                                   const nextInputs = [...treatmentChargeInputs];
+                                   nextInputs[index] = e.target.value;
+                                   setTreatmentChargeInputs(nextInputs);
+                                 }}
+                                 autoFocus={index === 0}
+                               />
+                               <button
+                                 type="button"
+                                 onClick={() => {
+                                   const nextInputs = [...treatmentChargeInputs];
+                                   nextInputs[index] = String(line.standardCost);
+                                   setTreatmentChargeInputs(nextInputs);
+                                 }}
+                                 className="rounded-xl border border-gray-200 px-3 py-3 text-xs font-black text-gray-700 hover:bg-gray-50"
+                               >
+                                 Standard
+                               </button>
+                               <button
+                                 type="button"
+                                 onClick={() => {
+                                   const nextInputs = [...treatmentChargeInputs];
+                                   nextInputs[index] = '0';
+                                   setTreatmentChargeInputs(nextInputs);
+                                 }}
+                                 className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-black text-amber-700 hover:bg-amber-100"
+                               >
+                                 FOC
+                               </button>
+                             </div>
+                           </div>
+                         );
+                       })}
+                     </div>
+
+                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                        <button
                          type="button"
-                         onClick={() => setCustomTreatmentCostInput(String(selectedTreatmentDefaultCost))}
+                         onClick={() => setTreatmentChargeInputs(getTreatmentChargeLines(selectedTreatmentForCharge).map((line) => String(line.standardCost)))}
                          className="rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-black text-gray-700 hover:bg-gray-50"
                        >
-                         Standard
+                         All Standard
                        </button>
-                       {!useFlatRate && selectedTeeth.length > 1 && (
-                         <button
-                           type="button"
-                           onClick={() => setCustomTreatmentCostInput(String((selectedTreatmentForCharge.cost || 0) * (selectedTeeth.length - 1)))}
-                           className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-black text-indigo-700 hover:bg-indigo-100"
-                         >
-                           Charge {selectedTeeth.length - 1} of {selectedTeeth.length}
-                         </button>
-                       )}
                        <button
                          type="button"
-                         onClick={() => setCustomTreatmentCostInput('0')}
+                         onClick={() => setTreatmentChargeInputs(getTreatmentChargeLines(selectedTreatmentForCharge).map(() => '0'))}
                          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-700 hover:bg-amber-100"
                        >
-                         FOC
+                         All FOC
                        </button>
                      </div>
 

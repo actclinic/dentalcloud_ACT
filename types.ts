@@ -54,6 +54,12 @@ export interface TreatmentType {
   category: string;
 }
 
+export interface TreatmentChargeLine {
+  teeth: number[];
+  cost: number;
+  standardCost: number;
+}
+
 export interface ClinicalRecord {
   id: string;
   location_id: string;

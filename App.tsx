@@ -51,7 +51,8 @@ import {
   ScheduledTask,
   ReceiptSize,
   PatientType,
-  AppointmentType
+  AppointmentType,
+  TreatmentChargeLine
 } from './types';
 import {
   DEFAULT_PATIENT_TYPE_NAME,
@@ -2257,41 +2258,56 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTreatmentSubmit = async (treatment: TreatmentType, customCost?: number) => {
+  const handleTreatmentSubmit = async (treatment: TreatmentType, chargeLines?: TreatmentChargeLine[]) => {
     if (!selectedPatient) return;
     if (!useFlatRate && selectedTeeth.length === 0) {
       alert('Please select at least one tooth, or enable ALL TEETH before recording this treatment.');
       return;
     }
     
-    // If flat rate is enabled, use treatment cost as-is (not multiplied by teeth count)
-    // Otherwise, multiply by number of selected teeth
-    const defaultCost = useFlatRate ? treatment.cost : (treatment.cost * selectedTeeth.length);
-    const totalCost = Number.isFinite(customCost) ? Math.max(0, Number(customCost)) : defaultCost;
-    const treatmentDiscountAmount = Math.max(0, defaultCost - totalCost);
-    const pricingNote = treatmentDiscountAmount > 0
-      ? (totalCost === 0 ? 'FOC' : 'DISCOUNT')
-      : null;
+    const defaultChargeLines: TreatmentChargeLine[] = chargeLines?.length
+      ? chargeLines
+      : [{
+          teeth: selectedTeeth,
+          cost: useFlatRate ? treatment.cost : (treatment.cost * selectedTeeth.length),
+          standardCost: useFlatRate ? treatment.cost : (treatment.cost * selectedTeeth.length)
+        }];
     
     try {
-      const res = await api.treatments.record({
-        location_id: currentLocationId,
-        patient_id: selectedPatient.id,
-        doctor_id: selectedDoctorId || undefined,
-        teeth: selectedTeeth,
-        description: treatment.name,
-        cost: totalCost,
-        standardCost: defaultCost,
-        discountAmount: treatmentDiscountAmount,
-        pricingNote
-      });
+      const recordedResponses = [];
+      for (const line of defaultChargeLines) {
+        const lineCost = Math.max(0, Number(line.cost || 0));
+        const standardCost = Math.max(0, Number(line.standardCost || lineCost));
+        const treatmentDiscountAmount = Math.max(0, standardCost - lineCost);
+        const pricingNote = treatmentDiscountAmount > 0
+          ? (lineCost === 0 ? 'FOC' : 'DISCOUNT')
+          : null;
+
+        const res = await api.treatments.record({
+          location_id: currentLocationId,
+          patient_id: selectedPatient.id,
+          doctor_id: selectedDoctorId || undefined,
+          teeth: line.teeth,
+          description: treatment.name,
+          cost: lineCost,
+          standardCost,
+          discountAmount: treatmentDiscountAmount,
+          pricingNote
+        });
+        recordedResponses.push(res);
+      }
+
+      const latestResponse = recordedResponses[recordedResponses.length - 1];
+      const newRecords = recordedResponses.map((response) => response.record);
       
-      setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
+      setSelectedPatient({ ...selectedPatient, balance: latestResponse?.new_balance ?? selectedPatient.balance });
       
-      setTreatmentHistory([res.record, ...treatmentHistory]);
-      if (res.completed_appointment_ids?.length) {
-        const completedAppointmentIds = new Set(res.completed_appointment_ids);
-        const completedDoctorName = res.record.doctor_name?.trim() || undefined;
+      setTreatmentHistory([...newRecords, ...treatmentHistory]);
+      const completedAppointmentIds = new Set(
+        recordedResponses.flatMap((response) => response.completed_appointment_ids || [])
+      );
+      if (completedAppointmentIds.size > 0) {
+        const completedDoctorName = newRecords.find((record) => record.doctor_name?.trim())?.doctor_name?.trim() || undefined;
         setAppointments(prev => prev.map(appointment =>
           completedAppointmentIds.has(appointment.id)
             ? { ...appointment, status: 'Completed', doctor_name: completedDoctorName || appointment.doctor_name }
@@ -2308,7 +2324,13 @@ const App: React.FC = () => {
             : appointment
         ));
         setToast({
-          message: 'Treatment recorded and today\'s appointment was marked completed.',
+          message: `${newRecords.length} treatment ${newRecords.length === 1 ? 'record' : 'records'} saved and today's appointment was marked completed.`,
+          type: 'success',
+          show: true
+        });
+      } else {
+        setToast({
+          message: `${newRecords.length} treatment ${newRecords.length === 1 ? 'record' : 'records'} saved.`,
           type: 'success',
           show: true
         });
