@@ -4152,7 +4152,9 @@ export const api = {
       }
 
       if (locationId) {
-        query = query.eq('location_id', locationId);
+        // Include conversations for this branch OR conversations without a location
+        // (created before the branch feature was added)
+        query = query.or(`location_id.eq.${locationId},location_id.is.null`);
       }
 
       const { data: conversations, error } = await query;
@@ -4401,6 +4403,15 @@ export const api = {
         existingQuery = existingQuery.eq('doctor_user_id', participantId);
       } else {
         existingQuery = existingQuery.eq('patient_id', participantId);
+      }
+
+      // When locationId is provided, also filter by location to avoid returning
+      // conversations from a different branch that won't show up in the filtered list.
+      if (locationId) {
+        existingQuery = existingQuery.eq('location_id', locationId);
+      } else {
+        // Fallback: also accept conversations with NULL location_id (created before branch feature)
+        existingQuery = existingQuery.is('location_id', null);
       }
 
       const { data: existingConversation, error: existingError } = await existingQuery.maybeSingle();

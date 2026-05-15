@@ -333,7 +333,8 @@ const MessagingView: React.FC<MessagingViewProps> = ({ patients, messagingEnable
       setNewMessage('');
       await loadMessages(selectedConversation.id, false);
       await loadConversations(false);
-      setError(notificationErrorMessage);
+      // Only show notification error if there is one; otherwise clear errors
+      setError(notificationErrorMessage || null);
     } catch (err: any) {
       setError(err.message || 'Failed to send message.');
     } finally {
