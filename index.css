@@ -4,6 +4,13 @@ body,
   min-height: 100%;
 }
 
+
+/* Prevent double-tap zoom on mobile devices — improves form-filling UX */
+html {
+  touch-action: manipulation;
+}
+
+
 /* Desktop app scale-down (~70%) to match browser zoomed-out layout */
 @media (min-width: 1024px) {
   html {
