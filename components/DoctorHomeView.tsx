@@ -137,7 +137,18 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
                 cx="50%"
                 cy="42%"
                 outerRadius={80}
-                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                  const RADIAN = Math.PI / 180;
+                  const radius = outerRadius * 0.6;
+                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                  return (
+                    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
+                      {`${(percent * 100).toFixed(0)}%`}
+                    </text>
+                  );
+                }}
+                labelLine={false}
               >
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${entry.name}-${index}`} fill={pieColors[index % pieColors.length]} />
