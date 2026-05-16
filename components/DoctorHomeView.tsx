@@ -125,8 +125,9 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-bold text-gray-900">Treatment Distribution</h3>
         <p className="mb-3 mt-1 text-xs text-gray-500">Most performed treatments as a pie chart.</p>
-        <div className="h-80 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full">
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
             <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
               <Tooltip />
               <Pie
@@ -155,6 +156,7 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
               </Pie>
             </PieChart>
           </ResponsiveContainer>
+          </div>
           {/* Custom color legend */}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 px-1">
             {chartData.map((entry, index) => (
