@@ -467,34 +467,6 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 style={{ background: 'color-mix(in srgb, #c084fc 15%, transparent)', filter: 'blur(50px)' }}
               />
             </div>
-
-            {/* â”€â”€ Welcome Hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-            <div className="animate-aurora-fade-in relative z-10 aurora-glass-strong rounded-2xl p-6" style={{ animationDelay: '0ms' }}>
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-400/80">
-                    Welcome back
-                  </p>
-                  <h1 className="mt-1.5 text-2xl font-bold tracking-tight">
-                    <span className="aurora-text">{patient.name}</span>
-                  </h1>
-                  <p className="mt-1 text-sm text-gray-400/90">
-                    Your smile journey continues here
-                  </p>
-                </div>
-                <div
-                  className="relative flex h-16 w-16 items-center justify-center rounded-2xl aurora-glow-ring"
-                  style={{
-                    background: 'linear-gradient(135deg, var(--hover-100), var(--hover-50))'
-                  }}
-                >
-                  <span className="text-2xl font-black" style={{ color: 'var(--hover-600)' }}>
-                    {patient.name.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* â”€â”€ Next Appointment Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="animate-aurora-fade-in relative z-10" style={{ animationDelay: '80ms' }}>
               <div
@@ -1502,3 +1474,4 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
 };
 
 export default PatientDashboard;
+
