@@ -14,10 +14,17 @@ ALTER TABLE patients
 ADD COLUMN IF NOT EXISTS patient_unique_id VARCHAR(20);
 
 -- Step 3: Backfill existing rows with unique IDs based on created_at order
-UPDATE patients 
-SET patient_unique_id = 'PAT-' || LPAD(nextval('patient_id_seq')::TEXT, 5, '0')
-WHERE patient_unique_id IS NULL
-ORDER BY created_at ASC;
+-- Uses a DO block with a cursor loop to assign IDs in created_at order
+DO $$
+DECLARE
+  rec RECORD;
+BEGIN
+  FOR rec IN SELECT id FROM patients WHERE patient_unique_id IS NULL ORDER BY created_at ASC, id ASC
+  LOOP
+    UPDATE patients SET patient_unique_id = 'PAT-' || LPAD(nextval('patient_id_seq')::TEXT, 5, '0') WHERE id = rec.id;
+  END LOOP;
+END;
+$$;
 
 -- Step 4: Reset sequence to continue from the highest assigned number
 SELECT setval('patient_id_seq', COALESCE((
