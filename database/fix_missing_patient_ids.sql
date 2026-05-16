@@ -1,37 +1,38 @@
 -- ============================================================================
--- MIGRATION: Add patient_unique_id for human-readable patient identifiers
+-- FIX: Backfill any patients still missing patient_unique_id
 -- ============================================================================
--- This migration adds a patient_unique_id column (e.g., PAT-00001, PAT-00002)
--- with an auto-incrementing sequence and a trigger to auto-assign it on insert.
--- Run this script on an existing database without losing data.
--- Safe to re-run if some patients still have NULL (it will backfill stragglers).
+-- Run this if your migration already ran but some patients still show
+-- "N/A" for their unique ID. This script catches any stragglers,
+-- re-syncs the sequence, and enforces the NOT NULL constraint safely.
 -- ============================================================================
 
--- Step 1: Create a sequence for the numeric portion
+-- Step 1: Ensure the sequence exists
 CREATE SEQUENCE IF NOT EXISTS patient_id_seq START 1;
 
--- Step 2: Add the patient_unique_id column to patients table
-ALTER TABLE patients 
-ADD COLUMN IF NOT EXISTS patient_unique_id VARCHAR(20);
-
--- Step 3: Drop NOT NULL constraint if it was partially applied (so backfill can work)
+-- Step 2: Drop NOT NULL constraint if it was partially applied
+-- (so we can safely backfill the remaining NULL rows)
 ALTER TABLE patients 
 ALTER COLUMN patient_unique_id DROP NOT NULL;
 
--- Step 4: Backfill existing rows with unique IDs based on created_at order
+-- Step 3: Backfill any patients that are still missing patient_unique_id
+-- Uses a DO block cursor loop ordered by created_at for deterministic IDs
 DO $$
 DECLARE
   rec RECORD;
-  filled INTEGER := 0;
 BEGIN
   FOR rec IN SELECT id FROM patients WHERE patient_unique_id IS NULL ORDER BY created_at ASC, id ASC
   LOOP
     UPDATE patients SET patient_unique_id = 'PAT-' || LPAD(nextval('patient_id_seq')::TEXT, 5, '0') WHERE id = rec.id;
-    filled := filled + 1;
   END LOOP;
-  RAISE NOTICE 'Backfilled % patients with unique IDs', filled;
 END;
 $$;
+
+-- Step 4: Reset the sequence to continue from the highest assigned number
+SELECT setval('patient_id_seq', COALESCE((
+  SELECT MAX(CAST(SUBSTRING(patient_unique_id FROM 5) AS INTEGER))
+  FROM patients
+  WHERE patient_unique_id ~ '^PAT-[0-9]{5}$'
+), 0));
 
 -- Step 5: Verify no NULLs remain before adding NOT NULL
 DO $$
@@ -46,21 +47,14 @@ END;
 $$;
 
 -- Step 6: Re-apply NOT NULL constraint
-ALTER TABLE patients 
+ALTER TABLE patients
 ALTER COLUMN patient_unique_id SET NOT NULL;
 
--- Step 7: Add unique index (idempotent)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_patient_unique_id 
+-- Step 7: Ensure the unique index exists
+CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_patient_unique_id
 ON patients(patient_unique_id);
 
--- Step 8: Reset sequence to continue from the highest assigned number
-SELECT setval('patient_id_seq', COALESCE((
-  SELECT MAX(CAST(SUBSTRING(patient_unique_id FROM 5) AS INTEGER)) 
-  FROM patients 
-  WHERE patient_unique_id ~ '^PAT-[0-9]{5}$'
-), 0));
-
--- Step 9: Create a trigger function to auto-assign patient_unique_id on insert
+-- Step 8: Ensure the trigger exists for new patients
 CREATE OR REPLACE FUNCTION assign_patient_unique_id()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -71,7 +65,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Step 10: Apply the trigger
 DROP TRIGGER IF EXISTS trg_assign_patient_unique_id ON patients;
 CREATE TRIGGER trg_assign_patient_unique_id
 BEFORE INSERT ON patients
@@ -81,5 +74,5 @@ EXECUTE FUNCTION assign_patient_unique_id();
 -- ============================================================================
 -- VERIFICATION
 -- ============================================================================
-SELECT '=== MIGRATION COMPLETE ===' as status;
+SELECT '=== FIX COMPLETE ===' as status;
 SELECT COUNT(*) AS total_patients, COUNT(patient_unique_id) AS with_id, COUNT(*) - COUNT(patient_unique_id) AS missing_id FROM patients;
