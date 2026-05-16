@@ -16,6 +16,21 @@ export interface AssistantMemoryProfile {
   savedFacts: SavedFact[];
 }
 
+export interface MemoryClassifierContext {
+  lastUserMessage?: string | null;
+  lastAssistantResponse?: string | null;
+  pendingConfirmation?: boolean;
+  currentWorkflow?: string | null;
+  hasPendingTask?: boolean;
+}
+
+export type MemoryCommand =
+  | { type: 'remember'; content: string }
+  | { type: 'prefer'; content: string }
+  | { type: 'forget'; content: string }
+  | { type: 'clear' }
+  | { type: 'none' };
+
 const MEMORY_KEY = 'loli_memory_profile_v1';
 
 const nowIso = () => new Date().toISOString();
@@ -142,23 +157,54 @@ export const updateMemoryFromUserMessage = (
   };
 };
 
-export type MemoryCommand =
-  | { type: 'remember'; content: string }
-  | { type: 'prefer'; content: string }
-  | { type: 'forget'; content: string }
-  | { type: 'clear' }
-  | { type: 'none' };
-
-export const parseMemoryCommand = (message: string): MemoryCommand => {
+/**
+ * Enhanced memory command parser that uses conversation context
+ * to determine if a statement is a memory command or task continuation.
+ */
+export const parseMemoryCommand = (message: string, context?: MemoryClassifierContext): MemoryCommand => {
   const trimmed = message.trim();
   const lower = trimmed.toLowerCase();
 
   if (!trimmed) return { type: 'none' };
 
+  // Explicit clear commands
   if (lower === 'clear memory' || lower === 'forget everything') {
     return { type: 'clear' };
   }
 
+  // Explicit "forget" command
+  if (lower.startsWith('forget ')) {
+    return { type: 'forget', content: trimmed.slice('forget '.length).trim() };
+  }
+
+  // --- Context-aware memory detection ---
+  const wasUserAskedQuestion = context?.lastAssistantResponse
+    ? /[\?\uFF1F]/.test(context.lastAssistantResponse)
+    : false;
+
+  const isProvidingLookupInfo =
+    /(his|her|my|the|their)\s+(number|phone|email|id|name|address)\s+(is|:|was)/i.test(trimmed) ||
+    /(number|phone|email|id)\s*(is|:|=)\s*[0-9a-z@\.]/i.test(trimmed) ||
+    /^0?\d{8,12}$/.test(trimmed.replace(/[\s\-\(\)]/g, '')) ||
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(trimmed);
+
+  if (wasUserAskedQuestion && isProvidingLookupInfo) {
+    return { type: 'none' };
+  }
+
+  const wasAskingForPatientInfo = context?.lastAssistantResponse
+    ? /(full name|patient name|provide|tell me|what is|what's|please provide)\s.*(name|phone|number|email|id|identifier)/i.test(context.lastAssistantResponse)
+    : false;
+
+  if (wasAskingForPatientInfo) {
+    return { type: 'none' };
+  }
+
+  if (context?.hasPendingTask && isProvidingLookupInfo) {
+    return { type: 'none' };
+  }
+
+  // Only treat as "remember" if the user explicitly says so
   if (lower.startsWith('remember that ')) {
     return { type: 'remember', content: trimmed.slice('remember that '.length).trim() };
   }
@@ -175,11 +221,63 @@ export const parseMemoryCommand = (message: string): MemoryCommand => {
     return { type: 'prefer', content: trimmed.slice('my preference is '.length).trim() };
   }
 
-  if (lower.startsWith('forget ')) {
-    return { type: 'forget', content: trimmed.slice('forget '.length).trim() };
+  return { type: 'none' };
+};
+
+/**
+ * Silently record a fact into memory without generating a response message.
+ */
+export const silentlyRememberFact = (
+  profile: AssistantMemoryProfile,
+  fact: string
+): AssistantMemoryProfile => {
+  return rememberFact(profile, fact);
+};
+
+/**
+ * Check if a user message contains useful information that should be remembered
+ * for later, even if not explicitly a memory command.
+ */
+export const extractMemoizableContent = (
+  profile: AssistantMemoryProfile,
+  message: string,
+  context?: MemoryClassifierContext
+): string | null => {
+  const trimmed = message.trim();
+  if (!trimmed) return null;
+
+  const lower = trimmed.toLowerCase();
+
+  // Skip explicit memory commands (handled elsewhere)
+  if (lower.startsWith('remember') || lower.startsWith('forget') || lower.startsWith('clear')) {
+    return null;
   }
 
-  return { type: 'none' };
+  // Skip greetings and simple acknowledgments
+  if (/^(hi|hello|hey|ok|okay|thanks|thank you|yes|no|sure|great|good|bye)$/i.test(trimmed)) {
+    return null;
+  }
+
+  // If user is responding to a question, don't extract memory
+  const wasAskedQuestion = context?.lastAssistantResponse
+    ? /[\?\uFF1F]/.test(context.lastAssistantResponse)
+    : false;
+  if (wasAskedQuestion) return null;
+
+  // Extract phone-number facts
+  const phoneMatch = trimmed.match(/(\d[\d\s\-\(\)]{6,}\d)/);
+  if (phoneMatch) {
+    const phone = phoneMatch[1].trim();
+    const normalizeForCompare = (s: string) => s.toLowerCase().replace(/[\s\-\(\)]/g, '');
+    const isAlreadyKnown = profile.savedFacts.some(f =>
+      normalizeForCompare(f.fact).includes(normalizeForCompare(phone))
+    );
+    if (!isAlreadyKnown) {
+      return `Phone number: ${phone}`;
+    }
+  }
+
+  return null;
 };
 
 export const rememberFact = (
@@ -231,3 +329,4 @@ export const forgetMemoryItem = (
 };
 
 export const clearAssistantMemory = (): AssistantMemoryProfile => createEmptyMemoryProfile();
+

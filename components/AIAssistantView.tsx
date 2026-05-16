@@ -27,7 +27,10 @@ import {
   rememberFact,
   rememberPreference,
   saveAssistantMemory,
-  updateMemoryFromUserMessage
+  updateMemoryFromUserMessage,
+  extractMemoizableContent,
+  silentlyRememberFact,
+  MemoryClassifierContext
 } from '../utils/assistantMemory';
 
 // Custom CSS for animations
@@ -1128,6 +1131,11 @@ How can I assist you today?`,
       notHelpfulCount: number;
       lastFeedbackTime: Date | null;
     }; // Track feedback patterns for AI improvement
+    pendingTask: {
+      type: 'patient_lookup' | 'appointment_find' | 'treatment_query' | 'general' | null;
+      originalQuery: string;
+      missingInfo: string[];
+    } | null; // Track pending tasks that need more info
   }>({
     lastUserMessage: null,
     lastAssistantResponse: null,
@@ -1139,7 +1147,8 @@ How can I assist you today?`,
       helpfulCount: 0,
       notHelpfulCount: 0,
       lastFeedbackTime: null
-    }
+    },
+    pendingTask: null
   });
   // Help modal state
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
@@ -2221,23 +2230,33 @@ Need more detailed help?
     }
   };
 
-  const classifyMemoryCommandLLM = async (message: string): Promise<MemoryCommand> => {
+  const classifyMemoryCommandLLM = async (message: string, context?: MemoryClassifierContext): Promise<MemoryCommand> => {
     const apiKey = process.env.AI_API_KEY || MOCK_API_KEY;
     if (isMockKey(apiKey)) {
       throw new Error('AI API key not configured for memory routing.');
     }
 
-    const systemPrompt = `You are a classifier. Decide if the user is giving a memory instruction.
+    const previousContext = context?.lastAssistantResponse
+      ? `The AI just said: """${context.lastAssistantResponse.substring(0, 200)}"""\n`
+      : '';
+
+    const systemPrompt = `You are a classifier. Decide if the user is giving a memory instruction or continuing a conversation.
+
 Return JSON only with this schema:
 {"type":"remember|prefer|forget|clear|none","content":string}
+
 Rules:
-- Use "remember" for facts to store (content is the fact).
-- Use "prefer" for preferences (content is the preference).
+- Use "remember" ONLY when the user explicitly says "remember that..." or "save this fact..."
+- Use "prefer" ONLY when the user explicitly says "I prefer..." or "my preference is..."
 - Use "forget" to remove memory (content is what to forget).
 - Use "clear" to erase all memory (content can be empty string).
-- Use "none" when the user is not giving a memory instruction.`;
+- Use "none" when:
+  1. The user is answering a question or providing information the AI just asked for
+  2. The user is providing contact/identifying information (phone, email, ID) for a lookup
+  3. The user is having a normal conversation without explicit memory intent
+  4. The user provides a fact AS PART of answering a question or completing a task`;
 
-    const userPrompt = `Message: """${message}"""`;
+    const userPrompt = `${previousContext}Message: """${message}"""`;
 
     const response = await fetch(`https://api.apifree.ai/v1/chat/completions`, {
       method: 'POST',
@@ -2657,7 +2676,7 @@ CLINICAL DENTAL EXPERTISE:
 
 INTELLIGENCE GUIDELINES:
 - INTERNAL BRAINSTORMING: For every request, silently brainstorm the required steps, potential data needs, and clinical implications. Do not share this brainstorm with the user.
-- PATIENT IDENTIFICATION: Each patient has a human-readable Patient ID (field `pid` in patient objects, e.g. "PAT-00001"). Staff often refer to patients by this ID in addition to patient names. When a user asks about a patient by ID number, use the `pid` field from the Practice Data patient list to identify them. Display this ID when referencing specific patients so staff can easily locate them in the system.
+- PATIENT IDENTIFICATION: Each patient has a human-readable Patient ID (field pid in patient objects, e.g. "PAT-00001"). Staff often refer to patients by this ID in addition to patient names. When a user asks about a patient by ID number, use the pid field from the Practice Data patient list to identify them. Display this ID when referencing specific patients so staff can easily locate them in the system.
 - NO HALLUCINATION: Never invent patient data, treatment costs, or stock levels. If data is not in the "Practice Data" provided, state that you don't know or ask for clarification.
 - BE PROACTIVE: Use clinical_insights and operational_insights to offer advice without being asked.
 - ANALYZE: Don't just list data; tell the user what it means (e.g., "3 patients are overdue for checkups, would you like me to find their contact info?").
@@ -3679,7 +3698,8 @@ I can provide guidance on:
             helpfulCount: 0,
             notHelpfulCount: 0,
             lastFeedbackTime: null
-          }
+          },
+          pendingTask: null
         });
         setInputMessage('');
 
@@ -3706,7 +3726,8 @@ I can provide guidance on:
             helpfulCount: 0,
             notHelpfulCount: 0,
             lastFeedbackTime: null
-          }
+          },
+          pendingTask: null
         });
       } finally {
         setIsLoading(false);
@@ -3734,34 +3755,64 @@ I can provide guidance on:
       ].some(keyword => lowerUserContent.includes(keyword));
 
     try {
+      // Build memory classifier context from conversation state
+      const memoryClassifierContext: MemoryClassifierContext = {
+        lastUserMessage: conversationContext.lastUserMessage,
+        lastAssistantResponse: conversationContext.lastAssistantResponse,
+        pendingConfirmation: conversationContext.pendingConfirmation,
+        currentWorkflow: conversationContext.currentWorkflow,
+        hasPendingTask: conversationContext.pendingTask !== null
+      };
+
       // Update memory from this user message (LLM-assisted routing)
       let memoryCommand: MemoryCommand = { type: 'none' };
       try {
-        memoryCommand = await classifyMemoryCommandLLM(userMessage.content);
+        memoryCommand = await classifyMemoryCommandLLM(userMessage.content, memoryClassifierContext);
       } catch (error) {
         console.error('Memory routing failed, using fallback parser:', error);
-        memoryCommand = parseMemoryCommand(userMessage.content);
+        memoryCommand = parseMemoryCommand(userMessage.content, memoryClassifierContext);
       }
       const updatedProfile = updateMemoryFromUserMessage(assistantMemory, userMessage.content);
       const memoryResult = applyMemoryCommand(updatedProfile, memoryCommand);
       memoryDirtyRef.current = true;
       setAssistantMemory(memoryResult.profile);
 
-      // Handle explicit memory commands locally (no AI call)
+      // Smarter memory handling: don't short-circuit if the AI needs to use this info
       if (memoryCommand.type !== 'none') {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: memoryResult.response || '✅ Memory updated.',
-          timestamp: new Date()
-        };
+        // Check if there's an active task context that needs this info
+        const hasActiveTask = conversationContext.pendingTask !== null ||
+          conversationContext.lastAssistantResponse?.includes('?') ||
+          conversationContext.pendingConfirmation;
 
-        const finalMessages = [...updatedMessages, assistantMessage];
-        setMessages(finalMessages);
-        saveSession(finalMessages);
+        if (!hasActiveTask) {
+          // Only short-circuit for explicit memory commands when there's no pending task
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: memoryResult.response || '✅ Memory updated.',
+            timestamp: new Date()
+          };
 
-        setIsLoading(false);
-        return;
+          const finalMessages = [...updatedMessages, assistantMessage];
+          setMessages(finalMessages);
+          saveSession(finalMessages);
+
+          setIsLoading(false);
+          return;
+        }
+        // If there IS a pending task, silently save memory but continue processing
+        // (Don't return early - fall through to the AI call below)
+        const memoryContent = memoryCommand.type !== 'clear' ? (memoryCommand).content : 'memory';
+        console.log('Memory saved silently while continuing task processing:', memoryContent);
+      } else {
+        // Even for 'none' commands, check if there's memoizable content
+        const memoizableContent = extractMemoizableContent(assistantMemory, userMessage.content, memoryClassifierContext);
+        if (memoizableContent) {
+          // Silently remember useful info (like phone numbers) without interrupting
+          const updatedWithSilentMemory = silentlyRememberFact(assistantMemory, memoizableContent);
+          setAssistantMemory(updatedWithSilentMemory);
+          memoryDirtyRef.current = true;
+        }
       }
 
       let aiResponse = await callAICompletionAPI(userMessage.content, messages);
@@ -5535,7 +5586,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                                     helpfulCount: 0,
                                     notHelpfulCount: 0,
                                     lastFeedbackTime: null
-                                  }
+                                  },
+                                  pendingTask: null
                                 });
                               }
                               lastSpeechTranscriptRef.current = '';
