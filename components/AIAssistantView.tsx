@@ -5302,7 +5302,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           </div>
 
           <div className="flex-1 overflow-hidden">
-            <div className="h-full overflow-y-auto px-4 py-5 lg:px-6">
+            <div className="h-full overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
               <div className="w-full space-y-4">
                 {apiStatus === 'mock' && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -5344,7 +5344,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       )}
                       
                       <div
-                      className={`group max-w-[min(100%,76rem)] rounded-2xl px-5 py-4 shadow-sm transition ${
+                      className={`group max-w-[min(100%,76rem)] rounded-2xl px-4 sm:px-5 py-3 sm:py-4 shadow-sm transition ${
                           message.role === 'user'
                             ? 'bg-indigo-600 text-white'
                             : 'border border-gray-200 bg-white text-gray-900'
@@ -5488,7 +5488,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           </div>
 
           {/* Input Area */}
-          <div className="border-t border-gray-200 bg-white px-4 py-4 lg:px-6">
+          <div className="border-t border-gray-200 bg-white px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
             <div className="w-full">
               <div className="rounded-xl border border-gray-200 bg-white p-3">
                 <div className="flex flex-col gap-3 md:flex-row">
@@ -5498,7 +5498,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyDown={handleKeyPress}
                     placeholder={inputPlaceholder}
-                    className="min-h-[72px] flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                    className="min-h-\[60px\] sm:min-h-\[72px\] flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                     rows={2}
                     disabled={isLoading || isListening}
                   />
@@ -5605,7 +5605,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             onClick={() => setShowChatSidebar(false)}
             aria-label="Close chat history"
           />
-          <aside className="relative z-10 flex h-full w-full max-w-sm flex-col bg-white shadow-2xl animate-slide-in-right">
+          <aside className="relative z-10 flex h-full w-full max-w-sm max-sm:max-w-full flex-col bg-white shadow-2xl animate-slide-in-right">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">AI Chats</h3>
@@ -5685,7 +5685,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
       {/* Help Modal */}
       {showHelpModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
@@ -5723,7 +5723,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
       {/* Memory Panel */}
       {showMemoryPanel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">

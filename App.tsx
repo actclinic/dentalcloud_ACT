@@ -2890,7 +2890,7 @@ const App: React.FC = () => {
       </aside>
       )}
 
-      <main className={isDoctor ? "flex min-w-0 flex-1 flex-col p-0 pb-32" : isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 lg:h-screen" : "flex-1 min-w-0 p-3 md:p-5"}>
+      <main className={isDoctor ? "flex min-w-0 flex-1 flex-col p-0 pb-32" : isWorkspaceView ? "flex min-w-0 flex-1 flex-col p-0 lg:h-screen overflow-hidden" : "flex-1 min-w-0 p-3 md:p-5"}>
         <div className={isDoctor || isWorkspaceView ? "flex min-h-0 flex-1 flex-col" : "w-full"}>
           <Suspense fallback={<div className="flex justify-center p-20"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>}>
             {currentView === 'dashboard' && canAccessView('dashboard') && (
