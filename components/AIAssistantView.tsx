@@ -1886,7 +1886,7 @@ Need more detailed help?
       // Medium context for action queries with token constraints
       return {
         ...baseData,
-        patients: activePatients.slice(0, 10).map(p => ({ i: p.id, n: p.name.substring(0, 20), ph: p.phone, loc: p.location_id })),
+        patients: activePatients.slice(0, 10).map(p => ({ i: p.id, pid: p.patient_unique_id, n: p.name.substring(0, 20), ph: p.phone, loc: p.location_id })),
         doctors: activeDoctors.slice(0, 8).map(d => ({ i: d.id, n: d.name, s: d.specialization, loc: d.location_id })),
         medicines: activeMedicines.slice(0, 10).map(m => ({ i: m.id, n: m.name.substring(0, 25), s: m.stock, loc: m.location_id }))
       };
@@ -2060,7 +2060,8 @@ Need more detailed help?
         doctors_free_today: activeDoctors.filter(d => !activeAppointments.some(a => a.doctor_id === d.id && a.date === today)).map(d => d.name)
       },
       patients: activePatients.slice(0, 25).map(p => ({ 
-        i: p.id, 
+        i: p.id,
+        pid: p.patient_unique_id,
         n: p.name, 
         ph: p.phone, 
         b: p.balance,
@@ -2656,6 +2657,7 @@ CLINICAL DENTAL EXPERTISE:
 
 INTELLIGENCE GUIDELINES:
 - INTERNAL BRAINSTORMING: For every request, silently brainstorm the required steps, potential data needs, and clinical implications. Do not share this brainstorm with the user.
+- PATIENT IDENTIFICATION: Each patient has a human-readable Patient ID (field `pid` in patient objects, e.g. "PAT-00001"). Staff often refer to patients by this ID in addition to patient names. When a user asks about a patient by ID number, use the `pid` field from the Practice Data patient list to identify them. Display this ID when referencing specific patients so staff can easily locate them in the system.
 - NO HALLUCINATION: Never invent patient data, treatment costs, or stock levels. If data is not in the "Practice Data" provided, state that you don't know or ask for clarification.
 - BE PROACTIVE: Use clinical_insights and operational_insights to offer advice without being asked.
 - ANALYZE: Don't just list data; tell the user what it means (e.g., "3 patients are overdue for checkups, would you like me to find their contact info?").
