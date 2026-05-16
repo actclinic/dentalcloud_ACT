@@ -125,19 +125,19 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-bold text-gray-900">Treatment Distribution</h3>
         <p className="mb-3 mt-1 text-xs text-gray-500">Most performed treatments as a pie chart.</p>
-        <div className="h-64 w-full">
+        <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
               <Tooltip />
-              <Legend />
+              <Legend verticalAlign="bottom" height={36} />
               <Pie
                 data={chartData}
                 dataKey="count"
                 nameKey="name"
                 cx="50%"
-                cy="50%"
-                outerRadius={90}
-                label
+                cy="42%"
+                outerRadius={80}
+                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
               >
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${entry.name}-${index}`} fill={pieColors[index % pieColors.length]} />
