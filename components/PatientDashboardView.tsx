@@ -734,7 +734,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                   </div>
                   <div>
                     <h3 className="text-base font-semibold text-gray-900">{patient.name}</h3>
-                    <p className="text-xs text-gray-500">ID: {patient.patient_unique_id || patient.id.substring(0, 8)}</p>
+                    <p className="text-xs text-gray-500">ID: {(() => {
+                      const pid = patient.patient_unique_id || patient.id;
+                      if (pid.length <= 5) return pid;
+                      return <>{pid.substring(0, 5)}... <span className="text-indigo-500 hover:underline cursor-pointer" onClick={() => alert(pid)}>see more</span></>;
+                    })()}</p>
                   </div>
                 </div>
 

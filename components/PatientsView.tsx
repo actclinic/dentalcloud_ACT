@@ -71,6 +71,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [detailPatient, setDetailPatient] = useState<Patient | null>(null);
+  const [showFullPatientId, setShowFullPatientId] = useState(false);
   const [openActionMenuPatientId, setOpenActionMenuPatientId] = useState<string | null>(null);
   const [treatmentRecordsByPatientId, setTreatmentRecordsByPatientId] = useState<Record<string, ClinicalRecord[]>>({});
   const [treatmentRecordsLoadingForPatientId, setTreatmentRecordsLoadingForPatientId] = useState<string | null>(null);
@@ -430,7 +431,16 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <p className="text-gray-500">Patient ID</p>
-                      <p className="font-semibold text-gray-900">{detailPatient.patient_unique_id || 'N/A'}</p>
+                      <p className="font-semibold text-gray-900">
+                        {(() => {
+                          const pid = detailPatient.patient_unique_id || 'N/A';
+                          if (pid === 'N/A' || pid.length <= 5) return pid;
+                          if (showFullPatientId) {
+                            return <>{pid} <button onClick={() => setShowFullPatientId(false)} className="text-xs text-indigo-600 hover:underline">less</button></>;
+                          }
+                          return <>{pid.substring(0, 5)}... <button onClick={() => setShowFullPatientId(true)} className="text-xs text-indigo-600 hover:underline">see more</button></>;
+                        })()}
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Age</p>

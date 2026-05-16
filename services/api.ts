@@ -597,7 +597,7 @@ export const api = {
   patients: {
     getAll: async (locationId?: string): Promise<Patient[]> => {
       try {
-        const baseColumns = 'id, location_id, name, email, phone, age, address, city, patient_type, balance, loyalty_points, medical_history, created_at, patient_auth(id, username)';
+        const baseColumns = 'id, patient_unique_id, location_id, name, email, phone, age, address, city, patient_type, balance, loyalty_points, medical_history, created_at, patient_auth(id, username)';
         const buildQuery = (regionColumn: 'township' | 'state_region') => {
           let query = supabase
             .from('patients')
@@ -963,7 +963,7 @@ export const api = {
 
           const { data: patientData, error: pError } = await supabase
             .from('patients')
-            .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
+            .select('id, patient_unique_id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
             .eq('id', authMatch.patient_id)
             .maybeSingle();
 
@@ -983,7 +983,7 @@ export const api = {
 
           const { data: patientRows, error: patientRowsError } = await supabase
             .from('patients')
-            .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at');
+            .select('id, patient_unique_id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at');
 
           if (patientRowsError) {
             console.warn('Patient normalized phone lookup error:', patientRowsError.message);
@@ -1021,7 +1021,7 @@ export const api = {
         // 3. Fallback: allow legacy login by patient name
         const { data: patientData, error: pError } = await supabase
           .from('patients')
-          .select('id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
+          .select('id, patient_unique_id, location_id, name, email, phone, balance, loyalty_points, medical_history, created_at')
           .eq('name', trimmedIdentifier)
           .maybeSingle();
 
