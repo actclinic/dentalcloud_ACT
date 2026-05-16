@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown, Eye, EyeOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall, Location } from '../types';
@@ -1155,6 +1156,7 @@ How can I assist you today?`,
   const [helpContent, setHelpContent] = useState<string>('');
   const [assistantMemory, setAssistantMemory] = useState<AssistantMemoryProfile>(() => loadAssistantMemory());
   const [showMemoryPanel, setShowMemoryPanel] = useState<boolean>(false);
+  const [showMemoryDetails, setShowMemoryDetails] = useState<boolean>(false);
   const [showChatSidebar, setShowChatSidebar] = useState<boolean>(false);
   const [memoryMarkdown, setMemoryMarkdown] = useState<string>(() => buildMemoryMarkdown(loadAssistantMemory()));
   const [memoryLoaded, setMemoryLoaded] = useState<boolean>(false);
@@ -5222,7 +5224,12 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Loli AI Assistant</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-900">Loli AI Assistant</h2>
+                  <span className="inline-flex items-center rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white shadow-sm">
+                    v2.0
+                  </span>
+                </div>
                 <p className="text-sm text-slate-500">Ask questions, review records, or run clinic actions from one workspace.</p>
               </div>
             </div>
@@ -5775,44 +5782,245 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         </div>
       )}
 
-      {/* Memory Panel */}
+      {/* Memory Panel - Animated */}
       {showMemoryPanel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <Brain className="w-7 h-7 text-indigo-600" />
-                Assistant Memory
-              </h2>
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+          onClick={() => {
+            setShowMemoryPanel(false);
+            setShowMemoryDetails(false);
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85, y: 30 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.85, y: 30 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 via-white to-purple-50/50"
+            >
+              <div className="flex items-center gap-3">
+                {/* Animated Brain Icon */}
+                <motion.div
+                  animate={{ scale: [1, 1.12, 1, 1.08, 1] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                  className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg"
+                >
+                  <Brain className="w-5 h-5" />
+                  {/* Pulse ring */}
+                  <motion.span
+                    className="absolute inset-0 rounded-xl border-2 border-indigo-400"
+                    animate={{ opacity: [0, 0.6, 0], scale: [1, 1.35, 1.6] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
+                  />
+                </motion.div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Assistant Memory</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {assistantMemory.savedFacts.length + assistantMemory.preferences.length} stored items
+                  </p>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
-                <button
+                {/* Details Toggle Button */}
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowMemoryDetails(!showMemoryDetails)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    showMemoryDetails
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  title={showMemoryDetails ? 'Hide details' : 'Show details'}
+                >
+                  {showMemoryDetails ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showMemoryDetails ? 'Hide Details' : 'Details'}
+                </motion.button>
+                {/* Clear Button */}
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     memoryDirtyRef.current = true;
                     setAssistantMemory(clearAssistantMemory());
+                    setShowMemoryDetails(false);
                   }}
-                  className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                  className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-lg text-xs font-medium hover:from-red-600 hover:to-rose-700 transition-colors shadow-sm"
                   title="Clear memory"
                 >
                   Clear
-                </button>
-                <button
-                  onClick={() => setShowMemoryPanel(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    setShowMemoryPanel(false);
+                    setShowMemoryDetails(false);
+                  }}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                   title="Close memory panel"
                 >
-                  <X className="w-6 h-6 text-gray-500" />
-                </button>
+                  <X className="w-5 h-5 text-gray-500" />
+                </motion.button>
               </div>
-            </div>
+            </motion.div>
 
+            {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="prose max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {memoryMarkdown}
-                </ReactMarkdown>
-              </div>
+              {/* Memory Status Cards */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6"
+              >
+                {/* Facts Card */}
+                <motion.div
+                  whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(99,102,241,0.12)' }}
+                  className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white p-4"
+                >
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <motion.div
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100"
+                    >
+                      <Brain className="w-4 h-4 text-indigo-600" />
+                    </motion.div>
+                    <span className="text-sm font-semibold text-gray-700">Facts</span>
+                  </div>
+                  <p className="text-2xl font-bold text-indigo-600">{assistantMemory.savedFacts.length}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">remembered items</p>
+                </motion.div>
+
+                {/* Preferences Card */}
+                <motion.div
+                  whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(168,85,247,0.12)' }}
+                  className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/80 to-white p-4"
+                >
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <motion.div
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100"
+                    >
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                    </motion.div>
+                    <span className="text-sm font-semibold text-gray-700">Preferences</span>
+                  </div>
+                  <p className="text-2xl font-bold text-purple-600">{assistantMemory.preferences.length}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">saved preferences</p>
+                </motion.div>
+
+                {/* Frequent Requests Card */}
+                <motion.div
+                  whileHover={{ y: -2, boxShadow: '0 8px 25px rgba(236,72,153,0.12)' }}
+                  className="rounded-xl border border-pink-100 bg-gradient-to-br from-pink-50/80 to-white p-4"
+                >
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <motion.div
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-pink-100"
+                    >
+                      <MessageCircle className="w-4 h-4 text-pink-600" />
+                    </motion.div>
+                    <span className="text-sm font-semibold text-gray-700">Requests</span>
+                  </div>
+                  <p className="text-2xl font-bold text-pink-600">{assistantMemory.frequentRequests.length}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">frequent queries</p>
+                </motion.div>
+              </motion.div>
+
+              {/* Heartbeat Activity Animation */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="rounded-xl border border-gray-100 bg-gradient-to-br from-gray-50 to-white p-5 mb-6"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  {/* Heartbeat pulse dots */}
+                  <div className="flex items-center gap-1">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <motion.div
+                        key={i}
+                        className="h-2 w-2 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500"
+                        animate={{
+                          scale: [0.6, 1.2, 0.6],
+                          opacity: [0.4, 1, 0.4],
+                        }}
+                        transition={{
+                          duration: 1.2,
+                          repeat: Infinity,
+                          delay: i * 0.2,
+                          ease: 'easeInOut',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">Memory is active</span>
+                  <motion.span
+                    className="text-[10px] text-gray-400"
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    {assistantMemory.updatedAt
+                      ? `Last updated ${new Date(assistantMemory.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Ready'}
+                  </motion.span>
+                </div>
+
+                {/* Memory sync progress bar */}
+                <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500"
+                    animate={{
+                      width: ['0%', '40%', '70%', '45%', '80%', '50%', '90%', '60%', '100%'],
+                    }}
+                    transition={{
+                      duration: 6,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }}
+                  />
+                </div>
+              </motion.div>
+
+              {/* Details Markdown */}
+              <AnimatePresence>
+                {showMemoryDetails && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-gray-400" />
+                        Full Memory Record
+                      </h3>
+                      <div className="prose prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {memoryMarkdown}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
     </div>
