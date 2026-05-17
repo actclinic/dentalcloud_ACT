@@ -1170,6 +1170,8 @@ How can I assist you today?`,
   const [assistantMemory, setAssistantMemory] = useState<AssistantMemoryProfile>(() => loadAssistantMemory());
   const [showMemoryPanel, setShowMemoryPanel] = useState<boolean>(false);
   const [showMemoryDetails, setShowMemoryDetails] = useState<boolean>(false);
+  const [memoryClearing, setMemoryClearing] = useState<boolean>(false);
+  const [memoryCleared, setMemoryCleared] = useState<boolean>(false);
   const [showChatSidebar, setShowChatSidebar] = useState<boolean>(false);
   const [memoryMarkdown, setMemoryMarkdown] = useState<string>(() => buildMemoryMarkdown(loadAssistantMemory()));
   const [memoryLoaded, setMemoryLoaded] = useState<boolean>(false);
@@ -5862,14 +5864,34 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
-                    memoryDirtyRef.current = true;
-                    setAssistantMemory(clearAssistantMemory());
-                    setShowMemoryDetails(false);
+                    if (memoryClearing) return;
+                    setMemoryClearing(true);
+                    setTimeout(() => {
+                      memoryDirtyRef.current = true;
+                      setAssistantMemory(clearAssistantMemory());
+                      setShowMemoryDetails(false);
+                      setMemoryClearing(false);
+                      setMemoryCleared(true);
+                      setTimeout(() => setMemoryCleared(false), 2000);
+                    }, 700);
                   }}
                   className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-lg text-xs font-medium hover:from-red-600 hover:to-rose-700 transition-colors shadow-sm"
                   title="Clear memory"
                 >
-                  Clear
+                  {memoryClearing ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                        className="inline-block"
+                      >
+                        ⟳
+                      </motion.span>
+                      Clearing
+                    </span>
+                  ) : (
+                    'Clear'
+                  )}
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -6001,7 +6023,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                         x: [0, -800],
                       }}
                       transition={{
-                        duration: 8,
+                        duration: 12,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
@@ -6019,7 +6041,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                         x: [0, -800],
                       }}
                       transition={{
-                        duration: 8,
+                        duration: 12,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
@@ -6048,6 +6070,89 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   </motion.span>
                 </div>
               </motion.div>
+
+              {/* Memory Clear Animation Overlay */}
+              <AnimatePresence>
+                {memoryClearing && (
+                  <motion.div
+                    initial={{ opacity: 0, scaleX: 0 }}
+                    animate={{ opacity: 1, scaleX: 1 }}
+                    exit={{ opacity: 0, scaleX: 0 }}
+                    transition={{ duration: 0.4, ease: 'easeInOut', origin: 'left' }}
+                    className="relative overflow-hidden rounded-xl bg-gradient-to-r from-red-500/10 via-rose-500/20 to-red-500/10 mb-6"
+                    style={{ height: '120px' }}
+                  >
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                      animate={{ x: ['-100%', '200%'] }}
+                      transition={{ duration: 0.7, ease: 'easeInOut', repeat: 1 }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex items-center gap-3">
+                        <motion.div
+                          animate={{ scale: [1, 1.3, 1], rotate: [0, 10, -10, 0] }}
+                          transition={{ duration: 0.5, repeat: 1 }}
+                          className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100"
+                        >
+                          <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </motion.div>
+                        <div>
+                          <p className="text-sm font-semibold text-red-700">Clearing memory...</p>
+                          <p className="text-xs text-red-500/70 mt-0.5">Removing all stored facts, preferences, and requests</p>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Memory Cleared Success Banner */}
+              <AnimatePresence>
+                {memoryCleared && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.9 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 p-4 mb-6 shadow-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.1 }}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100"
+                      >
+                        <motion.svg
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.4, delay: 0.2 }}
+                          className="w-5 h-5 text-emerald-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <motion.path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2.5}
+                            d="M5 13l4 4L19 7"
+                            initial={{ pathLength: 0 }}
+                            animate={{ pathLength: 1 }}
+                            transition={{ duration: 0.4, delay: 0.2 }}
+                          />
+                        </motion.svg>
+                      </motion.div>
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-800">Memory cleared!</p>
+                        <p className="text-xs text-emerald-600/70 mt-0.5">All stored data has been reset successfully.</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Details Markdown */}
               <AnimatePresence>
