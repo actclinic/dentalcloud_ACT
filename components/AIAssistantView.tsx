@@ -140,6 +140,19 @@ const customStyles = `
       border-color: rgba(99, 102, 241, 0.6);
     }
   }
+
+  @keyframes ecg-pulse {
+    0%, 100% {
+      box-shadow: 0 0 4px rgba(16, 185, 129, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.7);
+    }
+  }
+
+  .animate-ecg-pulse {
+    animation: ecg-pulse 1.2s ease-in-out infinite;
+  }
   
   .animate-fade-in-up {
     animation: fade-in-up 0.3s ease-out forwards;
@@ -5940,58 +5953,99 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 </motion.div>
               </motion.div>
 
-              {/* Heartbeat Activity Animation */}
+              {/* ECG Heart Rate Monitor Animation */}
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="rounded-xl border border-gray-100 bg-gradient-to-br from-gray-50 to-white p-5 mb-6"
+                initial={{ opacity: 0, scaleY: 0.95 }}
+                animate={{ opacity: 1, scaleY: 1 }}
+                transition={{ delay: 0.2, duration: 0.4, ease: 'easeOut' }}
+                className="relative rounded-xl border border-emerald-800/30 bg-gradient-to-br from-slate-900 to-slate-800 p-5 mb-6 overflow-hidden shadow-lg"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  {/* Heartbeat pulse dots */}
-                  <div className="flex items-center gap-1">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <motion.div
-                        key={i}
-                        className="h-2 w-2 rounded-full bg-gradient-to-r from-indigo-400 to-purple-500"
-                        animate={{
-                          scale: [0.6, 1.2, 0.6],
-                          opacity: [0.4, 1, 0.4],
-                        }}
-                        transition={{
-                          duration: 1.2,
-                          repeat: Infinity,
-                          delay: i * 0.2,
-                          ease: 'easeInOut',
-                        }}
-                      />
-                    ))}
+                {/* Grid overlay */}
+                <svg
+                  className="absolute inset-0 w-full h-full opacity-[0.06] pointer-events-none"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <pattern id="ecg-grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                      <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#10b981" strokeWidth="0.5" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#ecg-grid)" />
+                </svg>
+
+                {/* Scanline overlay */}
+                <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+                  style={{
+                    background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(16,185,129,0.3) 2px, rgba(16,185,129,0.3) 4px)',
+                  }}
+                />
+
+                {/* ECG Waveform */}
+                <div className="relative h-20 w-full mb-2">
+                  <motion.svg
+                    className="w-full h-full"
+                    viewBox="0 0 800 80"
+                    preserveAspectRatio="none"
+                  >
+                    {/* First waveform cycle */}
+                    <motion.path
+                      d="M0,40 L20,40 Q23,38 26,38 Q29,38 32,40 L42,40 L44,43 L46,8 L48,72 L50,40 L60,40 Q63,36 66,36 Q69,36 72,40 L90,40 L95,40 L97,38 L99,38 L101,22 L103,58 L105,38 L107,38 L109,40 L125,40 Q128,38 131,38 Q134,38 137,40 L147,40 L149,43 L151,8 L153,72 L155,40 L165,40 Q168,36 171,36 Q174,36 177,40 L195,40"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ filter: 'drop-shadow(0 0 3px rgba(16,185,129,0.5))' }}
+                      animate={{
+                        x: [0, -200],
+                      }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: 'linear',
+                      }}
+                    />
+                    {/* Second waveform for seamless loop */}
+                    <motion.path
+                      d="M195,40 L215,40 Q218,38 221,38 Q224,38 227,40 L237,40 L239,43 L241,8 L243,72 L245,40 L255,40 Q258,36 261,36 Q264,36 267,40 L285,40 L290,40 L292,38 L294,38 L296,22 L298,58 L300,38 L302,38 L304,40 L320,40 Q323,38 326,38 Q329,38 332,40 L342,40 L344,43 L346,8 L348,72 L350,40 L360,40 Q363,36 366,36 Q369,36 372,40 L390,40"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ filter: 'drop-shadow(0 0 3px rgba(16,185,129,0.5))' }}
+                      animate={{
+                        x: [0, -200],
+                      }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: 'linear',
+                      }}
+                    />
+                  </motion.svg>
+                </div>
+
+                {/* Status bar */}
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-2.5">
+                    <motion.div
+                      className="w-2 h-2 rounded-full bg-emerald-400"
+                      animate={{ opacity: [1, 0.3, 1], boxShadow: ['0 0 4px rgba(16,185,129,0.3)', '0 0 12px rgba(16,185,129,0.7)', '0 0 4px rgba(16,185,129,0.3)'] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    <span className="text-sm font-medium text-emerald-400">Memory is active</span>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">Memory is active</span>
                   <motion.span
-                    className="text-[10px] text-gray-400"
-                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    className="text-[10px] text-emerald-500/60 font-mono tracking-wider"
+                    animate={{ opacity: [0.6, 1, 0.6] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
                     {assistantMemory.updatedAt
-                      ? `Last updated ${new Date(assistantMemory.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      : 'Ready'}
+                      ? '♥ Last sync ' + new Date(assistantMemory.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : '♥ System Ready'}
                   </motion.span>
-                </div>
-
-                {/* Memory sync progress bar */}
-                <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                  <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500"
-                    animate={{
-                      width: ['0%', '40%', '70%', '45%', '80%', '50%', '90%', '60%', '100%'],
-                    }}
-                    transition={{
-                      duration: 6,
-                      repeat: Infinity,
-                      ease: 'easeInOut',
-                    }}
-                  />
                 </div>
               </motion.div>
 
