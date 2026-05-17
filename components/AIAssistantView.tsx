@@ -5941,7 +5941,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   <div className="flex items-center gap-2.5 mb-2">
                     <motion.div
                       animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
+                      transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
                       className="flex h-8 w-8 items-center justify-center rounded-lg bg-pink-100"
                     >
                       <MessageCircle className="w-4 h-4 text-pink-600" />
@@ -5990,7 +5990,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   >
                     {/* First waveform cycle */}
                     <motion.path
-                      d="M0,40 L20,40 Q23,38 26,38 Q29,38 32,40 L42,40 L44,43 L46,8 L48,72 L50,40 L60,40 Q63,36 66,36 Q69,36 72,40 L90,40 L95,40 L97,38 L99,38 L101,22 L103,58 L105,38 L107,38 L109,40 L125,40 Q128,38 131,38 Q134,38 137,40 L147,40 L149,43 L151,8 L153,72 L155,40 L165,40 Q168,36 171,36 Q174,36 177,40 L195,40"
+                      d="M0,40L20,40 Q23,38 26,38 Q29,38 32,40 L42,40 L44,43 L46,8 L48,72 L50,40 L60,40 Q63,36 66,36 Q69,36 72,40 L100,40L120,40 Q123,38 126,38 Q129,38 132,40 L142,40 L144,43 L146,8 L148,72 L150,40 L160,40 Q163,36 166,36 Q169,36 172,40 L200,40L220,40 Q223,38 226,38 Q229,38 232,40 L242,40 L244,43 L246,8 L248,72 L250,40 L260,40 Q263,36 266,36 Q269,36 272,40 L300,40L320,40 Q323,38 326,38 Q329,38 332,40 L342,40 L344,43 L346,8 L348,72 L350,40 L360,40 Q363,36 366,36 Q369,36 372,40 L400,40L420,40 Q423,38 426,38 Q429,38 432,40 L442,40 L444,43 L446,8 L448,72 L450,40 L460,40 Q463,36 466,36 Q469,36 472,40 L500,40L520,40 Q523,38 526,38 Q529,38 532,40 L542,40 L544,43 L546,8 L548,72 L550,40 L560,40 Q563,36 566,36 Q569,36 572,40 L600,40L620,40 Q623,38 626,38 Q629,38 632,40 L642,40 L644,43 L646,8 L648,72 L650,40 L660,40 Q663,36 666,36 Q669,36 672,40 L700,40L720,40 Q723,38 726,38 Q729,38 732,40 L742,40 L744,43 L746,8 L748,72 L750,40 L760,40 Q763,36 766,36 Q769,36 772,40 L800,40"
                       fill="none"
                       stroke="#10b981"
                       strokeWidth="2"
@@ -5998,17 +5998,17 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       strokeLinejoin="round"
                       style={{ filter: 'drop-shadow(0 0 3px rgba(16,185,129,0.5))' }}
                       animate={{
-                        x: [0, -200],
+                        x: [0, -800],
                       }}
                       transition={{
-                        duration: 3,
+                        duration: 4,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
                     />
                     {/* Second waveform for seamless loop */}
                     <motion.path
-                      d="M195,40 L215,40 Q218,38 221,38 Q224,38 227,40 L237,40 L239,43 L241,8 L243,72 L245,40 L255,40 Q258,36 261,36 Q264,36 267,40 L285,40 L290,40 L292,38 L294,38 L296,22 L298,58 L300,38 L302,38 L304,40 L320,40 Q323,38 326,38 Q329,38 332,40 L342,40 L344,43 L346,8 L348,72 L350,40 L360,40 Q363,36 366,36 Q369,36 372,40 L390,40"
+                      d="M800,40L820,40 Q823,38 826,38 Q829,38 832,40 L842,40 L844,43 L846,8 L848,72 L850,40 L860,40 Q863,36 866,36 Q869,36 872,40 L900,40L920,40 Q923,38 926,38 Q929,38 932,40 L942,40 L944,43 L946,8 L948,72 L950,40 L960,40 Q963,36 966,36 Q969,36 972,40 L1000,40L1020,40 Q1023,38 1026,38 Q1029,38 1032,40 L1042,40 L1044,43 L1046,8 L1048,72 L1050,40 L1060,40 Q1063,36 1066,36 Q1069,36 1072,40 L1100,40L1120,40 Q1123,38 1126,38 Q1129,38 1132,40 L1142,40 L1144,43 L1146,8 L1148,72 L1150,40 L1160,40 Q1163,36 1166,36 Q1169,36 1172,40 L1200,40L1220,40 Q1223,38 1226,38 Q1229,38 1232,40 L1242,40 L1244,43 L1246,8 L1248,72 L1250,40 L1260,40 Q1263,36 1266,36 Q1269,36 1272,40 L1300,40L1320,40 Q1323,38 1326,38 Q1329,38 1332,40 L1342,40 L1344,43 L1346,8 L1348,72 L1350,40 L1360,40 Q1363,36 1366,36 Q1369,36 1372,40 L1400,40L1420,40 Q1423,38 1426,38 Q1429,38 1432,40 L1442,40 L1444,43 L1446,8 L1448,72 L1450,40 L1460,40 Q1463,36 1466,36 Q1469,36 1472,40 L1500,40L1520,40 Q1523,38 1526,38 Q1529,38 1532,40 L1542,40 L1544,43 L1546,8 L1548,72 L1550,40 L1560,40 Q1563,36 1566,36 Q1569,36 1572,40 L1600,40"
                       fill="none"
                       stroke="#10b981"
                       strokeWidth="2"
@@ -6016,10 +6016,10 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       strokeLinejoin="round"
                       style={{ filter: 'drop-shadow(0 0 3px rgba(16,185,129,0.5))' }}
                       animate={{
-                        x: [0, -200],
+                        x: [0, -800],
                       }}
                       transition={{
-                        duration: 3,
+                        duration: 4,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
