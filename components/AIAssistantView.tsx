@@ -5941,7 +5941,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   <div className="flex items-center gap-2.5 mb-2">
                     <motion.div
                       animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
+                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
                       className="flex h-8 w-8 items-center justify-center rounded-lg bg-pink-100"
                     >
                       <MessageCircle className="w-4 h-4 text-pink-600" />
@@ -6001,7 +6001,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                         x: [0, -800],
                       }}
                       transition={{
-                        duration: 4,
+                        duration: 8,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
@@ -6019,7 +6019,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                         x: [0, -800],
                       }}
                       transition={{
-                        duration: 4,
+                        duration: 8,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
