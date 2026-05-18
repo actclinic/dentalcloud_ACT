@@ -277,7 +277,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 
         await html5QrCode.start(
           { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
+          {
+            fps: 10,
+            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+              // Responsive qrbox: use 65% of the smaller viewfinder dimension,
+              // capped at 280px to stay proportional on both mobile and desktop
+              const size = Math.min(
+                Math.min(viewfinderWidth, viewfinderHeight) * 0.65,
+                280
+              );
+              return { width: size, height: size };
+            },
+          },
           (decodedText) => {
             // Successfully scanned
             const rawId = decodePatientQR(decodedText);
@@ -1118,7 +1129,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       </Modal>
     )}
     {showQRScanner && (
-      <Modal title="Scan Patient QR Code" onClose={() => {
+      <Modal title="Scan Patient QR Code" maxWidthClassName="max-w-xl" onClose={() => {
         setShowQRScanner(false);
         setScannerError(null);
         // Stop any running scanner
@@ -1138,11 +1149,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               <p className="text-sm font-semibold text-red-700">{scannerError}</p>
             </div>
           )}
-          <div className="relative w-full overflow-hidden rounded-xl bg-gray-900 flex flex-col" style={{ minHeight: '300px' }}>
+          <div className="relative w-full overflow-hidden rounded-xl bg-gray-900 mx-auto" style={{ maxWidth: '520px', aspectRatio: '4 / 3' }}>
             <div
               ref={(el) => { if (!el) return; scannerRef.current = el; }}
-              className="w-full flex-1"
-              style={{ minHeight: '300px' }}
+              className="absolute inset-0 w-full h-full"
             />
             {/* Crosshair overlay */}
             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
