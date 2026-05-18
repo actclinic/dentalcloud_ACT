@@ -3088,7 +3088,7 @@ export const api = {
           .order('created_at', { ascending: false });
 
         if (locationId) {
-          query = query.eq('location_id', locationId);
+          query = query.or(`location_id.eq.${locationId},location_id.is.null`);
         }
 
         const { data, error } = await query;
