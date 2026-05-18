@@ -1138,10 +1138,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               <p className="text-sm font-semibold text-red-700">{scannerError}</p>
             </div>
           )}
-          <div className="relative w-full overflow-hidden rounded-xl bg-gray-900" style={{ minHeight: '300px' }}>
+          <div className="relative w-full overflow-hidden rounded-xl bg-gray-900 flex flex-col" style={{ minHeight: '300px' }}>
             <div
               ref={(el) => { if (!el) return; scannerRef.current = el; }}
-              className="w-full h-full absolute inset-0"
+              className="w-full flex-1"
               style={{ minHeight: '300px' }}
             />
             {/* Crosshair overlay */}
