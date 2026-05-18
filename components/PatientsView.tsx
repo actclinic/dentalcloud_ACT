@@ -1154,25 +1154,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               ref={(el) => { if (!el) return; scannerRef.current = el; }}
               className="absolute inset-0 w-full h-full"
             />
-            {/* Crosshair overlay */}
-            <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
-              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                  <mask id="scan-mask">
-                    <rect x="0" y="0" width="100" height="100" fill="white" />
-                    <rect x="22" y="22" width="56" height="56" rx="4" fill="black" />
-                  </mask>
-                </defs>
-                <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.45)" mask="url(#scan-mask)" />
-              </svg>
-              <div className="absolute w-[56%] h-[56%]">
-                <div className="absolute top-0 left-0 w-5 h-5 border-t-[3px] border-l-[3px] border-emerald-400 rounded-tl-sm" />
-                <div className="absolute top-0 right-0 w-5 h-5 border-t-[3px] border-r-[3px] border-emerald-400 rounded-tr-sm" />
-                <div className="absolute bottom-0 left-0 w-5 h-5 border-b-[3px] border-l-[3px] border-emerald-400 rounded-bl-sm" />
-                <div className="absolute bottom-0 right-0 w-5 h-5 border-b-[3px] border-r-[3px] border-emerald-400 rounded-br-sm" />
-                <div className="absolute left-[2px] right-[2px] h-[2px] bg-emerald-400/80 shadow-[0_0_8px_rgba(52,211,153,0.6)] animate-scan-line" />
-              </div>
-            </div>
+
           </div>
           <div className="flex justify-center">
             <button
