@@ -43,6 +43,7 @@ interface ClinicalViewProps {
   onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
   onUpdateAccount?: (patient: Patient, password: string) => void;
   onCreateAppointment?: (data: Partial<Appointment>) => Promise<void>;
+  appointments: Appointment[];
   appointmentTypes: AppointmentType[];
   loyaltyEnabled: boolean;
   compactToothSelector?: boolean;
@@ -80,6 +81,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onUpdatePatient,
   onUpdateAccount,
   onCreateAppointment,
+  appointments,
   appointmentTypes,
   loyaltyEnabled,
   compactToothSelector = false,
@@ -145,6 +147,23 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     }
     return [...appointmentTypeOptions, currentType];
   }, [appointmentTypeOptions, nextAppointmentForm.type]);
+  const bookedDoctorName = React.useMemo(() => {
+    if (!selectedPatient) return '';
+    const patientAppts = appointments.filter(
+      (apt) => apt.patient_id === selectedPatient.id && apt.doctor_name?.trim()
+    );
+    if (patientAppts.length === 0) return '';
+    // Sort by date descending (most recent first), then prefer future appointments
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const sorted = [...patientAppts].sort((a, b) => {
+      const aFuture = a.date >= todayStr ? 1 : 0;
+      const bFuture = b.date >= todayStr ? 1 : 0;
+      if (aFuture !== bFuture) return bFuture - aFuture; // future first
+      return b.date.localeCompare(a.date) || b.time.localeCompare(a.time);
+    });
+    return sorted[0].doctor_name?.trim() || '';
+  }, [selectedPatient, appointments]);
   const filteredTreatmentTypes = React.useMemo(() => {
     const query = treatmentSearchTerm.trim().toLowerCase();
     if (!query) return treatmentTypes;
@@ -733,9 +752,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                 <div>
                   <h4 className="font-bold text-gray-900 leading-tight">{selectedPatient.name}</h4>
                   <p className="text-xs text-gray-500 mt-1">{selectedPatient.phone}</p>
+                  {bookedDoctorName && (
+                    <p className="text-xs font-semibold text-indigo-600 mt-1.5 flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                      </svg>
+                      Booked with Dr. {bookedDoctorName}
+                    </p>
+                  )}
                 </div>
-             </div>
-             
+              </div>
              <div className="grid grid-cols-1 gap-3">
                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Outstanding Balance</p>
