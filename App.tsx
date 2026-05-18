@@ -4185,17 +4185,83 @@ const App: React.FC = () => {
         </Suspense>
       )}
 
-      {/* Service Deletion Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={showReceiptPrompt}
-        title="Generate Receipt"
-        message="Do you want to generate a receipt for this payment?"
-        confirmText="Yes"
-        cancelText="No"
-        type="info"
-        onConfirm={handleReceiptPromptYes}
-        onCancel={handleReceiptPromptNo}
-      />
+      {/* Enhanced Receipt Prompt Dialog - visual upgrade with payment success feedback */}
+
+      {showReceiptPrompt && (
+        <div className="fixed inset-0 bg-gray-900/70 backdrop-blur-xl z-50 flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full relative animate-scale-up overflow-hidden">
+            {/* Top accent bar */}
+            <div className="h-2 w-full bg-gradient-to-r from-emerald-400 via-green-500 to-teal-500" />
+
+            {/* Success header section */}
+            <div className="px-8 pt-8 pb-4 text-center">
+              {/* Animated success icon */}
+              <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-gradient-to-br from-emerald-100 to-green-200 flex items-center justify-center shadow-lg shadow-emerald-200">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Decorative sparkle dots */}
+              <div className="absolute top-24 left-11 w-2 h-2 rounded-full bg-emerald-300" />
+              <div className="absolute top-20 right-14 w-1.5 h-1.5 rounded-full bg-emerald-300" />
+              <div className="absolute top-28 right-8 w-1 h-1 rounded-full bg-emerald-400" />
+
+              <h3 className="text-2xl font-black text-gray-900 mb-2">Payment Collected!</h3>
+              <p className="text-sm text-emerald-700 font-semibold bg-emerald-50 rounded-full px-4 py-1.5 inline-block">
+                {formatCurrency(lastPaymentAmount, currency)} received
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="mx-8 border-t border-gray-100" />
+
+            {/* Message section */}
+            <div className="px-8 py-5">
+              <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-2xl p-5 border border-indigo-100">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-base font-bold text-gray-900 mb-1">Generate Receipt</p>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Would you like to print or save a receipt for this payment? This is the final step to complete the transaction.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="px-8 pb-8 flex gap-3">
+              <button
+                onClick={handleReceiptPromptNo}
+                className="flex-1 px-6 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Skip
+              </button>
+              <button
+                onClick={handleReceiptPromptYes}
+                className="flex-1 px-6 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-lg shadow-indigo-600/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Generate Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       <ConfirmDialog
         isOpen={deleteServiceConfirmOpen}
