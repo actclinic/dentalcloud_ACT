@@ -594,7 +594,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Doctor Earnings (Commission)</h3>
@@ -630,6 +629,51 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         )}
       </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Per-Treatment Commission Breakdown</h3>
+            <p className="text-xs text-gray-500">Individual treatment records with doctor commission in the selected range</p>
+          </div>
+          <span className="inline-flex items-center gap-2 text-xs text-gray-500">
+            <DollarSign className="w-4 h-4 text-emerald-500" />
+            Treatment Commission
+          </span>
+        </div>
+        {filteredTreatmentRecords.filter(r => r.doctorEarnings).length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No treatment records with commission in this range.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="text-left py-2 pr-4">Date</th>
+                  <th className="text-left py-2 pr-4">Patient</th>
+                  <th className="text-left py-2 pr-4">Doctor</th>
+                  <th className="text-left py-2 pr-4">Treatment</th>
+                  <th className="text-right py-2 pr-4">Fee</th>
+                  <th className="text-right py-2">Commission</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredTreatmentRecords.filter(r => r.doctorEarnings).sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 50).map((record, index) => (
+                  <tr key={record.id || index} className="text-gray-700">
+                    <td className="py-2 pr-4 whitespace-nowrap text-gray-500">{record.date}</td>
+                    <td className="py-2 pr-4 font-medium text-gray-900">{record.patient_name || "Unknown"}</td>
+                    <td className="py-2 pr-4 text-gray-700">{record.doctor_name || "-"}</td>
+                    <td className="py-2 pr-4 text-gray-600">{record.description}</td>
+                    <td className="py-2 pr-4 text-right font-medium text-gray-900">{formatCurrency(record.cost || 0, currency)}</td>
+                    <td className="py-2 text-right font-semibold text-emerald-700">{formatCurrency(record.doctorEarnings || 0, currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Appointment Makers</h3>

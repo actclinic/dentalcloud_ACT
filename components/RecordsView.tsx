@@ -223,12 +223,13 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Event</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Logged By / At</th>
                   <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Amount</th>
+                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor Earned</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-gray-400 italic">
+                    <td colSpan={9} className="px-6 py-8 text-center text-gray-400 italic">
                       No records found.
                     </td>
                   </tr>
@@ -254,6 +255,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                             <span className="block text-xs text-gray-500">{formatCreatedAt(appointment.created_at)}</span>
                           </td>
                           <td className="px-6 py-4 text-right text-sm font-black text-gray-900">-</td>
+                          <td className="px-6 py-4 text-right text-sm text-gray-400">-</td>
                         </tr>
                       );
                     }
@@ -277,6 +279,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700">Clinical record</td>
                         <td className="px-6 py-4 text-right text-sm font-black text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
+                        <td className="px-6 py-4 text-right text-sm font-bold text-emerald-700">{rec.doctorEarnings ? formatCurrency(rec.doctorEarnings, currency) : '-'}</td>
                       </tr>
                     );
                   })
@@ -322,6 +325,12 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                       </div>
                       <p className="text-sm font-black text-indigo-700">{formatCurrency(rec.cost || 0, currency)}</p>
                     </div>
+                    {rec.doctorEarnings ? (
+                      <div className="flex justify-between items-center bg-emerald-50 rounded-lg p-3">
+                        <span className="text-xs font-semibold text-emerald-700">Doctor Earned</span>
+                        <span className="text-sm font-bold text-emerald-800">{formatCurrency(rec.doctorEarnings, currency)}</span>
+                      </div>
+                    ) : null}
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Treatment</p>
                       <p className="text-sm text-gray-800">{rec.description}</p>
