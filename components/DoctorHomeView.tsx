@@ -46,6 +46,23 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
       .reduce((sum, record) => sum + Number(record.cost || 0), 0);
   }, [treatmentRecords, currentMonthKey]);
 
+  const monthlyCommission = useMemo(() => {
+    return treatmentRecords
+      .filter((record) => (record.date || '').slice(0, 7) === currentMonthKey)
+      .reduce((sum, record) => sum + Number(record.doctorEarnings || 0), 0);
+  }, [treatmentRecords, currentMonthKey]);
+
+  const weeklyCommission = useMemo(() => {
+    return treatmentRecords
+      .filter((record) => {
+        if (!record.date) return false;
+        const recordDate = new Date(`${record.date}T00:00:00`);
+        return recordDate >= weekRange.weekStart && recordDate <= weekRange.weekEnd;
+      })
+      .reduce((sum, record) => sum + Number(record.doctorEarnings || 0), 0);
+  }, [treatmentRecords, weekRange]);
+
+
   const weeklyProceeds = useMemo(() => {
     return treatmentRecords
       .filter((record) => {
@@ -113,16 +130,24 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
           </div>
           <p className="text-2xl font-bold text-gray-900">{monthlyIncome.toLocaleString()} MMK</p>
         </div>
+        <div className="rounded-xl border border-emerald-100 bg-white p-3">
+          <div className="mb-1 flex items-center gap-2 text-emerald-600">
+            <DollarSign className="h-4 w-4" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide">Monthly Commission</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{monthlyCommission.toLocaleString()} MMK</p>
+        </div>
         <div className="rounded-xl border border-cyan-100 bg-white p-3">
           <div className="mb-1 flex items-center gap-2 text-cyan-600">
             <DollarSign className="h-4 w-4" />
-            <p className="text-[11px] font-semibold uppercase tracking-wide">Weekly Proceeds</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide">Weekly Commission</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{weeklyProceeds.toLocaleString()} MMK</p>
+          <p className="text-2xl font-bold text-gray-900">{weeklyCommission.toLocaleString()} MMK</p>
         </div>
-      </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
+      </div>
+
         <h3 className="text-sm font-bold text-gray-900">Treatment Distribution</h3>
         <p className="mb-3 mt-1 text-xs text-gray-500">Most performed treatments as a pie chart.</p>
         <div className="w-full">

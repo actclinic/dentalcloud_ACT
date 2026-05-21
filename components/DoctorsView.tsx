@@ -179,6 +179,13 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
                     </div>
                   )}
                   
+                  {doctor.commission_percentage !== undefined && doctor.commission_percentage > 0 && (
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 truncate">
+                      <span className="font-medium shrink-0">Commission:</span>
+                      <span className="text-green-700 font-bold">{doctor.commission_percentage}%</span>
+                    </div>
+                  )}
+                  
                   <div className="pt-2 sm:pt-3 border-t border-gray-100">
                     <div className="flex items-start gap-1.5 sm:gap-2">
                       <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 mt-0.5 flex-shrink-0" />

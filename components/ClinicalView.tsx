@@ -710,7 +710,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {treatmentHistory.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
+                  <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
                 ) : (
                   treatmentHistory.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">

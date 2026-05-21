@@ -287,6 +287,21 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       .slice(0, 6);
   }, [filteredTreatmentRecords]);
 
+  const doctorEarningsData = useMemo(() => {
+    const map = new Map<string, { name: string; earnings: number; treatments: number }>();
+    filteredTreatmentRecords.forEach(record => {
+      if (!record.doctor_name || !record.doctorEarnings) return;
+      const doctorName = record.doctor_name;
+      const current = map.get(doctorName) || { name: doctorName, earnings: 0, treatments: 0 };
+      current.earnings += Number(record.doctorEarnings || 0);
+      current.treatments += 1;
+      map.set(doctorName, current);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => b.earnings - a.earnings);
+  }, [filteredTreatmentRecords]);
+
+
   const topAppointmentCreators = useMemo(() => {
     const map = new Map<string, { name: string; count: number }>();
 
@@ -579,6 +594,42 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Doctor Earnings (Commission)</h3>
+            <p className="text-xs text-gray-500">Calculated commission for each doctor in the selected range</p>
+          </div>
+          <span className="inline-flex items-center gap-2 text-xs text-gray-500">
+            <DollarSign className="w-4 h-4 text-emerald-500" />
+            Commission
+          </span>
+        </div>
+        {doctorEarningsData.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No doctor earnings data in this range.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="text-left py-2 pr-4">Doctor</th>
+                  <th className="text-right py-2 pr-4">Treatments</th>
+                  <th className="text-right py-2">Commission</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {doctorEarningsData.map((doctor, index) => (
+                  <tr key={`${doctor.name}-${index}`} className="text-gray-700">
+                    <td className="py-2 pr-4 font-medium text-gray-900">{doctor.name}</td>
+                    <td className="py-2 text-right text-gray-600">{doctor.treatments}</td>
+                    <td className="py-2 text-right font-semibold text-emerald-700">{formatCurrency(doctor.earnings, currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Appointment Makers</h3>

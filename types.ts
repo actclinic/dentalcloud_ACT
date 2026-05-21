@@ -74,6 +74,7 @@ export interface ClinicalRecord {
   standardCost?: number | null;
   discountAmount?: number;
   pricingNote?: 'FOC' | 'DISCOUNT' | null;
+  doctorEarnings?: number; // Calculated commission for this treatment
   date: string;
 }
 
@@ -115,6 +116,7 @@ export interface Doctor {
   specialization?: string;
   password?: string;
   schedules: DoctorSchedule[]; // Array of schedules for different days/times
+  commission_percentage?: number; // e.g., 50 means 50% of treatment cost goes to doctor
   created_at?: string;
 }
 
@@ -128,6 +130,7 @@ export interface DoctorInput {
   specialization?: string;
   password?: string;
   schedules?: DoctorScheduleInput[];
+  commission_percentage?: number; // e.g., 50 means 50% of treatment cost goes to doctor
   created_at?: string;
 }
 
@@ -319,3 +322,9 @@ export interface ScheduledTask {
 }
 
 export type ReceiptSize = 'A4' | 'THERMAL_55MM';
+
+
+
+
+
+

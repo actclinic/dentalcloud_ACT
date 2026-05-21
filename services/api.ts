@@ -1535,6 +1535,7 @@ export const api = {
         standardCost: rec.standard_cost ?? null,
         discountAmount: Number(rec.discount_amount || 0),
         pricingNote: rec.pricing_note || null,
+        doctorEarnings: Number(rec.doctor_earnings || 0),
         doctor_name: rec.doctors?.name || undefined
       }));
     },
@@ -1559,6 +1560,7 @@ export const api = {
           standardCost: rec.standard_cost ?? null,
           discountAmount: Number(rec.discount_amount || 0),
           pricingNote: rec.pricing_note || null,
+          doctorEarnings: Number(rec.doctor_earnings || 0),
           patient_name: rec.patients?.name || 'Unknown',
           doctor_name: rec.doctors?.name || undefined
         }));
@@ -1644,11 +1646,25 @@ export const api = {
         cost: data.cost,
         date: treatmentDate
       };
+      // 4a. Calculate doctor earnings based on commission percentage
+      let doctorEarnings = 0;
+      if (data.doctor_id) {
+        const { data: doctorRow } = await supabase
+          .from("doctors")
+          .select("commission_percentage")
+          .eq("id", data.doctor_id)
+          .maybeSingle();
+        if (doctorRow?.commission_percentage) {
+          const pct = Number(doctorRow.commission_percentage) / 100;
+          doctorEarnings = Math.round(data.cost * pct * 100) / 100;
+        }
+      }
       const treatmentData = {
         ...legacyTreatmentData,
         standard_cost: data.standardCost ?? data.cost,
         discount_amount: data.discountAmount ?? 0,
-        pricing_note: data.pricingNote || null
+        pricing_note: data.pricingNote || null,
+        doctor_earnings: doctorEarnings
       };
       
       let { data: result, error: insertError } = await supabase
@@ -1669,7 +1685,8 @@ export const api = {
               ...legacyInsert.data,
               standard_cost: data.standardCost ?? data.cost,
               discount_amount: data.discountAmount ?? 0,
-              pricing_note: data.pricingNote || null
+              pricing_note: data.pricingNote || null,
+              doctor_earnings: doctorEarnings
             }
           : legacyInsert.data;
         insertError = legacyInsert.error;
@@ -1752,6 +1769,7 @@ export const api = {
         record: {
           ...result,
           standardCost: result?.standard_cost ?? null,
+          doctorEarnings: Number(result?.doctor_earnings || 0),
           discountAmount: Number(result?.discount_amount || 0),
           pricingNote: result?.pricing_note || null,
           doctor_name: doctorName
@@ -1814,6 +1832,7 @@ export const api = {
           email: doc.email,
           phone: doc.phone,
           specialization: doc.specialization,
+          commission_percentage: doc.commission_percentage ?? 0,
           schedules: (doc.doctor_schedules || []).map((sched: any) => ({
             id: sched.id,
             day_of_week: sched.day_of_week,
@@ -1842,7 +1861,8 @@ export const api = {
           email: trimmedEmail || null,
           phone: data.phone,
           specialization: data.specialization,
-          password: trimmedPassword || null
+          password: trimmedPassword || null,
+          commission_percentage: data.commission_percentage ?? 0
         })
         .select()
         .single();
@@ -1937,6 +1957,7 @@ export const api = {
         email: completeDoctor.email,
         phone: completeDoctor.phone,
         specialization: completeDoctor.specialization,
+        commission_percentage: completeDoctor.commission_percentage ?? 0,
         schedules: (completeDoctor.doctor_schedules || []).map((sched: any) => ({
           id: sched.id,
           day_of_week: sched.day_of_week,
@@ -1982,7 +2003,8 @@ export const api = {
         name: data.name,
         email: nextEmail || null,
         phone: data.phone,
-        specialization: data.specialization
+        specialization: data.specialization,
+        commission_percentage: data.commission_percentage
       };
       if (trimmedPassword) {
         doctorUpdatePayload.password = trimmedPassword;
@@ -2113,6 +2135,7 @@ export const api = {
         email: updatedDoctor.email,
         phone: updatedDoctor.phone,
         specialization: updatedDoctor.specialization,
+        commission_percentage: updatedDoctor.commission_percentage ?? 0,
         schedules: (updatedDoctor.doctor_schedules || []).map((sched: any) => ({
           id: sched.id,
           day_of_week: sched.day_of_week,

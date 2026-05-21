@@ -228,7 +228,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
               <tbody className="divide-y divide-gray-100">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-gray-400 italic">
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-400 italic">
                       No records found.
                     </td>
                   </tr>

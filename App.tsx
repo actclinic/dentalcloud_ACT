@@ -598,7 +598,7 @@ const App: React.FC = () => {
     return name.startsWith(query) || spec.startsWith(query);
   });
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: '' });
-  const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', password: '', schedules: [], location_id: currentLocationId || '' });
+  const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
   const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({
@@ -1796,7 +1796,7 @@ const App: React.FC = () => {
       setShowDoctorModal(false);
       fetchInitialData();
       setEditingDoctor(null);
-      setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', schedules: [], location_id: currentLocationId || '' });
+      setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -3028,7 +3028,7 @@ const App: React.FC = () => {
                    await exportAppointmentsToExcel(freshAppointments);
                 }}
             />}
-            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', schedules: [], location_id: currentLocationId || '' }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
+            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
@@ -3671,7 +3671,26 @@ const App: React.FC = () => {
                 ))}
               </select>
             </div>
-            <Input label="Specialization" value={newDoctorData.specialization} onChange={(e: any) => setNewDoctorData({...newDoctorData, specialization: e.target.value})} placeholder="e.g., Orthodontics, Oral Surgery" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input label="Specialization" value={newDoctorData.specialization} onChange={(e: any) => setNewDoctorData({...newDoctorData, specialization: e.target.value})} placeholder="e.g., Orthodontics, Oral Surgery" />
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Commission Percentage (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-8"
+                    value={newDoctorData.commission_percentage ?? 0}
+                    onChange={(e: any) => setNewDoctorData({...newDoctorData, commission_percentage: parseFloat(e.target.value) || 0})}
+                    placeholder="e.g., 50"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">%</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Percentage of treatment fee paid to this doctor.</p>
+              </div>
+            </div>
             <div>
               <Input
                 label={editingDoctor ? 'Doctor Login Password (optional)' : 'Doctor Login Password'}
@@ -4287,3 +4306,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
