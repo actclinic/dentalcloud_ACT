@@ -184,10 +184,12 @@ CREATE TABLE doctors (
   phone VARCHAR(50),
   specialization VARCHAR(255),
   password VARCHAR(255),
+  commission_percentage DECIMAL(5,2) DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Doctor Schedules
+ALTER TABLE doctors ADD CONSTRAINT doctors_commission_percentage_check CHECK (commission_percentage >= 0 AND commission_percentage <= 100);
 CREATE TABLE doctor_schedules (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   doctor_id UUID REFERENCES doctors(id) ON DELETE CASCADE,
@@ -223,11 +225,13 @@ CREATE TABLE treatments (
   standard_cost DECIMAL(12,2),
   discount_amount DECIMAL(12,2) DEFAULT 0,
   pricing_note VARCHAR(20),
+  doctor_earnings DECIMAL(12,2) DEFAULT 0,
   date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT treatments_standard_cost_check CHECK (standard_cost IS NULL OR standard_cost >= 0),
   CONSTRAINT treatments_discount_amount_check CHECK (discount_amount >= 0),
   CONSTRAINT treatments_pricing_note_check CHECK (pricing_note IS NULL OR pricing_note IN ('FOC', 'DISCOUNT'))
+  CONSTRAINT treatments_doctor_earnings_check CHECK (doctor_earnings >= 0),
 );
 
 -- Appointments

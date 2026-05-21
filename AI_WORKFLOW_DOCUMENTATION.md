@@ -38,7 +38,7 @@ The main component responsible for AI interactions, featuring:
 - **Patient**: Personal information, medical history, contact details, balance, loyalty points
 - **Appointment**: Patient-doctor-date-time relationship with status tracking
 - **ClinicalRecord/Treatment**: Treatment descriptions, costs, teeth involved
-- **Doctor**: Medical professionals with specializations and schedules
+- **Doctor**: Medical professionals with specializations, schedules, and commission percentage
 - **TreatmentType**: Standardized treatment procedures with costs
 - **Medicine**: Inventory items with stock levels, pricing, categories
 - **Expense**: Business expenses with categories and dates
@@ -206,6 +206,28 @@ The main component responsible for AI interactions, featuring:
 - `description`: Treatment details
 - `cost`: Treatment cost in MMK
 - `date`: Date of treatment
+
+### Doctor Commission (Percentage-Based Earnings)
+- `commission_percentage` on Doctor: 0-100%, set in the Doctor tab
+- When a treatment is recorded, the system looks up the treating doctor's commission_percentage
+- `doctorEarnings = treatment_cost × (commission_percentage / 100)`
+- The calculated earnings are stored in the treatments table as `doctor_earnings`
+- Visible in:
+  - **Doctor Dashboard**: Monthly Commission & Weekly Commission cards
+  - **Admin Dashboard**: Doctor Earnings (Commission) aggregated table
+  - **Admin Dashboard**: Per-Treatment Commission Breakdown for individual records
+  - **Records Tab**: Doctor Earned column per treatment
+
+### Doctor Commission (Percentage-Based Earnings)
+- `commission_percentage` on Doctor: 0-100%, set in the Doctor tab
+- When a treatment is recorded, the system looks up the treating doctor's commission_percentage
+- `doctorEarnings = treatment_cost x (commission_percentage / 100)`
+- The calculated earnings are stored in the treatments table as `doctor_earnings`
+- Visible in:
+  - Doctor Dashboard: Monthly Commission & Weekly Commission cards
+  - Admin Dashboard: Doctor Earnings (Commission) aggregated table
+  - Admin Dashboard: Per-Treatment Commission Breakdown for individual records
+  - Records Tab: Doctor Earned column per treatment
 
 ### Medicine Model
 - `id`: Unique identifier

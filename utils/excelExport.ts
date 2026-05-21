@@ -164,7 +164,8 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     { header: 'Doctor', width: 22 },
     { header: 'Treatment', width: 32 },
     { header: 'Teeth', width: 18 },
-    { header: 'Amount', width: 14, format: 'currency' }
+    { header: 'Amount', width: 14, format: 'currency' },
+    { header: 'Doctor Earned', width: 14, format: 'currency' }
   ];
   const rows = records.map((record) => ({
     Date: record.date,
@@ -172,7 +173,8 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     Doctor: record.doctor_name ? `Dr. ${record.doctor_name}` : 'N/A',
     Treatment: record.description,
     Teeth: record.teeth && record.teeth.length > 0 ? formatTeethWithPosition(record.teeth) : 'General',
-    Amount: record.cost || 0
+    Amount: record.cost || 0,
+    'Doctor Earned': record.doctorEarnings || 0
   }));
 
   await saveWorkbook(rows, columns, 'Clinical Records', `clinical-records-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
@@ -183,6 +185,7 @@ export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
   const columns: ExcelColumn[] = [
     { header: 'Doctor Name', width: 24 },
     { header: 'Specialization', width: 18 },
+    { header: 'Commission %', width: 14 },
     { header: 'Phone', width: 16 },
     { header: 'Email', width: 28 },
     { header: 'Schedule', width: 40 }
@@ -190,6 +193,7 @@ export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
   const rows = doctors.map((doctor) => ({
     'Doctor Name': `Dr. ${doctor.name}`,
     Specialization: doctor.specialization || 'General',
+    'Commission %': doctor.commission_percentage != null ? doctor.commission_percentage : 0,
     Phone: doctor.phone || 'N/A',
     Email: doctor.email || 'N/A',
     Schedule: doctor.schedules.length === 0

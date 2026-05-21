@@ -171,20 +171,22 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
   // Table
   autoTable(doc, {
     startY: 46,
-    head: [['Date', 'Patient', 'Treatment', 'Teeth', 'Amount']],
+    head: [['Date', 'Patient', 'Treatment', 'Teeth', 'Amount', 'Doctor Earned']],
     body: exportRecords.map(rec => [
       rec.date,
       rec.patient_name || 'Unknown',
       rec.description,
       rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General',
-      formatCurrency(rec.cost || 0, currency)
+      formatCurrency(rec.cost || 0, currency),
+      rec.doctorEarnings ? formatCurrency(rec.doctorEarnings, currency) : '-'
     ]),
     theme: 'grid',
     headStyles: { fillColor: [79, 70, 229], fontSize: 9, fontStyle: 'bold' },
     bodyStyles: { fontSize: 8 },
     alternateRowStyles: { fillColor: [245, 247, 250] },
     columnStyles: {
-      4: { halign: 'right', fontStyle: 'bold' }
+      4: { halign: 'right', fontStyle: 'bold' },
+      5: { halign: 'right', fontStyle: 'bold' }
     }
   });
   
@@ -218,10 +220,11 @@ export const exportDoctorsToPDF = (doctors: Doctor[]) => {
   // Table
   autoTable(doc, {
     startY: 40,
-    head: [['Doctor Name', 'Specialization', 'Contact', 'Email']],
+    head: [['Doctor Name', 'Specialization', 'Commission %', 'Contact', 'Email']],
     body: exportDoctors.map(doctor => [
       `Dr. ${doctor.name}`,
       doctor.specialization || 'General',
+      doctor.commission_percentage != null ? `${doctor.commission_percentage}%` : '0%',
       doctor.phone || 'N/A',
       doctor.email || 'N/A'
     ]),
@@ -348,3 +351,4 @@ export const exportExpensesToPDF = (expenses: Expense[], currency: Currency) => 
 
   doc.save(`expense-report-${new Date().toISOString().split('T')[0]}.pdf`);
 };
+

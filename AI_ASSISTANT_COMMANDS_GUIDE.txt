@@ -131,7 +131,7 @@ FIND PATIENT APPOINTMENTS:
 4. TREATMENT PROCEDURES
 =======================
 
-RECORD TREATMENT:
+RECORD TREATMENT (auto-calculates doctor commission):
 { "action": "tr_create", "params": { 
   "pid": "patient123", 
   "teeth": [18, 19], 
