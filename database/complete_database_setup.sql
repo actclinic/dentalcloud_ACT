@@ -4,8 +4,11 @@
 -- This script consolidates all database setup for fresh VPS deployment.
 -- Run this in your Supabase SQL Editor to set up the database from scratch.
 -- 
--- NOTE: Row Level Security (RLS) policies are excluded and will be implemented
--- separately at a later stage.
+-- RLS POLICIES: All tables have RLS enabled with permissive policies for the
+-- anon role because the application uses its own custom authentication layer
+-- (users table with plain-text password comparison) rather than Supabase Auth.
+-- The anon key is the only credential used by the app's supabase client.
+-- If you integrate Supabase Auth in the future, tighten these policies.
 -- ============================================================================
 
 -- ============================================================================
@@ -230,8 +233,8 @@ CREATE TABLE treatments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT treatments_standard_cost_check CHECK (standard_cost IS NULL OR standard_cost >= 0),
   CONSTRAINT treatments_discount_amount_check CHECK (discount_amount >= 0),
-  CONSTRAINT treatments_pricing_note_check CHECK (pricing_note IS NULL OR pricing_note IN ('FOC', 'DISCOUNT'))
-  CONSTRAINT treatments_doctor_earnings_check CHECK (doctor_earnings >= 0),
+  CONSTRAINT treatments_pricing_note_check CHECK (pricing_note IS NULL OR pricing_note IN ('FOC', 'DISCOUNT')),
+  CONSTRAINT treatments_doctor_earnings_check CHECK (doctor_earnings >= 0)
 );
 
 -- Appointments
@@ -393,6 +396,27 @@ CREATE TABLE scheduled_tasks (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Recalls
+CREATE TABLE recalls (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  location_id UUID REFERENCES locations(id),
+  patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+  appointment_id UUID REFERENCES appointments(id) ON DELETE SET NULL,
+  title VARCHAR(255) NOT NULL,
+  due_date DATE NOT NULL,
+  reminder_days_before INTEGER DEFAULT 7,
+  status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SCHEDULED', 'COMPLETED', 'OVERDUE', 'CANCELLED')),
+  notes TEXT,
+  last_reminded_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recalls_location ON recalls(location_id);
+CREATE INDEX IF NOT EXISTS idx_recalls_patient ON recalls(patient_id);
+CREATE INDEX IF NOT EXISTS idx_recalls_status ON recalls(status);
+CREATE INDEX IF NOT EXISTS idx_recalls_due_date ON recalls(due_date);
 
 -- ============================================================================
 -- 3.1 COMPATIBILITY UPDATES (KEEP THIS FILE SELF-CONTAINED)
@@ -612,6 +636,14 @@ SET
   file_size_limit = 2097152,
   allowed_mime_types = ARRAY['image/png'];
 
+-- Patient files bucket (for document uploads)
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('patient_files', 'patient_files', FALSE, 52428800)
+ON CONFLICT (id) DO UPDATE
+SET
+  public = FALSE,
+  file_size_limit = 52428800;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -709,7 +741,145 @@ VALUES
   ('fffda6dc-a75d-450c-bc96-94602c5d1194', 'Default Redemption', 'REDEEM', 1, 500, true);
 
 -- ============================================================================
--- 7. VERIFICATION
+-- 7. ROW LEVEL SECURITY (RLS) POLICIES
+-- ============================================================================
+-- IMPORTANT: The application uses custom authentication (plain-text password
+-- comparison in the users/patient_auth tables) instead of Supabase Auth.
+-- All queries from the frontend use the anon key via supabase-js.
+-- Therefore ALL tables need permissive RLS policies for the anon role.
+--
+-- Without these policies, every single query in the app will fail with 403
+-- because Supabase denies all table access by default when RLS is enabled.
+-- ============================================================================
+
+-- Helper function to enable RLS and create a permissive policy for each table
+DO $$
+DECLARE
+  tbl TEXT;
+  tables TEXT[] := ARRAY[
+    'locations',
+    'app_settings',
+    'users',
+    'patients',
+    'patient_types',
+    'patient_auth',
+    'otp_codes',
+    'appointment_types',
+    'doctors',
+    'doctor_schedules',
+    'treatment_types',
+    'treatments',
+    'appointments',
+    'medicines',
+    'medicine_sales',
+    'loyalty_rules',
+    'loyalty_transactions',
+    'expenses',
+    'conversations',
+    'messages',
+    'assistant_memory',
+    'scheduled_tasks',
+    'recalls'
+  ];
+BEGIN
+  FOREACH tbl IN ARRAY tables
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', tbl);
+
+    -- Drop existing policy if any to avoid conflicts on re-run
+    EXECUTE format('DROP POLICY IF EXISTS "anon_full_access_%I" ON %I;', tbl, tbl);
+
+    -- Create a permissive policy for anon and authenticated roles
+    EXECUTE format('
+      CREATE POLICY "anon_full_access_%I" ON %I
+        FOR ALL
+        TO anon, authenticated
+        USING (true)
+        WITH CHECK (true);
+    ', tbl, tbl);
+  END LOOP;
+END $$;
+
+-- ============================================================================
+-- 7.1 STORAGE BUCKET POLICIES
+-- ============================================================================
+-- The app_logos bucket is created above in section 6.
+-- The patient_files bucket is used by the app for patient document storage.
+DO $$
+BEGIN
+  -- app_logos: public bucket for clinic branding (PNG only)
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Public read app logos'
+  ) THEN
+    CREATE POLICY "Public read app logos"
+      ON storage.objects
+      FOR SELECT
+      TO anon, authenticated
+      USING (bucket_id = 'app_logos');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Public upload app logos'
+  ) THEN
+    CREATE POLICY "Public upload app logos"
+      ON storage.objects
+      FOR INSERT
+      TO anon, authenticated
+      WITH CHECK (bucket_id = 'app_logos');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Public update app logos'
+  ) THEN
+    CREATE POLICY "Public update app logos"
+      ON storage.objects
+      FOR UPDATE
+      TO anon, authenticated
+      USING (bucket_id = 'app_logos')
+      WITH CHECK (bucket_id = 'app_logos');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Public delete app logos'
+  ) THEN
+    CREATE POLICY "Public delete app logos"
+      ON storage.objects
+      FOR DELETE
+      TO anon, authenticated
+      USING (bucket_id = 'app_logos');
+  END IF;
+
+  -- patient_files: private bucket for patient documents
+  -- TUS uploads use the anon key with the Bearer token from session (or anon key fallback)
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Full access patient files'
+  ) THEN
+    CREATE POLICY "Full access patient files"
+      ON storage.objects
+      FOR ALL
+      TO anon, authenticated
+      USING (bucket_id = 'patient_files')
+      WITH CHECK (bucket_id = 'patient_files');
+  END IF;
+END $$;
+
+-- ============================================================================
+-- 8. VERIFICATION
 -- ============================================================================
 SELECT '=== DATABASE SETUP COMPLETE ===' as status;
 
@@ -730,6 +900,8 @@ UNION ALL
 SELECT 'Medicines', COUNT(*) FROM medicines
 UNION ALL
 SELECT 'Loyalty Rules', COUNT(*) FROM loyalty_rules
+UNION ALL
+SELECT 'Recalls', COUNT(*) FROM recalls
 UNION ALL
 SELECT 'Conversations', COUNT(*) FROM conversations
 UNION ALL
