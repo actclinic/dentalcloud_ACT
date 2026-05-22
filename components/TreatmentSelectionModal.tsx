@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Check, Sparkles } from 'lucide-react';
 import { ClinicalRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
@@ -11,18 +11,44 @@ interface TreatmentSelectionModalProps {
   onClose: () => void;
 }
 
+const RECENT_THRESHOLD_DAYS = 7;
+
 const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
   treatments,
   currency,
   onConfirm,
   onClose
 }) => {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(treatments.map(t => t.id)));
+  // Start with nothing selected — user picks what they want
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Select all by default
-    setSelectedIds(new Set(treatments.map(t => t.id)));
+    // Reset selection whenever the list changes (start deselected)
+    setSelectedIds(new Set());
   }, [treatments]);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  // Sort: most recent first
+  const sortedTreatments = useMemo(() => {
+    return [...treatments].sort((a, b) => {
+      const dateA = new Date(a.date || '').getTime();
+      const dateB = new Date(b.date || '').getTime();
+      return dateB - dateA;
+    });
+  }, [treatments]);
+
+  const isRecent = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    d.setHours(0, 0, 0, 0);
+    const diffDays = (today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 0 && diffDays <= RECENT_THRESHOLD_DAYS;
+  };
 
   const toggleTreatment = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -87,23 +113,32 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
           </div>
 
           <div className="space-y-2">
-            {treatments.length === 0 ? (
+            {sortedTreatments.length === 0 ? (
               <div className="text-center py-8 text-gray-400 italic">
                 No treatments available
               </div>
             ) : (
-              treatments.map((treatment) => {
+              sortedTreatments.map((treatment) => {
                 const isSelected = selectedIds.has(treatment.id);
+                const recent = isRecent(treatment.date || '');
                 return (
                   <div
                     key={treatment.id}
                     onClick={() => toggleTreatment(treatment.id)}
-                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${
                       isSelected
                         ? 'border-indigo-500 bg-indigo-50'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
+                        : recent
+                          ? 'border-amber-300 bg-amber-50/40 hover:border-amber-400'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
                     }`}
                   >
+                    {recent && (
+                      <div className="absolute -top-2.5 -right-2.5 flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                        <Sparkles className="w-3 h-3" />
+                        Recent
+                      </div>
+                    )}
                     <div className="flex items-start gap-4">
                       <div
                         className={`mt-1 w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${
@@ -116,7 +151,15 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                       </div>
                       <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
-                          <h4 className="font-semibold text-gray-900">{treatment.description}</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900">{treatment.description}</h4>
+                            {recent && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                NEW
+                              </span>
+                            )}
+                          </div>
                           <span className="text-base font-bold text-gray-900">
                             {formatCurrency(treatment.cost || 0, currency)}
                           </span>
