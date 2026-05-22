@@ -94,7 +94,7 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
 
   return (
     <div className="space-y-4 p-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <div className="rounded-xl border border-indigo-100 bg-white p-3">
           <div className="mb-1 flex items-center gap-2 text-indigo-600">
             <Users className="h-4 w-4" />
@@ -145,42 +145,43 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
           <p className="text-2xl font-bold text-gray-900">{weeklyCommission.toLocaleString()} MMK</p>
         </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
       </div>
 
+      {/* Treatment Distribution Chart */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-bold text-gray-900">Treatment Distribution</h3>
         <p className="mb-3 mt-1 text-xs text-gray-500">Most performed treatments as a pie chart.</p>
         <div className="w-full">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-              <Tooltip />
-              <Pie
-                data={chartData}
-                dataKey="count"
-                nameKey="name"
-                cx="50%"
-                cy="42%"
-                outerRadius={80}
-                label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                  const RADIAN = Math.PI / 180;
-                  const radius = outerRadius * 0.6;
-                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                  return (
-                    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
-                      {`${(percent * 100).toFixed(0)}%`}
-                    </text>
-                  );
-                }}
-                labelLine={false}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${entry.name}-${index}`} fill={pieColors[index % pieColors.length]} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
+              <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                <Tooltip />
+                <Pie
+                  data={chartData}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="42%"
+                  outerRadius={80}
+                  label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = outerRadius * 0.6;
+                    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                    return (
+                      <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
+                        {`${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    );
+                  }}
+                  labelLine={false}
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${entry.name}-${index}`} fill={pieColors[index % pieColors.length]} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
           </div>
           {/* Custom color legend */}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 px-1">
