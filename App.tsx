@@ -2975,13 +2975,6 @@ const App: React.FC = () => {
                     alert('Error: ' + err.message);
                   }
                 }}
-                onGenerateReport={() => {
-                  setToast({
-                    message: 'Patient reports feature coming soon!',
-                    type: 'info',
-                    show: true
-                  });
-                }}
             />}
             {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView 
                 appointments={appointments} 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, ScanLine, FileText, Calendar, Clock } from 'lucide-react';
+import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, ScanLine, Calendar, Clock, Filter } from 'lucide-react';
 import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
@@ -27,7 +27,6 @@ interface PatientsViewProps {
   onUpdatePatientAuth?: (patient: Patient, password: string) => void;
   onExportPDF?: () => Promise<void>;
   onExportExcel?: () => Promise<void>;
-  onGenerateReport?: () => void;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
   doctors?: { id: string; name: string }[];
@@ -50,7 +49,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   onExportExcel,
   loyaltyEnabled, 
   loyaltyRules = [],
-  onGenerateReport,
   doctors = [],
   treatmentRecords = []
 }) => {
@@ -504,15 +502,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"/>
         </div>
         <div className="flex gap-2">
-          {onGenerateReport && (
-            <button
-              onClick={onGenerateReport}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 border border-indigo-200 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
-              title="Generate patient reports"
-            >
-              <FileText className="w-4 h-4" /> <span className="hidden sm:inline">Reports</span>
-            </button>
-          )}
           <ExportMenu
             disabled={patients.length === 0 || exporting}
             onExportPDF={handleDownloadPDF}
@@ -533,80 +522,75 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         </div>
       </div>
     </div>
-    {/* Toolbar: Date + Doctor + Treatment Filters */}
-    <div className="px-4 md:px-6 py-2 md:py-3 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-2 md:gap-3 items-start md:items-center">
-      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-        {/* Date Quick Filters */}
-        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
-          <button
-            onClick={() => { setDateQuickFilter('all'); setDateFilter(''); setCurrentPage(1); }}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
-              dateQuickFilter === 'all' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => { setDateQuickFilter('new'); setDateFilter(''); setCurrentPage(1); }}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
-              dateQuickFilter === 'new' ? 'bg-emerald-50 text-emerald-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            New Patients
-          </button>
+    {/* Unified Filter Bar */}
+    <div className="px-4 md:px-6 py-2.5 border-b border-gray-100 bg-white flex flex-col md:flex-row md:items-center gap-2">
+      <div className="flex items-center gap-2 text-xs text-gray-500 font-medium min-w-[60px]">
+        <Filter size={14} className="text-gray-400" />
+        <span className="hidden sm:inline">Filters</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Period quick-select */}
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          {(['all', 'new'] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => { setDateQuickFilter(opt); setDateFilter(''); setCurrentPage(1); }}
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+                dateQuickFilter === opt
+                  ? 'bg-white text-indigo-700 shadow-sm border border-gray-200'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {opt === 'all' ? 'All' : 'New'}
+            </button>
+          ))}
         </div>
-        {/* Date Pick Filter */}
-        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap">
-          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+        {/* Date picker */}
+        <div className="relative">
+          <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="date"
             value={dateFilter}
             onChange={(e) => {
-              const nextDate = e.target.value;
-              if (nextDate) {
-                setDateQuickFilter('custom');
-                setDateFilter(nextDate);
-              } else {
-                setDateQuickFilter('all');
-                setDateFilter('');
-              }
+              const v = e.target.value;
+              if (v) { setDateQuickFilter('custom' as const); setDateFilter(v); }
+              else { setDateQuickFilter('all' as const); setDateFilter(''); }
               setCurrentPage(1);
             }}
-            className="h-8 rounded-lg border border-gray-200 px-2 text-sm font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            className="h-7 w-[140px] rounded-lg border border-gray-200 pl-7 pr-2 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           />
-        </label>
-        {(dateQuickFilter !== 'all' || dateFilter) && (
-          <button
-            onClick={() => { setDateQuickFilter('all'); setDateFilter(''); setDoctorFilter(''); setTreatmentFilter(''); setCurrentPage(1); }}
-            className="h-8 inline-flex items-center justify-center rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors bg-white"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:ml-auto">
-        {/* Doctor Filter */}
+        </div>
+        {/* Doctor */}
         <select
           value={doctorFilter}
           onChange={(e) => { setDoctorFilter(e.target.value); setCurrentPage(1); }}
-          className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white max-w-[150px]"
+          className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[120px] max-w-[160px]"
         >
-          <option value=''>All Doctors</option>
+          <option value=''>Doctor</option>
           {doctorOptions.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}
         </select>
-        {/* Treatment Filter */}
+        {/* Treatment */}
         <select
           value={treatmentFilter}
           onChange={(e) => { setTreatmentFilter(e.target.value); setCurrentPage(1); }}
-          className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white max-w-[180px]"
+          className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[120px] max-w-[180px]"
         >
-          <option value=''>All Treatments</option>
+          <option value=''>Treatment</option>
           {treatmentOptions.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}
         </select>
+        {/* Reset */}
+        {(dateQuickFilter !== 'all' || dateFilter || doctorFilter || treatmentFilter) && (
+          <button
+            onClick={() => { setDateQuickFilter('all' as const); setDateFilter(''); setDoctorFilter(''); setTreatmentFilter(''); setCurrentPage(1); }}
+            className="h-7 px-2.5 rounded-lg border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 transition-colors bg-white"
+          >
+            Reset
+          </button>
+        )}
       </div>
     </div>
     {detailPatient ? (
