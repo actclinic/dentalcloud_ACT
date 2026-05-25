@@ -317,7 +317,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mx-auto mb-3"></div>
+          <div className="w-8 h-8 border-2 border-[var(--hover-200)] border-t-[var(--hover-600)] rounded-full animate-spin mx-auto mb-3"></div>
           <p className="text-sm text-gray-500">Loading...</p>
         </div>
       </div>
@@ -332,7 +332,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
           <p className="text-xs text-gray-500 mb-4">{error}</p>
           <button
             onClick={fetchPatientData}
-            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+            className="bg-[var(--hover-600)] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[var(--hover-700)] transition-colors"
           >
             Try Again
           </button>
@@ -455,14 +455,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               {nextScheduledAppointment ? (
                 <>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl font-bold text-gray-900">{daysLeft ?? '--'}</span>
-                    <span className="text-sm text-gray-500">{daysLeft === 1 ? 'day' : 'days'}</span>
+                    <span className="text-2xl font-bold text-[var(--hover-600)]">{daysLeft ?? '--'}</span>
+                    <span className="text-sm text-[var(--hover-500)]">{daysLeft === 1 ? 'day' : 'days'}</span>
                   </div>
                   <p className="text-sm text-gray-500 mt-1">
                     {nextScheduledAppointment.date} at {nextScheduledAppointment.time}
                   </p>
                   {nextScheduledAppointment.type && (
-                    <span className="inline-block mt-2 bg-gray-100 text-gray-600 rounded px-2 py-0.5 text-xs font-medium">
+                    <span className="inline-block mt-2 bg-[var(--hover-100)] text-[var(--hover-700)] rounded px-2 py-0.5 text-xs font-medium">
                       {nextScheduledAppointment.type}
                     </span>
                   )}
@@ -475,11 +475,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             {/* Quick Stats */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xl font-bold text-gray-900">{appointments.length}</p>
+                <p className="text-xl font-bold text-[var(--hover-600)]">{appointments.length}</p>
                 <p className="text-xs text-gray-400 mt-0.5">Appointments</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xl font-bold text-gray-900">{treatmentRecords.length}</p>
+                <p className="text-xl font-bold text-[var(--hover-600)]">{treatmentRecords.length}</p>
                 <p className="text-xs text-gray-400 mt-0.5">Treatments</p>
               </div>
             </div>
@@ -490,7 +490,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 <h2 className="text-sm font-semibold text-gray-900">Upcoming Appointments</h2>
                 <button
                   onClick={() => setActiveTab('appointments')}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                  className="text-xs font-medium text-[var(--hover-600)] hover:text-[var(--hover-700)] transition-colors"
                 >
                   View All
                 </button>
@@ -502,15 +502,15 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                       .filter(apt => apt.status === 'Scheduled')
                       .slice(0, 3)
                       .map(apt => (
-                        <div key={apt.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-                          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-50 flex-shrink-0">
-                            <Calendar className="w-4 h-4 text-gray-400" />
+                        <div key={apt.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--hover-50)] transition-colors">
+                          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--hover-50)] flex-shrink-0">
+                            <Calendar className="w-4 h-4 text-[var(--hover-500)]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-800 truncate">{apt.date}</p>
                             <p className="text-xs text-gray-400 truncate">{apt.time} · {apt.type}</p>
                           </div>
-                          <span className="px-2 py-0.5 text-xs rounded bg-gray-50 text-gray-500 font-medium flex-shrink-0">
+                          <span className="px-2 py-0.5 text-xs rounded bg-[var(--hover-50)] text-[var(--hover-600)] font-medium flex-shrink-0">
                             {apt.status}
                           </span>
                         </div>
@@ -531,7 +531,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 <h2 className="text-sm font-semibold text-gray-900">Recent Treatments</h2>
                 <button
                   onClick={() => setActiveTab('records')}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                  className="text-xs font-medium text-[var(--hover-600)] hover:text-[var(--hover-700)] transition-colors"
                 >
                   View All
                 </button>
@@ -542,9 +542,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                     {treatmentRecords
                       .slice(0, 3)
                       .map(record => (
-                        <div key={record.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-                          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-50 flex-shrink-0">
-                            <FileText className="w-4 h-4 text-gray-400" />
+                        <div key={record.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--hover-50)] transition-colors">
+                          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--hover-50)] flex-shrink-0">
+                            <FileText className="w-4 h-4 text-[var(--hover-500)]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-800 truncate">{record.description}</p>
@@ -552,7 +552,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                           </div>
                           <button
                             onClick={() => handleDownloadReceipt(record)}
-                            className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                            className="text-xs font-medium text-[var(--hover-600)] hover:text-[var(--hover-700)] transition-colors flex-shrink-0"
                           >
                             Details
                           </button>
@@ -571,13 +571,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             {/* Book Appointment */}
             <button
               onClick={() => openCreateAppointmentModal()}
-              className="w-full bg-gray-900 text-white rounded-xl px-5 py-3.5 flex items-center justify-between hover:bg-gray-800 transition-colors"
+              className="w-full bg-[var(--hover-600)] text-white rounded-xl px-5 py-3.5 flex items-center justify-between hover:bg-[var(--hover-700)] transition-colors"
             >
               <div className="text-left">
                 <p className="text-sm font-semibold">Book Your Next Visit</p>
-                <p className="text-xs text-gray-400 mt-0.5">Schedule an appointment today</p>
+                <p className="text-xs text-white/60 mt-0.5">Schedule an appointment today</p>
               </div>
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-5 h-5 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
             </button>
@@ -865,7 +865,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             onClick={() => setActiveTab('home')}
             className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'home'
-                ? 'text-gray-900'
+                ? 'text-[var(--hover-600)]'
                 : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Home"
@@ -878,7 +878,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             onClick={() => setActiveTab('appointments')}
             className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'appointments'
-                ? 'text-gray-900'
+                ? 'text-[var(--hover-600)]'
                 : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Appointments"
@@ -891,7 +891,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             onClick={() => setActiveTab('records')}
             className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'records'
-                ? 'text-gray-900'
+                ? 'text-[var(--hover-600)]'
                 : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Records"
@@ -905,7 +905,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
               onClick={() => setActiveTab('messages')}
               className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
                 activeTab === 'messages'
-                  ? 'text-gray-900'
+                  ? 'text-[var(--hover-600)]'
                   : 'text-gray-400 hover:text-gray-500'
               }`}
               aria-label="Messages"
@@ -919,7 +919,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
             onClick={() => setActiveTab('profile')}
             className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'profile'
-                ? 'text-gray-900'
+                ? 'text-[var(--hover-600)]'
                 : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Profile"
