@@ -317,8 +317,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[var(--hover-600)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-sm text-gray-500">Loading...</p>
         </div>
       </div>
     );
@@ -327,17 +327,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   if (error && !patient) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow p-6 max-w-md text-center">
-          <div className="text-red-500 mb-4">
-            <svg className="w-12 h-12 mx-auto" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Dashboard</h3>
-          <p className="text-gray-600 mb-4">{error}</p>
+        <div className="bg-white rounded-xl border border-gray-100 p-6 max-w-md text-center">
+          <h3 className="text-sm font-semibold text-gray-900 mb-1">Error Loading Dashboard</h3>
+          <p className="text-xs text-gray-500 mb-4">{error}</p>
           <button
             onClick={fetchPatientData}
-            className="bg-[var(--hover-600)] text-white px-4 py-2 rounded-lg hover:brightness-110 transition-all"
+            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
           >
             Try Again
           </button>
@@ -349,9 +344,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   if (!patient) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600">Patient data not available</p>
-        </div>
+        <p className="text-sm text-gray-400">Patient data not available</p>
       </div>
     );
   }
@@ -407,28 +400,28 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="bg-white border-b border-gray-100 px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Hello, {patient.name}</h1>
-            <p className="text-xs text-gray-500">Patient Dashboard</p>
+            <h1 className="text-base font-semibold text-gray-900">{patient.name}</h1>
+            <p className="text-xs text-gray-400">Patient Portal</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setActiveTab('profile')}
-              className="h-10 w-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+              className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-colors"
               aria-label="Profile settings"
               title="Profile"
             >
-              <User className="w-5 h-5 text-gray-600" />
+              <User className="w-4.5 h-4.5 text-gray-500" />
             </button>
             <button
               onClick={handleLogout}
-              className="h-10 w-10 flex items-center justify-center rounded-lg bg-red-50 hover:bg-red-100 transition-colors"
+              className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-colors"
               aria-label="Log out of your account"
               title="Logout"
             >
-              <LogOut className="w-5 h-5 text-red-600" />
+              <LogOut className="w-4.5 h-4.5 text-gray-400" />
             </button>
           </div>
         </div>
@@ -437,133 +430,87 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       {/* Main Content */}
       <div className={activeTab === 'messages' ? 'h-[calc(100dvh-9rem)] min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto pb-28 pt-4'}>
         {error && patient && (
-          <div className="px-4 mb-4">
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start justify-between gap-3">
-              <p className="text-sm text-red-700">{error}</p>
+          <div className="px-4 mb-3">
+            <div className="bg-red-50 border border-red-100 rounded-lg p-3 flex items-start justify-between gap-3">
+              <p className="text-xs text-red-600">{error}</p>
               <button
                 onClick={() => setError(null)}
-                className="text-red-500 hover:text-red-700 transition-colors"
+                className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
                 aria-label="Dismiss error"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
 
         {activeTab === 'home' && (
-          <div className="relative px-4 pb-6 space-y-5 overflow-hidden">
-            {/* ── Aurora Background Orbs ──────────────────────────────── */}
-            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
-              <div
-                className="animate-aurora-pulse-glow absolute -left-20 -top-20 h-72 w-72 rounded-full"
-                style={{ background: 'color-mix(in srgb, var(--hover-400) 25%, transparent)', filter: 'blur(60px)' }}
-              />
-              <div
-                className="animate-aurora-drift absolute -right-20 top-10 h-96 w-96 rounded-full"
-                style={{ background: 'color-mix(in srgb, var(--hover-600) 20%, transparent)', filter: 'blur(70px)' }}
-              />
-              <div
-                className="animate-aurora-float absolute bottom-0 left-1/3 h-64 w-64 rounded-full"
-                style={{ background: 'color-mix(in srgb, #c084fc 15%, transparent)', filter: 'blur(50px)' }}
-              />
-            </div>
-            {/* ── Next Appointment Card ───────────────────────────────── */}
-            <div className="animate-aurora-fade-in relative z-10" style={{ animationDelay: '80ms' }}>
-              <div
-                className="relative overflow-hidden rounded-2xl p-[1px]"
-                style={{
-                  background: 'linear-gradient(135deg, var(--hover-400), var(--hover-600), #c084fc, var(--hover-400))',
-                  backgroundSize: '300% 300%',
-                  animation: 'aurora-shimmer 6s ease-in-out infinite'
-                }}
-              >
-                <div className="aurora-glass-strong rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.85)' }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--hover-600)' }}>
-                      Next Appointment
-                    </p>
-                    <Calendar className="w-5 h-5" style={{ color: 'var(--hover-400)' }} />
+          <div className="px-4 pb-6 space-y-4">
+            {/* Next Appointment */}
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Next Appointment</p>
+                <Calendar className="w-4 h-4 text-gray-300" />
+              </div>
+              {nextScheduledAppointment ? (
+                <>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-bold text-gray-900">{daysLeft ?? '--'}</span>
+                    <span className="text-sm text-gray-500">{daysLeft === 1 ? 'day' : 'days'}</span>
                   </div>
-                  <p className="text-sm" style={{ color: 'var(--hover-700)' }}>Coming in</p>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-3xl font-black" style={{ color: 'var(--hover-600)' }}>
-                      {daysLeft ?? '--'}
-                    </span>
-                    <span className="text-sm font-semibold" style={{ color: 'var(--hover-500)' }}>
-                      {daysLeft === 1 ? 'day' : 'days'}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2 text-sm" style={{ color: 'var(--hover-600)' }}>
-                    <Calendar className="w-4 h-4" style={{ color: 'var(--hover-400)' }} />
-                    <span>{nextScheduledAppointment?.date ?? 'No date'} &middot; {nextScheduledAppointment?.time ?? '--'}</span>
-                  </div>
-                  {nextScheduledAppointment?.type && (
-                    <span className="inline-block mt-2 rounded-md px-3 py-1 text-xs font-semibold"
-                      style={{
-                        background: 'color-mix(in srgb, var(--hover-200) 40%, transparent)',
-                        color: 'var(--hover-700)'
-                      }}
-                    >
+                  <p className="text-sm text-gray-500 mt-1">
+                    {nextScheduledAppointment.date} at {nextScheduledAppointment.time}
+                  </p>
+                  {nextScheduledAppointment.type && (
+                    <span className="inline-block mt-2 bg-gray-100 text-gray-600 rounded px-2 py-0.5 text-xs font-medium">
                       {nextScheduledAppointment.type}
                     </span>
                   )}
-                </div>
+                </>
+              ) : (
+                <p className="text-sm text-gray-400">No upcoming appointments</p>
+              )}
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <p className="text-xl font-bold text-gray-900">{appointments.length}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Appointments</p>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-100 p-4">
+                <p className="text-xl font-bold text-gray-900">{treatmentRecords.length}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Treatments</p>
               </div>
             </div>
 
-            {/* ── Quick Stats ────────────────────────────────────────── */}
-            <div className="animate-aurora-fade-in grid grid-cols-2 gap-3" style={{ animationDelay: '160ms' }}>
-              <div className="aurora-glass-strong rounded-xl p-4">
-                <p className="text-lg font-bold aurora-text">{appointments.length}</p>
-                <p className="text-xs text-gray-500 mt-1">Appointments</p>
-              </div>
-              <div className="aurora-glass-strong rounded-xl p-4">
-                <p className="text-lg font-bold aurora-text">{treatmentRecords.length}</p>
-                <p className="text-xs text-gray-500 mt-1">Treatments</p>
-              </div>
-            </div>
-
-            {/* ── Upcoming Appointments ──────────────────────────────── */}
-            <div className="animate-aurora-fade-in aurora-glass-strong rounded-xl" style={{ animationDelay: '240ms' }}>
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--hover-100)' }}>
-                <h2 className="text-sm font-semibold" style={{ color: 'var(--hover-800)' }}>Upcoming Appointments</h2>
+            {/* Upcoming Appointments */}
+            <div className="bg-white rounded-xl border border-gray-100">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+                <h2 className="text-sm font-semibold text-gray-900">Upcoming Appointments</h2>
                 <button
                   onClick={() => setActiveTab('appointments')}
-                  className="h-9 px-3 text-xs font-semibold rounded-lg transition-all duration-200 active:scale-[0.97]"
-                  style={{
-                    color: 'var(--hover-600)',
-                    background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)'
-                  }}
+                  className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                 >
                   View All
                 </button>
               </div>
-              <div className="p-4">
+              <div className="p-3">
                 {appointments.filter(apt => apt.status === 'Scheduled').length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {appointments
                       .filter(apt => apt.status === 'Scheduled')
                       .slice(0, 3)
                       .map(apt => (
-                        <div key={apt.id} className="flex items-center gap-3 p-3 rounded-lg"
-                          style={{ background: 'color-mix(in srgb, var(--hover-100) 20%, transparent)' }}
-                        >
-                          <div className="flex items-center justify-center w-10 h-10 rounded-lg flex-shrink-0"
-                            style={{ background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)' }}
-                          >
-                            <Calendar className="w-5 h-5" style={{ color: 'var(--hover-500)' }} />
+                        <div key={apt.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-50 flex-shrink-0">
+                            <Calendar className="w-4 h-4 text-gray-400" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--hover-800)' }}>{apt.date}</p>
-                            <p className="text-xs truncate" style={{ color: 'var(--hover-500)' }}>{apt.time} &middot; {apt.type}</p>
+                            <p className="text-sm font-medium text-gray-800 truncate">{apt.date}</p>
+                            <p className="text-xs text-gray-400 truncate">{apt.time} � {apt.type}</p>
                           </div>
-                          <span className="px-2.5 py-1 text-xs rounded-full font-medium flex-shrink-0"
-                            style={{
-                              background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)',
-                              color: 'var(--hover-600)'
-                            }}
-                          >
+                          <span className="px-2 py-0.5 text-xs rounded bg-gray-50 text-gray-500 font-medium flex-shrink-0">
                             {apt.status}
                           </span>
                         </div>
@@ -571,53 +518,41 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                   </div>
                 ) : (
                   <div className="flex flex-col items-center py-6 text-center">
-                    <Calendar className="w-10 h-10" style={{ color: 'var(--hover-300)' }} />
-                    <p className="text-sm mt-2" style={{ color: 'var(--hover-500)' }}>No upcoming appointments</p>
+                    <Calendar className="w-8 h-8 text-gray-200" />
+                    <p className="text-xs text-gray-400 mt-2">No upcoming appointments</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* ── Recent Treatments ──────────────────────────────────── */}
-            <div className="animate-aurora-fade-in aurora-glass-strong rounded-xl" style={{ animationDelay: '320ms' }}>
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--hover-100)' }}>
-                <h2 className="text-sm font-semibold" style={{ color: 'var(--hover-800)' }}>Recent Treatments</h2>
+            {/* Recent Treatments */}
+            <div className="bg-white rounded-xl border border-gray-100">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+                <h2 className="text-sm font-semibold text-gray-900">Recent Treatments</h2>
                 <button
                   onClick={() => setActiveTab('records')}
-                  className="h-9 px-3 text-xs font-semibold rounded-lg transition-all duration-200 active:scale-[0.97]"
-                  style={{
-                    color: 'var(--hover-600)',
-                    background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)'
-                  }}
+                  className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                 >
                   View All
                 </button>
               </div>
-              <div className="p-4">
+              <div className="p-3">
                 {treatmentRecords.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {treatmentRecords
                       .slice(0, 3)
                       .map(record => (
-                        <div key={record.id} className="flex items-center gap-3 p-3 rounded-lg"
-                          style={{ background: 'color-mix(in srgb, var(--hover-100) 20%, transparent)' }}
-                        >
-                          <div className="flex items-center justify-center w-10 h-10 rounded-lg flex-shrink-0"
-                            style={{ background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)' }}
-                          >
-                            <FileText className="w-5 h-5" style={{ color: 'var(--hover-500)' }} />
+                        <div key={record.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-50 flex-shrink-0">
+                            <FileText className="w-4 h-4 text-gray-400" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--hover-800)' }}>{record.description}</p>
-                            <p className="text-xs truncate" style={{ color: 'var(--hover-500)' }}>{record.date}</p>
+                            <p className="text-sm font-medium text-gray-800 truncate">{record.description}</p>
+                            <p className="text-xs text-gray-400 truncate">{record.date}</p>
                           </div>
                           <button
                             onClick={() => handleDownloadReceipt(record)}
-                            className="h-9 px-3 text-xs font-medium rounded-lg transition-all duration-200 active:scale-[0.97] flex-shrink-0"
-                            style={{
-                              color: 'var(--hover-600)',
-                              background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)'
-                            }}
+                            className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
                           >
                             Details
                           </button>
@@ -626,39 +561,26 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                   </div>
                 ) : (
                   <div className="flex flex-col items-center py-6 text-center">
-                    <FileText className="w-10 h-10" style={{ color: 'var(--hover-300)' }} />
-                    <p className="text-sm mt-2" style={{ color: 'var(--hover-500)' }}>No treatment records yet</p>
+                    <FileText className="w-8 h-8 text-gray-200" />
+                    <p className="text-xs text-gray-400 mt-2">No treatment records yet</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* ── Book Appointment CTA ───────────────────────────────── */}
-            <div className="animate-aurora-fade-in" style={{ animationDelay: '400ms' }}>
-              <button
-                onClick={() => openCreateAppointmentModal()}
-                className="relative w-full overflow-hidden rounded-2xl p-[1px]"
-                style={{
-                  background: 'linear-gradient(135deg, var(--hover-400), var(--hover-600), #c084fc, var(--hover-400))',
-                  backgroundSize: '300% 300%',
-                  animation: 'aurora-shimmer 6s ease-in-out infinite'
-                }}
-              >
-                <div className="aurora-glass-strong rounded-2xl px-6 py-4 flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.88)' }}>
-                  <div className="text-left">
-                    <p className="text-sm font-bold" style={{ color: 'var(--hover-800)' }}>Book Your Next Visit</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--hover-500)' }}>Schedule an appointment today</p>
-                  </div>
-                  <div className="flex items-center justify-center w-10 h-10 rounded-xl"
-                    style={{ background: 'color-mix(in srgb, var(--hover-200) 30%, transparent)' }}
-                  >
-                    <svg className="w-5 h-5" style={{ color: 'var(--hover-600)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                  </div>
-                </div>
-              </button>
-            </div>
+            {/* Book Appointment */}
+            <button
+              onClick={() => openCreateAppointmentModal()}
+              className="w-full bg-gray-900 text-white rounded-xl px-5 py-3.5 flex items-center justify-between hover:bg-gray-800 transition-colors"
+            >
+              <div className="text-left">
+                <p className="text-sm font-semibold">Book Your Next Visit</p>
+                <p className="text-xs text-gray-400 mt-0.5">Schedule an appointment today</p>
+              </div>
+              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </button>
           </div>
         )}
 
@@ -937,83 +859,73 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
       </div>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-4 z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-2 pt-1.5 pb-4 z-50">
         <div className="flex max-w-md mx-auto">
           <button
             onClick={() => setActiveTab('home')}
-            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+            className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'home'
-                ? 'text-[var(--hover-600)]'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-900'
+                : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Home"
           >
-            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'home' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
-              <Home className="w-5 h-5 mb-0.5" />
-              <span className="text-xs">Home</span>
-            </div>
+            <Home className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] font-medium">Home</span>
           </button>
           
           <button
             onClick={() => setActiveTab('appointments')}
-            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+            className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'appointments'
-                ? 'text-[var(--hover-600)]'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-900'
+                : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Appointments"
           >
-            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'appointments' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
-              <Calendar className="w-5 h-5 mb-0.5" />
-              <span className="text-xs">Appointments</span>
-            </div>
+            <Calendar className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] font-medium">Appointments</span>
           </button>
           
           <button
             onClick={() => setActiveTab('records')}
-            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+            className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'records'
-                ? 'text-[var(--hover-600)]'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-900'
+                : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Records"
           >
-            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'records' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
-              <FileText className="w-5 h-5 mb-0.5" />
-              <span className="text-xs">Records</span>
-            </div>
+            <FileText className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] font-medium">Records</span>
           </button>
 
           {messagingEnabled && (
             <button
               onClick={() => setActiveTab('messages')}
-              className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+              className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
                 activeTab === 'messages'
-                  ? 'text-[var(--hover-600)]'
-                  : 'text-gray-400 hover:text-gray-600'
+                  ? 'text-gray-900'
+                  : 'text-gray-400 hover:text-gray-500'
               }`}
               aria-label="Messages"
             >
-              <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'messages' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
-                <MessageCircle className="w-5 h-5 mb-0.5" />
-                <span className="text-xs">Messages</span>
-              </div>
+              <MessageCircle className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] font-medium">Messages</span>
             </button>
           )}
           
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center justify-center py-2 flex-1 transition-colors ${
+            className={`flex flex-col items-center justify-center py-1.5 flex-1 transition-colors ${
               activeTab === 'profile'
-                ? 'text-[var(--hover-600)]'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-900'
+                : 'text-gray-400 hover:text-gray-500'
             }`}
             aria-label="Profile"
           >
-            <div className={`w-full flex flex-col items-center py-1 ${activeTab === 'profile' ? 'border-t-2 border-[var(--hover-600)]' : ''}`}>
-              <User className="w-5 h-5 mb-0.5" />
-              <span className="text-xs">Profile</span>
-            </div>
+            <User className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] font-medium">Profile</span>
           </button>
         </div>
       </div>
