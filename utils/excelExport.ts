@@ -90,10 +90,32 @@ const saveWorkbook = async (
   XLSX.writeFile(workbook, fileName);
 };
 
-export const exportPatientsToExcel = async (patients: Patient[], currency: Currency) => {
+const formatPatientAddressForExport = (patient: Patient) => {
+  return [patient.address, patient.township, patient.city].filter(Boolean).join(', ') || 'N/A';
+};
+
+const getPatientRecordsForExport = (patientId: string, records: ClinicalRecord[] = []) => {
+  return records
+    .filter((record) => record.patient_id === patientId)
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+};
+
+const summarizeTreatmentsForExport = (records: ClinicalRecord[]) => {
+  const treatments = records.map((record) => record.description?.trim()).filter(Boolean);
+  return treatments.length > 0 ? treatments.join(', ') : 'N/A';
+};
+
+const summarizeDoctorsForExport = (records: ClinicalRecord[]) => {
+  const doctors = Array.from(new Set(records.map((record) => record.doctor_name?.trim()).filter(Boolean)));
+  return doctors.length > 0 ? doctors.map((doctor) => `Dr. ${doctor}`).join(', ') : 'N/A';
+};
+
+export const exportPatientsToExcel = async (patients: Patient[], currency: Currency, treatmentRecords: ClinicalRecord[] = []) => {
   const columns: ExcelColumn[] = [
+    { header: 'No', width: 8, format: 'integer' },
     { header: 'Patient ID', width: 14 },
     { header: 'Patient Name', width: 24 },
+    { header: 'Date', width: 15 },
     { header: 'Age', width: 8, format: 'integer' },
     { header: 'Patient Type', width: 15 },
     { header: 'Phone', width: 16 },
@@ -101,28 +123,37 @@ export const exportPatientsToExcel = async (patients: Patient[], currency: Curre
     { header: 'Address', width: 30 },
     { header: 'City', width: 15 },
     { header: 'Township', width: 15 },
+    { header: 'Treatment', width: 45 },
+    { header: 'Doctor', width: 30 },
     { header: 'Medical Status', width: 18 },
     { header: 'Balance', width: 14, format: 'currency' },
     { header: 'Portal Access', width: 14 },
     { header: 'Loyalty Points', width: 14, format: 'integer' },
     { header: 'Join Date', width: 15 }
   ];
-  const rows = patients.map((patient) => ({
-    'Patient ID': patient.patient_unique_id || patient.id.substring(0, 8),
-    'Patient Name': patient.name,
-    Age: patient.age || 'N/A',
-    'Patient Type': patient.patient_type || 'N/A',
-    Phone: patient.phone || 'N/A',
-    Email: patient.email || 'N/A',
-    Address: patient.address || '',
-    City: patient.city || '',
-    Township: patient.township || '',
-    'Medical Status': patient.medicalHistory ? 'Review Required' : 'No Alerts',
-    Balance: patient.balance || 0,
-    'Portal Access': patient.has_account ? 'Active' : 'No Access',
-    'Loyalty Points': patient.loyalty_points || 0,
-    'Join Date': patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'N/A'
-  }));
+  const rows = patients.map((patient, index) => {
+    const patientRecords = getPatientRecordsForExport(patient.id, treatmentRecords);
+    return {
+      No: index + 1,
+      'Patient ID': patient.patient_unique_id || patient.id.substring(0, 8),
+      'Patient Name': patient.name,
+      Date: patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'N/A',
+      Age: patient.age ?? 'N/A',
+      'Patient Type': patient.patient_type || 'N/A',
+      Phone: patient.phone || 'N/A',
+      Email: patient.email || 'N/A',
+      Address: formatPatientAddressForExport(patient),
+      City: patient.city || '',
+      Township: patient.township || '',
+      Treatment: summarizeTreatmentsForExport(patientRecords),
+      Doctor: summarizeDoctorsForExport(patientRecords),
+      'Medical Status': patient.medicalHistory ? 'Review Required' : 'No Alerts',
+      Balance: patient.balance || 0,
+      'Portal Access': patient.has_account ? 'Active' : 'No Access',
+      'Loyalty Points': patient.loyalty_points || 0,
+      'Join Date': patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'N/A'
+    };
+  });
 
   await saveWorkbook(rows, columns, 'Patients', `patient-directory-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
 };

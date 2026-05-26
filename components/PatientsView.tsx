@@ -290,7 +290,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         setExporting(false);
       }
     } else {
-      exportPatientsToPDF(patients, currency);
+      exportPatientsToPDF(filteredPatients, currency, treatmentRecords);
     }
   };
 
@@ -303,7 +303,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         setExporting(false);
       }
     } else {
-      await exportPatientsToExcel(patients, currency);
+      await exportPatientsToExcel(filteredPatients, currency, treatmentRecords);
     }
   };
 

@@ -11,8 +11,32 @@ declare module 'jspdf' {
   }
 }
 
-export const exportPatientsToPDF = (patients: Patient[], currency: Currency) => {
-  // Use all patients for export (not just filtered/paginated view)
+const formatPatientAddressForExport = (patient: Patient) => {
+  return [patient.address, patient.township, patient.city].filter(Boolean).join(', ') || '-';
+};
+
+const getPatientRecordsForExport = (patientId: string, records: ClinicalRecord[] = []) => {
+  return records
+    .filter((record) => record.patient_id === patientId)
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+};
+
+const summarizeTreatmentsForExport = (records: ClinicalRecord[]) => {
+  const treatments = records.map((record) => record.description?.trim()).filter(Boolean);
+  if (treatments.length === 0) return '-';
+  const visibleTreatments = treatments.slice(0, 3).join(', ');
+  return treatments.length > 3 ? `${visibleTreatments} +${treatments.length - 3} more` : visibleTreatments;
+};
+
+const summarizeDoctorsForExport = (records: ClinicalRecord[]) => {
+  const doctors = Array.from(new Set(records.map((record) => record.doctor_name?.trim()).filter(Boolean)));
+  if (doctors.length === 0) return '-';
+  const visibleDoctors = doctors.slice(0, 2).map((doctor) => `Dr. ${doctor}`).join(', ');
+  return doctors.length > 2 ? `${visibleDoctors} +${doctors.length - 2} more` : visibleDoctors;
+};
+
+export const exportPatientsToPDF = (patients: Patient[], currency: Currency, treatmentRecords: ClinicalRecord[] = []) => {
+  // Export the patient list currently supplied by the patient tab, including related clinical columns.
   const exportPatients = patients;
   const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
   
@@ -29,25 +53,45 @@ export const exportPatientsToPDF = (patients: Patient[], currency: Currency) => 
   // Table
   autoTable(doc, {
     startY: 40,
-    head: [['Patient ID', 'Patient Name', 'Age', 'Type', 'Contact', 'Email', 'Location', 'Medical Status', 'Balance', 'Points', 'Joined']],
-    body: exportPatients.map(patient => [
-      patient.patient_unique_id || patient.id.substring(0, 8),
-      patient.name,
-      patient.age || '-',
-      patient.patient_type || '-',
-      patient.phone,
-      patient.email || '-',
-      [patient.city, patient.township].filter(Boolean).join(', ') || '-',
-      patient.medicalHistory ? 'Review Required' : 'No Alerts',
-      formatCurrency(patient.balance || 0, currency),
-      patient.loyalty_points || 0,
-      patient.created_at ? new Date(patient.created_at).toLocaleDateString() : '-'
-    ]),
+    head: [['No', 'Patient ID', 'Patient Name', 'Date', 'Age', 'Type', 'Contact', 'Address', 'Treatment', 'Doctor', 'Balance', 'Points', 'Portal']],
+    body: exportPatients.map((patient, index) => {
+      const patientRecords = getPatientRecordsForExport(patient.id, treatmentRecords);
+      return [
+        index + 1,
+        patient.patient_unique_id || patient.id.substring(0, 8),
+        patient.name,
+        patient.created_at ? new Date(patient.created_at).toLocaleDateString() : '-',
+        patient.age ?? '-',
+        patient.patient_type || '-',
+        [patient.phone, patient.email].filter(Boolean).join('\n') || '-',
+        formatPatientAddressForExport(patient),
+        summarizeTreatmentsForExport(patientRecords),
+        summarizeDoctorsForExport(patientRecords),
+        formatCurrency(patient.balance || 0, currency),
+        patient.loyalty_points || 0,
+        patient.has_account ? 'Active' : 'No Access'
+      ];
+    }),
     theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229], fontSize: 9, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 8 },
+    headStyles: { fillColor: [79, 70, 229], fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 6.5, cellPadding: 1.5, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [245, 247, 250] },
-    margin: { top: 40 }
+    margin: { top: 40 },
+    columnStyles: {
+      0: { cellWidth: 8 },
+      1: { cellWidth: 18 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: 18 },
+      4: { cellWidth: 10 },
+      5: { cellWidth: 16 },
+      6: { cellWidth: 28 },
+      7: { cellWidth: 34 },
+      8: { cellWidth: 42 },
+      9: { cellWidth: 28 },
+      10: { cellWidth: 20 },
+      11: { cellWidth: 12 },
+      12: { cellWidth: 18 }
+    }
   });
   
   // Footer

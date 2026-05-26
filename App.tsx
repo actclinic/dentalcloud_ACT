@@ -2945,14 +2945,20 @@ const App: React.FC = () => {
                   setShowPatientModal(true);
                 }}
                 onExportPDF={async () => {
-                   const freshPatients = await api.patients.getAll(currentLocationId || undefined);
+                   const [freshPatients, freshTreatmentRecords] = await Promise.all([
+                     api.patients.getAll(currentLocationId || undefined),
+                     api.treatments.getAllRecords(currentLocationId || undefined)
+                   ]);
                    const { exportPatientsToPDF } = await import('./utils/pdfExport');
-                   exportPatientsToPDF(freshPatients, currency);
+                    exportPatientsToPDF(freshPatients, currency, freshTreatmentRecords);
                 }}
                 onExportExcel={async () => {
-                   const freshPatients = await api.patients.getAll(currentLocationId || undefined);
+                   const [freshPatients, freshTreatmentRecords] = await Promise.all([
+                     api.patients.getAll(currentLocationId || undefined),
+                     api.treatments.getAllRecords(currentLocationId || undefined)
+                   ]);
                    const { exportPatientsToExcel } = await import('./utils/excelExport');
-                   await exportPatientsToExcel(freshPatients, currency);
+                    await exportPatientsToExcel(freshPatients, currency, freshTreatmentRecords);
                 }}
                 onUpdatePatient={async (id, data) => {
                   try {
