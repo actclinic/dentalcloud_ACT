@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, ScanLine, Calendar, Clock, Filter } from 'lucide-react';
-import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType } from '../types';
+import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType, TreatmentType, Doctor } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import { exportPatientsToExcel } from '../utils/excelExport';
@@ -29,7 +29,8 @@ interface PatientsViewProps {
   onExportExcel?: () => Promise<void>;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
-  doctors?: { id: string; name: string }[];
+  doctors?: Pick<Doctor, 'id' | 'name'>[];
+  treatmentTypes?: TreatmentType[];
   treatmentRecords?: ClinicalRecord[];
 }
 
@@ -50,6 +51,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   loyaltyEnabled, 
   loyaltyRules = [],
   doctors = [],
+  treatmentTypes = [],
   treatmentRecords = []
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -136,27 +138,49 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     return map;
   }, [treatmentRecords]);
 
-  // Unique doctor names from treatment records
-  const doctorOptions = useMemo(() => {
-    const names = new Set<string>();
-    treatmentRecords.forEach((record) => {
-      if (record.doctor_name?.trim()) {
-        names.add(record.doctor_name.trim());
-      }
-    });
-    return Array.from(names).sort();
-  }, [treatmentRecords]);
+  const makeUniqueSortedOptions = (values: string[]) => {
+    return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b));
+  };
 
-  // Unique treatment descriptions from records
-  const treatmentOptions = useMemo(() => {
-    const names = new Set<string>();
-    treatmentRecords.forEach((record) => {
-      if (record.description?.trim()) {
-        names.add(record.description.trim());
+  const doctorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    doctors.forEach((doctor) => {
+      if (doctor.id && doctor.name?.trim()) {
+        map.set(doctor.id, doctor.name.trim());
       }
     });
-    return Array.from(names).sort();
-  }, [treatmentRecords]);
+    return map;
+  }, [doctors]);
+
+  // Doctor filter options are linked to the configured Doctors list.
+  // Historical record-only doctors are appended so old records remain filterable.
+  const doctorOptions = useMemo(() => {
+    const configuredOptions = doctors
+      .filter((doctor) => doctor.id && doctor.name?.trim())
+      .map((doctor) => ({ value: `id:${doctor.id}`, label: doctor.name.trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const configuredDoctorNames = new Set(configuredOptions.map((option) => option.label.toLowerCase()));
+    const historicalOptions = makeUniqueSortedOptions(
+      treatmentRecords.map((record) => record.doctor_name || '')
+    )
+      .filter((name) => !configuredDoctorNames.has(name.toLowerCase()))
+      .map((name) => ({ value: `name:${name}`, label: name }));
+
+    return [...configuredOptions, ...historicalOptions];
+  }, [doctors, treatmentRecords]);
+
+  // Treatment filter options are linked to configured Treatment Types.
+  // Historical record-only descriptions are appended so old records remain filterable.
+  const treatmentOptions = useMemo(() => {
+    const configuredNames = makeUniqueSortedOptions(treatmentTypes.map((treatmentType) => treatmentType.name || ''));
+    const configuredNameSet = new Set(configuredNames.map((name) => name.toLowerCase()));
+    const historicalNames = makeUniqueSortedOptions(treatmentRecords.map((record) => record.description || ''))
+      .filter((name) => !configuredNameSet.has(name.toLowerCase()));
+
+    return [...configuredNames, ...historicalNames];
+  }, [treatmentTypes, treatmentRecords]);
 
   // Filtered data based on selected scope and search term
   const filteredPatients = useMemo(() => {
@@ -176,8 +200,16 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     // Apply doctor filter
     if (doctorFilter) {
       const patientIdsWithDoctor = new Set<string>();
+      const isDoctorIdFilter = doctorFilter.startsWith('id:');
+      const doctorFilterValue = doctorFilter.replace(/^(id|name):/, '');
+      const selectedDoctorName = isDoctorIdFilter ? doctorNameById.get(doctorFilterValue) : doctorFilterValue;
       treatmentRecords.forEach((record) => {
-        if (record.doctor_name?.trim() === doctorFilter && record.patient_id) {
+        const recordDoctorName = record.doctor_name?.trim();
+        const matchesDoctor = isDoctorIdFilter
+          ? record.doctor_id === doctorFilterValue || (!!selectedDoctorName && recordDoctorName === selectedDoctorName)
+          : recordDoctorName === doctorFilterValue;
+
+        if (matchesDoctor && record.patient_id) {
           patientIdsWithDoctor.add(record.patient_id);
         }
       });
@@ -217,7 +249,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         searchableRawCreatedDate.includes(term)
       );
     });
-  }, [patients, searchTerm, dateQuickFilter, dateFilter, doctorFilter, treatmentFilter, todayISO, treatmentRecords]);
+  }, [patients, searchTerm, dateQuickFilter, dateFilter, doctorFilter, treatmentFilter, todayISO, treatmentRecords, doctorNameById]);
 
   const cityOptions = useMemo(
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
@@ -574,8 +606,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           className="h-7 rounded-lg border border-gray-200 px-2 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[120px] max-w-[160px]"
         >
           <option value=''>Doctor</option>
-          {doctorOptions.map((name) => (
-            <option key={name} value={name}>{name}</option>
+          {doctorOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
         {/* Treatment */}

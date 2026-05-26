@@ -2925,6 +2925,7 @@ const App: React.FC = () => {
                 loyaltyEnabled={loyaltyEnabled} 
                 loyaltyRules={loyaltyRules}
                 doctors={doctors}
+                treatmentTypes={treatmentTypes}
                 treatmentRecords={globalRecords}
                 onSelectPatient={handlePatientSelect} 
                 onAddPatient={() => {
