@@ -9,6 +9,7 @@ import Pagination from './Pagination';
 import ExportMenu from './ExportMenu';
 import { toLocalISODate } from '../utils/auditLogFilters';
 import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow, type AuditFilter } from '../utils/auditLogExport';
+import { buildRecordsViewFilterOptions } from '../utils/recordsViewFilterOptions';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -79,8 +80,8 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   const auditRows = useMemo<AuditExportRow[]>(() => buildAuditLogRows(records, appointments, !isDoctor), [records, appointments, isDoctor]);
 
   const filteredRows = useMemo(() => {
-    return filterAuditLogRowsForExport(auditRows, { auditFilter, dateFrom, dateTo, searchTerm });
-  }, [auditRows, auditFilter, searchTerm, dateFrom, dateTo]);
+    return filterAuditLogRowsForExport(auditRows, buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm }));
+  }, [auditRows, auditFilter, searchTerm, dateFrom, dateTo, isDoctor]);
 
   const paginatedRows = useMemo(() => {
     if (showAll) return filteredRows;
@@ -112,10 +113,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
     exportClinicalRecordsToPDF(records, currency, {
       appointments,
       includeAppointments: !isDoctor,
-      auditFilter,
-      dateFrom,
-      dateTo,
-      searchTerm
+      ...buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm })
     });
   };
 
@@ -123,10 +121,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
     await exportClinicalRecordsToExcel(records, currency, {
       appointments,
       includeAppointments: !isDoctor,
-      auditFilter,
-      dateFrom,
-      dateTo,
-      searchTerm
+      ...buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm })
     });
   };
 
@@ -272,7 +267,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
       {loading ? (
         <div className="p-12 flex flex-col items-center justify-center gap-3 text-slate-500">
           <Loader2 className="animate-spin theme-accent-text" />
-          <p className="text-sm font-medium">Loading audit records...</p>
+          <p className="text-sm font-medium">{isDoctor ? 'Loading patient records...' : 'Loading audit records...'}</p>
         </div>
       ) : (
         <>
@@ -296,8 +291,8 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                   <tr>
                     <td colSpan={9} className="px-6 py-12 text-center">
                       <div className="mx-auto max-w-sm rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
-                        <p className="text-sm font-semibold text-slate-600">No audit records found</p>
-                        <p className="text-xs text-slate-400 mt-1">Try another date range or clear the search field.</p>
+                        <p className="text-sm font-semibold text-slate-600">{isDoctor ? 'No patient treatment records found' : 'No audit records found'}</p>
+                        <p className="text-xs text-slate-400 mt-1">{isDoctor ? 'Completed treatments assigned to you will appear here.' : 'Try another date range or clear the search field.'}</p>
                       </div>
                     </td>
                   </tr>
@@ -380,8 +375,8 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
           <div className="md:hidden divide-y divide-slate-100 bg-slate-50/40">
             {filteredRows.length === 0 ? (
               <div className="px-4 py-10 text-center">
-                <p className="text-sm font-semibold text-slate-600">No audit records found</p>
-                <p className="text-xs text-slate-400 mt-1">Try another date range or search term.</p>
+                <p className="text-sm font-semibold text-slate-600">{isDoctor ? 'No patient treatment records found' : 'No audit records found'}</p>
+                <p className="text-xs text-slate-400 mt-1">{isDoctor ? 'Completed treatments assigned to you will appear here.' : 'Try another date range or search term.'}</p>
               </div>
             ) : (
               paginatedRows.map((row) => {
