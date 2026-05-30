@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Activity, Loader2, Download, CalendarDays, Stethoscope } from 'lucide-react';
+import { Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw } from 'lucide-react';
 import { Appointment, ClinicalRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportClinicalRecordsToPDF } from '../utils/pdfExport';
@@ -173,6 +173,17 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
     return filteredRows.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredRows, currentPage, showAll]);
 
+  const filteredSummary = useMemo(() => {
+    return filteredRows.reduce(
+      (summary, row) => {
+        if (row.kind === 'appointment') summary.appointments += 1;
+        if (row.kind === 'treatment') summary.treatments += 1;
+        return summary;
+      },
+      { appointments: 0, treatments: 0 }
+    );
+  }, [filteredRows]);
+
   React.useEffect(() => {
     setCurrentPage(1);
   }, [records, appointments, auditFilter, dateFrom, dateTo]);
@@ -210,48 +221,66 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
-      <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between md:items-center gap-3 bg-white sticky top-0 z-10">
-        <div>
-          <h2 className="text-xl font-bold text-gray-800">{isDoctor ? 'Patient Treatment Records' : 'Clinic Registry Audit'}</h2>
-          <p className="text-sm text-gray-500">{isDoctor ? 'Your completed treatments and history.' : 'Master log of appointments and performed clinical treatments'}</p>
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/40">
+        <div className="p-4 md:p-6 flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
+        <div className="flex items-start gap-3">
+          <div className="hidden sm:flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-100">
+            <ShieldCheck size={22} />
+          </div>
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-700 mb-1">Clinical governance</p>
+            <h2 className="text-2xl font-bold text-slate-900">{isDoctor ? 'Patient Treatment Records' : 'Clinical Audit Trail'}</h2>
+            <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+              {isDoctor ? 'Your completed treatments and patient clinical history.' : 'A daily operational record of appointments, treatments, responsible staff, and patient balances.'}
+            </p>
+            {!isDoctor && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">{filteredRows.length} visible entries</span>
+                <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 font-semibold text-blue-700">{filteredSummary.appointments} appointments</span>
+                <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">{filteredSummary.treatments} treatments</span>
+              </div>
+            )}
+          </div>
         </div>
         {!isDoctor && (
-          <div className="flex flex-col sm:flex-row gap-2 md:gap-3 w-full md:w-auto">
-            <div className="grid grid-cols-2 sm:flex gap-2">
+          <div className="w-full xl:max-w-5xl space-y-3">
+            <div className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+              <div className="flex flex-col lg:flex-row gap-3 lg:items-end lg:justify-between">
+                <div className="grid grid-cols-2 sm:flex gap-2">
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.16em] mb-1">From</label>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.16em] mb-1">From</label>
                 <input
                   type="date"
                   value={dateFrom}
                   max={dateTo}
                   onChange={(e) => handleDateFromChange(e.target.value)}
-                  className="w-full sm:w-36 bg-white text-gray-800 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full sm:w-36 bg-white text-slate-800 text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.16em] mb-1">To</label>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.16em] mb-1">To</label>
                 <input
                   type="date"
                   value={dateTo}
                   min={dateFrom}
                   onChange={(e) => handleDateToChange(e.target.value)}
-                  className="w-full sm:w-36 bg-white text-gray-800 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full sm:w-36 bg-white text-slate-800 text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                 />
               </div>
               <button
                 type="button"
                 onClick={handleResetToToday}
-                className="col-span-2 sm:col-span-1 self-end px-3 py-2 text-xs rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 font-semibold hover:bg-emerald-100 transition-colors"
+                className="col-span-2 sm:col-span-1 self-end px-4 py-2.5 text-xs rounded-xl border border-cyan-100 bg-cyan-50 text-cyan-700 font-bold hover:bg-cyan-100 transition-colors"
               >
                 Today
               </button>
             </div>
-            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
               {[
-                { value: 'all', label: 'All logs' },
-                { value: 'appointments', label: 'Appointment log' },
-                { value: 'treatments', label: 'Treatment log' }
+                { value: 'all', label: 'All' },
+                { value: 'appointments', label: 'Appointments' },
+                { value: 'treatments', label: 'Treatments' }
               ].map((item) => (
                 <button
                   key={item.value}
@@ -260,76 +289,87 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                     setAuditFilter(item.value as AuditFilter);
                     setCurrentPage(1);
                   }}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    auditFilter === item.value ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900'
+                  className={`px-3.5 py-2 text-xs rounded-lg transition-colors ${
+                    auditFilter === item.value ? 'bg-white text-cyan-800 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {item.label}
                 </button>
               ))}
+                </div>
             </div>
-            <div className="relative w-full sm:w-auto">
+            </div>
+            <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+            <div className="relative w-full lg:max-w-md">
               <input
                 type="text"
-                placeholder="Search records..."
+                placeholder="Search patient, doctor, staff, service..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"
+                className="pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 w-full bg-white shadow-sm"
               />
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             </div>
+            <div className="flex flex-col sm:flex-row gap-2">
             <ExportMenu
               disabled={records.length === 0}
               onExportPDF={handleDownloadPDF}
               onExportExcel={handleDownloadExcel}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto !rounded-xl !bg-slate-800 hover:!bg-slate-900 !font-semibold !shadow-sm"
             />
             <button
               onClick={handleDownloadJSON}
               disabled={records.length === 0}
-              className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2 border border-slate-200 bg-white text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
-              <Download size={16} /> Download JSON
+              <Download size={16} /> JSON Backup
             </button>
             <button
               onClick={onRefresh}
-              className="text-indigo-600 text-sm font-bold flex items-center justify-center gap-2 hover:underline border border-indigo-100 rounded-lg px-3 py-2"
+              className="text-cyan-700 bg-cyan-50 text-sm font-bold flex items-center justify-center gap-2 border border-cyan-100 rounded-xl px-4 py-2 hover:bg-cyan-100 transition-colors"
             >
-              <Activity size={16} /> Refresh Records
+              <RotateCw size={16} /> Refresh
             </button>
+            </div>
+            </div>
           </div>
         )}
+        </div>
       </div>
 
       {loading ? (
-        <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-[var(--hover-600)]" /></div>
+        <div className="p-12 flex flex-col items-center justify-center gap-3 text-slate-500">
+          <Loader2 className="animate-spin text-cyan-700" />
+          <p className="text-sm font-medium">Loading audit records...</p>
+        </div>
       ) : (
         <>
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-100">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Log Type</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Event Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Patient File</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Event</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Logged By / At</th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Patient Balance</th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Amount</th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor Earned</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Type</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Date / Time</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Patient</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Clinician</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Clinical Activity</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Recorded By</th>
+                  <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Patient Balance</th>
+                  <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Amount</th>
+                  <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Doctor Earned</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-400 italic">
-                      No records found.
+                    <td colSpan={9} className="px-6 py-12 text-center">
+                      <div className="mx-auto max-w-sm rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
+                        <p className="text-sm font-semibold text-slate-600">No audit records found</p>
+                        <p className="text-xs text-slate-400 mt-1">Try another date range or clear the search field.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -337,52 +377,52 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                     if (row.kind === 'appointment') {
                       const appointment = row.appointment;
                       return (
-                        <tr key={`appointment-${appointment.id}`} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 text-sm text-indigo-700 font-semibold">
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-1">
+                        <tr key={`appointment-${appointment.id}`} className="hover:bg-cyan-50/40 transition-colors">
+                          <td className="px-6 py-4 text-sm text-blue-700 font-semibold">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-bold">
                               <CalendarDays size={14} /> Appointment
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">{appointment.date} {appointment.time}</td>
-                          <td className="px-6 py-4 font-bold text-gray-900">{appointment.patient_name || 'Unknown'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-700">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-700">
+                          <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">{appointment.date} {appointment.time}</td>
+                          <td className="px-6 py-4 font-bold text-slate-900">{appointment.patient_name || 'Unknown'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-700">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-700 max-w-md">
                             Appointment made for {appointment.date} at {appointment.time} ({appointment.type || 'Checkup'}, {appointment.status})
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-700">
+                          <td className="px-6 py-4 text-sm text-slate-700">
                             <span className="font-semibold">{appointment.created_by_user_name || 'Unknown'}</span>
-                            <span className="block text-xs text-gray-500">{formatCreatedAt(appointment.created_at)}</span>
+                            <span className="block text-xs text-slate-500">{formatCreatedAt(appointment.created_at)}</span>
                           </td>
                           <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(appointment.patient_balance)}</td>
-                          <td className="px-6 py-4 text-right text-sm font-black text-gray-900">-</td>
-                          <td className="px-6 py-4 text-right text-sm text-gray-400">-</td>
+                          <td className="px-6 py-4 text-right text-sm font-black text-slate-900">-</td>
+                          <td className="px-6 py-4 text-right text-sm text-slate-400">-</td>
                         </tr>
                       );
                     }
 
                     const rec = row.record;
                     return (
-                      <tr key={`treatment-${rec.id}`} className="hover:bg-gray-50 transition-colors">
+                      <tr key={`treatment-${rec.id}`} className="hover:bg-emerald-50/30 transition-colors">
                         <td className="px-6 py-4 text-sm text-emerald-700 font-semibold">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-bold">
                             <Stethoscope size={14} /> Treatment
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{rec.date}</td>
-                        <td className="px-6 py-4 font-bold text-gray-900">{rec.patient_name || 'Unknown'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-700">
+                        <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">{rec.date}</td>
+                        <td className="px-6 py-4 font-bold text-slate-900">{rec.patient_name || 'Unknown'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700 max-w-md">
                           <div className="space-y-0.5">
                             {(rec as any)._groupedRecords ? (
                               (rec as any)._groupedRecords.map((r: ClinicalRecord, i: number) => (
                                 <div key={i} className="flex items-start gap-1.5">
-                                  <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
+                                  <span className="text-cyan-500 mt-0.5 shrink-0">•</span>
                                   <span>{r.description}</span>
                                 </div>
                               ))
                             ) : (
                               <div className="flex items-start gap-1.5">
-                                <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
+                                <span className="text-cyan-500 mt-0.5 shrink-0">•</span>
                                 <span>{rec.description}</span>
                               </div>
                             )}
@@ -391,14 +431,14 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                             {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
                           </span>
                           {(rec as any)._groupedRecords && (rec as any)._groupedRecords.length > 0 && (
-                            <span className="block text-[11px] font-semibold text-gray-600 mt-1.5 pt-1.5 border-t border-gray-100">
+                            <span className="block text-[11px] font-semibold text-slate-600 mt-1.5 pt-1.5 border-t border-slate-100">
                               Total: {formatCurrency(rec.cost || 0, currency)}
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-700">Clinical record</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">Clinical record</td>
                         <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(rec.patient_balance)}</td>
-                        <td className="px-6 py-4 text-right text-sm font-black text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
+                        <td className="px-6 py-4 text-right text-sm font-black text-slate-900">{formatCurrency(rec.cost || 0, currency)}</td>
                         <td className="px-6 py-4 text-right text-sm font-bold text-emerald-700">{rec.doctorEarnings ? formatCurrency(rec.doctorEarnings, currency) : '-'}</td>
                       </tr>
                     );
@@ -408,30 +448,33 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
             </table>
           </div>
 
-          <div className="md:hidden divide-y divide-gray-100">
+          <div className="md:hidden divide-y divide-slate-100 bg-slate-50/40">
             {filteredRows.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-400 italic">No records found.</div>
+              <div className="px-4 py-10 text-center">
+                <p className="text-sm font-semibold text-slate-600">No audit records found</p>
+                <p className="text-xs text-slate-400 mt-1">Try another date range or search term.</p>
+              </div>
             ) : (
               paginatedRows.map((row) => {
                 if (row.kind === 'appointment') {
                   const appointment = row.appointment;
                   return (
-                    <div key={`appointment-${appointment.id}`} className="p-4 space-y-3">
+                    <div key={`appointment-${appointment.id}`} className="m-3 rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs font-black uppercase tracking-wider text-indigo-500">Appointment</p>
-                          <p className="text-sm font-bold text-gray-900">{appointment.patient_name || 'Unknown'}</p>
-                          <p className="text-xs text-gray-500 mt-1">{appointment.date} at {appointment.time}</p>
+                          <p className="text-xs font-black uppercase tracking-wider text-blue-600">Appointment</p>
+                          <p className="text-sm font-bold text-slate-900">{appointment.patient_name || 'Unknown'}</p>
+                          <p className="text-xs text-slate-500 mt-1">{appointment.date} at {appointment.time}</p>
                         </div>
-                        <p className="text-xs font-black text-indigo-700">{appointment.status}</p>
+                        <p className="rounded-full bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">{appointment.status}</p>
                       </div>
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Made By</p>
-                        <p className="text-sm text-gray-800">{appointment.created_by_user_name || 'Unknown'}</p>
-                        <p className="text-xs text-gray-500 mt-1">{formatCreatedAt(appointment.created_at)}</p>
+                      <div className="bg-slate-50 rounded-xl p-3">
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1">Recorded By</p>
+                        <p className="text-sm text-slate-800">{appointment.created_by_user_name || 'Unknown'}</p>
+                        <p className="text-xs text-slate-500 mt-1">{formatCreatedAt(appointment.created_at)}</p>
                       </div>
-                      <div className="flex justify-between items-center bg-red-50 rounded-lg p-3">
-                        <span className="text-xs font-semibold text-red-700">Patient Balance</span>
+                      <div className="flex justify-between items-center bg-rose-50 rounded-xl p-3">
+                        <span className="text-xs font-semibold text-rose-700">Patient Balance</span>
                         <span className="text-sm">{renderPatientBalance(appointment.patient_balance)}</span>
                       </div>
                     </div>
@@ -440,28 +483,28 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
 
                 const rec = row.record;
                 return (
-                  <div key={`treatment-${rec.id}`} className="p-4 space-y-3">
+                  <div key={`treatment-${rec.id}`} className="m-3 rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-black uppercase tracking-wider text-emerald-500">Treatment</p>
-                        <p className="text-sm font-bold text-gray-900">{rec.patient_name || 'Unknown'}</p>
-                        <p className="text-xs text-gray-500 mt-1">{rec.date}</p>
+                        <p className="text-sm font-bold text-slate-900">{rec.patient_name || 'Unknown'}</p>
+                        <p className="text-xs text-slate-500 mt-1">{rec.date}</p>
                       </div>
-                      <p className="text-sm font-black text-indigo-700">{formatCurrency(rec.cost || 0, currency)}</p>
+                      <p className="text-sm font-black text-slate-900">{formatCurrency(rec.cost || 0, currency)}</p>
                     </div>
                     {rec.doctorEarnings ? (
-                      <div className="flex justify-between items-center bg-emerald-50 rounded-lg p-3">
+                      <div className="flex justify-between items-center bg-emerald-50 rounded-xl p-3">
                         <span className="text-xs font-semibold text-emerald-700">Doctor Earned</span>
                         <span className="text-sm font-bold text-emerald-800">{formatCurrency(rec.doctorEarnings, currency)}</span>
                       </div>
                     ) : null}
-                    <div className="flex justify-between items-center bg-red-50 rounded-lg p-3">
-                      <span className="text-xs font-semibold text-red-700">Patient Balance</span>
+                    <div className="flex justify-between items-center bg-rose-50 rounded-xl p-3">
+                      <span className="text-xs font-semibold text-rose-700">Patient Balance</span>
                       <span className="text-sm">{renderPatientBalance(rec.patient_balance)}</span>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Treatment</p>
-                      <p className="text-sm text-gray-800">{rec.description}</p>
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1">Treatment</p>
+                      <p className="text-sm text-slate-800">{rec.description}</p>
                     </div>
                   </div>
                 );
