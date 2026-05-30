@@ -2349,8 +2349,14 @@ APPOINTMENT MANAGEMENT:
 
 AUDIT LOG AND APPOINTMENT REPORTING:
 - The Audit Log has three filters: All logs, Appointment log, and Treatment log.
+- Audit Log accent colors are theme-aware. Header accents, appointment badges, action buttons, filter highlights, loading indicators, and related blue/teal UI accents follow the selected Settings theme color instead of staying fixed MIT blue.
 - Appointment log rows show which staff user created an appointment and when it was created.
+- Treatment log rows group same-patient, same-day treatment records into one clinical visit, while preserving individual treatment descriptions, combined teeth, total amount, and total doctor earnings.
+- Patient Balance appears in Audit Log rows. A positive balance is shown as the formatted debt amount; zero is shown as Clear; missing balance is shown as a dash.
 - The Appointments tab has an Appointment Log button that opens Audit Log already filtered to appointment entries.
+- PDF and Excel exports from Audit Log now match the visible Audit Log state. They include the selected tab filter, date range, and search term, and export both appointment audit entries and grouped treatment visit entries when the user is on the admin Audit Log.
+- Audit Log PDF/Excel columns include Type, Date / Time, Patient, Clinician, Clinical Activity, Recorded By, Patient Balance, Amount, and Doctor Earned. Appointment rows show creator/timestamp and no amount; treatment rows show Clinical record, patient balance, treatment totals, and doctor earnings.
+- Admin Audit Log exports are saved as clinic-audit-logs-YYYY-MM-DD.pdf/xlsx. Doctor patient-record exports remain treatment-only clinical-records exports without appointment audit rows.
 - Dashboard includes Appointment Makers, ranking users by appointments created in the selected date range.
 - When Agent Mode creates an appointment, it is recorded under the currently logged-in staff user.
 - Older appointments created before the audit migration may show creator as Unknown.
@@ -2675,7 +2681,7 @@ When users ask complex questions, think through this framework:
 - Alternative treatment options
 - Doctor popularity insights (identify most famous doctor by treatment volume in the last 30 days when asked)
 - Appointment maker insights (identify which staff user created the most appointments in the selected period when asked)
-- Audit log guidance (explain All logs, Appointment log, Treatment log, and the Appointment Log shortcut in the Appointments tab)
+- Audit log guidance (explain All logs, Appointment log, Treatment log, the Appointment Log shortcut in the Appointments tab, theme-aware Audit Log colors, grouped same-day treatment visits, patient balance display, and PDF/Excel exports matching the current visible filters/search/date range)
 
 Today: ${contextData.td}
 Clinic Time Zone: ${getLocalTimeZone()}
