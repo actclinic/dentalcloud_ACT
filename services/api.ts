@@ -1230,7 +1230,7 @@ export const api = {
       try {
         let query = supabase
           .from('appointments')
-          .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
+          .select('*, patients!appointments_patient_id_fkey(name, balance), doctors(name)')
           .order('date');
 
         if (locationId) {
@@ -1287,6 +1287,7 @@ export const api = {
         return appointments.map((apt: any) => ({
           ...apt,
           patient_name: apt.patients?.name || apt.guest_name || 'Unknown',
+          patient_balance: apt.patients?.balance ?? null,
           doctor_name: getAppointmentDoctorDisplayName(
             apt,
             apt.patient_id ? treatmentDoctorByPatientAndDate.get(`${apt.patient_id}::${apt.date}`) : undefined
@@ -1331,7 +1332,7 @@ export const api = {
       let { data: result, error } = await supabase
         .from('appointments')
         .insert(payload)
-        .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
+        .select('*, patients!appointments_patient_id_fkey(name, balance), doctors(name)')
         .single();
 
       if (error && /created_by_user_(id|name)/i.test(error.message || '')) {
@@ -1342,7 +1343,7 @@ export const api = {
         const legacyInsert = await supabase
           .from('appointments')
           .insert(legacyPayload)
-          .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
+          .select('*, patients!appointments_patient_id_fkey(name, balance), doctors(name)')
           .single();
 
         result = legacyInsert.data;
@@ -1369,6 +1370,7 @@ export const api = {
       return {
         ...result,
         patient_name: result.patients?.name || result.guest_name || 'Unknown',
+        patient_balance: result.patients?.balance ?? null,
         doctor_name: result.doctors?.name || undefined
       };
     },
@@ -1414,7 +1416,7 @@ export const api = {
         .from('appointments')
         .update(updatePayload)
         .eq('id', id)
-        .select('*, patients!appointments_patient_id_fkey(name), doctors(name)')
+        .select('*, patients!appointments_patient_id_fkey(name, balance), doctors(name)')
         .single();
 
       if (error) throw new Error(error.message);
@@ -1434,6 +1436,7 @@ export const api = {
       return {
         ...result,
         patient_name: result.patients?.name || result.guest_name || 'Unknown',
+        patient_balance: result.patients?.balance ?? null,
         doctor_name: result.doctors?.name || undefined
       };
     },
@@ -1543,7 +1546,7 @@ export const api = {
       try {
         let query = supabase
           .from('treatments')
-          .select('*, patients(name), doctors(name)')
+          .select('*, patients(name, balance), doctors(name)')
           .order('date', { ascending: false })
           .limit(50);
 
@@ -1562,6 +1565,7 @@ export const api = {
           pricingNote: rec.pricing_note || null,
           doctorEarnings: Number(rec.doctor_earnings || 0),
           patient_name: rec.patients?.name || 'Unknown',
+          patient_balance: Number(rec.patients?.balance || 0),
           doctor_name: rec.doctors?.name || undefined
         }));
       } catch (err) {

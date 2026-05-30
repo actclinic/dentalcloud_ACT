@@ -7,6 +7,7 @@ import { exportClinicalRecordsToExcel } from '../utils/excelExport';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 import Pagination from './Pagination';
 import ExportMenu from './ExportMenu';
+import { filterAuditRowsByDateRange, toLocalISODate } from '../utils/auditLogFilters';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -30,7 +31,32 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [auditFilter, setAuditFilter] = useState<AuditFilter>(initialFilter);
+  const todayKey = useMemo(() => toLocalISODate(new Date()), []);
+  const [dateFrom, setDateFrom] = useState(todayKey);
+  const [dateTo, setDateTo] = useState(todayKey);
   const itemsPerPage = 10;
+
+  const handleDateFromChange = (value: string) => {
+    setDateFrom(value);
+    if (value > dateTo) {
+      setDateTo(value);
+    }
+    setCurrentPage(1);
+  };
+
+  const handleDateToChange = (value: string) => {
+    setDateTo(value);
+    if (value < dateFrom) {
+      setDateFrom(value);
+    }
+    setCurrentPage(1);
+  };
+
+  const handleResetToToday = () => {
+    setDateFrom(todayKey);
+    setDateTo(todayKey);
+    setCurrentPage(1);
+  };
 
   const formatCreatedAt = (value?: string | null) => {
     if (!value) return 'Unknown';
@@ -43,6 +69,16 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
       hour: 'numeric',
       minute: '2-digit'
     });
+  };
+
+  const renderPatientBalance = (balance?: number | null) => {
+    if (balance === null || balance === undefined) return <span className="text-gray-400">-</span>;
+    const numericBalance = Number(balance || 0);
+    return (
+      <span className={numericBalance > 0 ? 'font-bold text-red-600' : 'font-semibold text-green-600'}>
+        {numericBalance > 0 ? formatCurrency(numericBalance, currency) : 'Clear'}
+      </span>
+    );
   };
 
   const auditRows = useMemo<AuditRow[]>(() => {
@@ -101,9 +137,11 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
       return true;
     });
 
-    if (!searchTerm) return scopedRows;
+    const dateScopedRows = filterAuditRowsByDateRange(scopedRows, dateFrom, dateTo);
+
+    if (!searchTerm) return dateScopedRows;
     const term = searchTerm.toLowerCase();
-    return scopedRows.filter((row) => {
+    return dateScopedRows.filter((row) => {
       if (row.kind === 'treatment') {
         const record = row.record;
         return (
@@ -127,7 +165,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
         (appointment.created_at || '').toLowerCase().includes(term)
       );
     });
-  }, [auditRows, auditFilter, searchTerm]);
+  }, [auditRows, auditFilter, searchTerm, dateFrom, dateTo]);
 
   const paginatedRows = useMemo(() => {
     if (showAll) return filteredRows;
@@ -137,7 +175,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
 
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [records, appointments, auditFilter]);
+  }, [records, appointments, auditFilter, dateFrom, dateTo]);
 
   React.useEffect(() => {
     setAuditFilter(initialFilter);
@@ -180,6 +218,35 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
         </div>
         {!isDoctor && (
           <div className="flex flex-col sm:flex-row gap-2 md:gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-2 sm:flex gap-2">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.16em] mb-1">From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo}
+                  onChange={(e) => handleDateFromChange(e.target.value)}
+                  className="w-full sm:w-36 bg-white text-gray-800 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-[0.16em] mb-1">To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom}
+                  onChange={(e) => handleDateToChange(e.target.value)}
+                  className="w-full sm:w-36 bg-white text-gray-800 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleResetToToday}
+                className="col-span-2 sm:col-span-1 self-end px-3 py-2 text-xs rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 font-semibold hover:bg-emerald-100 transition-colors"
+              >
+                Today
+              </button>
+            </div>
             <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
               {[
                 { value: 'all', label: 'All logs' },
@@ -253,6 +320,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Event</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Logged By / At</th>
+                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Patient Balance</th>
                   <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Amount</th>
                   <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">Doctor Earned</th>
                 </tr>
@@ -285,6 +353,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                             <span className="font-semibold">{appointment.created_by_user_name || 'Unknown'}</span>
                             <span className="block text-xs text-gray-500">{formatCreatedAt(appointment.created_at)}</span>
                           </td>
+                          <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(appointment.patient_balance)}</td>
                           <td className="px-6 py-4 text-right text-sm font-black text-gray-900">-</td>
                           <td className="px-6 py-4 text-right text-sm text-gray-400">-</td>
                         </tr>
@@ -328,6 +397,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                           )}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700">Clinical record</td>
+                        <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(rec.patient_balance)}</td>
                         <td className="px-6 py-4 text-right text-sm font-black text-gray-900">{formatCurrency(rec.cost || 0, currency)}</td>
                         <td className="px-6 py-4 text-right text-sm font-bold text-emerald-700">{rec.doctorEarnings ? formatCurrency(rec.doctorEarnings, currency) : '-'}</td>
                       </tr>
@@ -360,6 +430,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                         <p className="text-sm text-gray-800">{appointment.created_by_user_name || 'Unknown'}</p>
                         <p className="text-xs text-gray-500 mt-1">{formatCreatedAt(appointment.created_at)}</p>
                       </div>
+                      <div className="flex justify-between items-center bg-red-50 rounded-lg p-3">
+                        <span className="text-xs font-semibold text-red-700">Patient Balance</span>
+                        <span className="text-sm">{renderPatientBalance(appointment.patient_balance)}</span>
+                      </div>
                     </div>
                   );
                 }
@@ -381,6 +455,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                         <span className="text-sm font-bold text-emerald-800">{formatCurrency(rec.doctorEarnings, currency)}</span>
                       </div>
                     ) : null}
+                    <div className="flex justify-between items-center bg-red-50 rounded-lg p-3">
+                      <span className="text-xs font-semibold text-red-700">Patient Balance</span>
+                      <span className="text-sm">{renderPatientBalance(rec.patient_balance)}</span>
+                    </div>
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-[11px] font-semibold text-gray-500 uppercase mb-1">Treatment</p>
                       <p className="text-sm text-gray-800">{rec.description}</p>

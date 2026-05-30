@@ -66,6 +66,7 @@ export interface ClinicalRecord {
   location_id: string;
   patient_id: string;
   patient_name?: string; // Joined field for global view
+  patient_balance?: number; // Joined field for audit log balance/debt display
   doctor_id?: string;
   doctor_name?: string; // Joined field for clinical ownership
   teeth: number[];
@@ -139,6 +140,7 @@ export interface Appointment {
   location_id: string;
   patient_id?: string | null;
   patient_name?: string;
+  patient_balance?: number | null;
   doctor_id?: string;
   doctor_name?: string;
   date: string; // YYYY-MM-DD
