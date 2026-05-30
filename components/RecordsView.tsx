@@ -7,7 +7,8 @@ import { exportClinicalRecordsToExcel } from '../utils/excelExport';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 import Pagination from './Pagination';
 import ExportMenu from './ExportMenu';
-import { filterAuditRowsByDateRange, toLocalISODate } from '../utils/auditLogFilters';
+import { toLocalISODate } from '../utils/auditLogFilters';
+import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow, type AuditFilter } from '../utils/auditLogExport';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -19,12 +20,6 @@ interface RecordsViewProps {
   isDoctor?: boolean;
   initialFilter?: AuditFilter;
 }
-
-type AuditFilter = 'all' | 'appointments' | 'treatments';
-
-type AuditRow =
-  | { kind: 'treatment'; sortDate: string; record: ClinicalRecord }
-  | { kind: 'appointment'; sortDate: string; appointment: Appointment };
 
 const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all' }) => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -81,90 +76,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
     );
   };
 
-  const auditRows = useMemo<AuditRow[]>(() => {
-    // Group treatment records by patient + date to show all treatments in one visit
-    const groupedTreatmentMap = new Map<string, ClinicalRecord[]>();
-    records.forEach((record) => {
-      const key = `${record.patient_id || ''}|${record.date || ''}`;
-      if (!groupedTreatmentMap.has(key)) {
-        groupedTreatmentMap.set(key, []);
-      }
-      groupedTreatmentMap.get(key)!.push(record);
-    });
-
-    // For each group, create a merged row with all treatments listed together
-    const treatmentRows: AuditRow[] = [];
-    groupedTreatmentMap.forEach((group) => {
-      const sorted = [...group].sort((a, b) => {
-        const dateCmp = (a.date || '').localeCompare(b.date || '') || a.description.localeCompare(b.description);
-        return dateCmp;
-      });
-      const base = { ...sorted[0] };
-      const allDescriptions = sorted.map((r) => r.description).filter(Boolean);
-      const allTeeth = sorted.flatMap((r) => r.teeth || []);
-      const totalCost = sorted.reduce((sum, r) => sum + (r.cost || 0), 0);
-      const totalEarnings = sorted.reduce((sum, r) => sum + (r.doctorEarnings || 0), 0);
-
-      base.description = allDescriptions.join(' + ');
-      base.teeth = [...new Set(allTeeth)].sort((a, b) => a - b);
-      base.cost = totalCost;
-      base.doctorEarnings = totalEarnings > 0 ? totalEarnings : base.doctorEarnings;
-
-      (base as any)._groupedRecords = sorted;
-
-      treatmentRows.push({
-        kind: 'treatment',
-        sortDate: `${base.date || ''}T23:59:59`,
-        record: base
-      });
-    });
-
-    const appointmentRows: AuditRow[] = isDoctor
-      ? []
-      : appointments.map((appointment) => ({
-          kind: 'appointment',
-          sortDate: appointment.created_at || `${appointment.date || ''}T${appointment.time || '00:00:00'}`,
-          appointment
-        }));
-
-    return [...treatmentRows, ...appointmentRows].sort((a, b) => b.sortDate.localeCompare(a.sortDate));
-  }, [records, appointments, isDoctor]);
+  const auditRows = useMemo<AuditExportRow[]>(() => buildAuditLogRows(records, appointments, !isDoctor), [records, appointments, isDoctor]);
 
   const filteredRows = useMemo(() => {
-    const scopedRows = auditRows.filter((row) => {
-      if (auditFilter === 'appointments') return row.kind === 'appointment';
-      if (auditFilter === 'treatments') return row.kind === 'treatment';
-      return true;
-    });
-
-    const dateScopedRows = filterAuditRowsByDateRange(scopedRows, dateFrom, dateTo);
-
-    if (!searchTerm) return dateScopedRows;
-    const term = searchTerm.toLowerCase();
-    return dateScopedRows.filter((row) => {
-      if (row.kind === 'treatment') {
-        const record = row.record;
-        return (
-          (record.patient_name || '').toLowerCase().includes(term) ||
-          (record.doctor_name || '').toLowerCase().includes(term) ||
-          record.description.toLowerCase().includes(term) ||
-          record.date.toLowerCase().includes(term) ||
-          record.teeth.some((tooth) => tooth.toString().includes(term))
-        );
-      }
-
-      const appointment = row.appointment;
-      return (
-        (appointment.patient_name || '').toLowerCase().includes(term) ||
-        (appointment.doctor_name || '').toLowerCase().includes(term) ||
-        (appointment.created_by_user_name || '').toLowerCase().includes(term) ||
-        (appointment.type || '').toLowerCase().includes(term) ||
-        (appointment.status || '').toLowerCase().includes(term) ||
-        (appointment.date || '').toLowerCase().includes(term) ||
-        (appointment.time || '').toLowerCase().includes(term) ||
-        (appointment.created_at || '').toLowerCase().includes(term)
-      );
-    });
+    return filterAuditLogRowsForExport(auditRows, { auditFilter, dateFrom, dateTo, searchTerm });
   }, [auditRows, auditFilter, searchTerm, dateFrom, dateTo]);
 
   const paginatedRows = useMemo(() => {
@@ -194,11 +109,25 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   }, [initialFilter]);
 
   const handleDownloadPDF = () => {
-    exportClinicalRecordsToPDF(records, currency);
+    exportClinicalRecordsToPDF(records, currency, {
+      appointments,
+      includeAppointments: !isDoctor,
+      auditFilter,
+      dateFrom,
+      dateTo,
+      searchTerm
+    });
   };
 
   const handleDownloadExcel = async () => {
-    await exportClinicalRecordsToExcel(records, currency);
+    await exportClinicalRecordsToExcel(records, currency, {
+      appointments,
+      includeAppointments: !isDoctor,
+      auditFilter,
+      dateFrom,
+      dateTo,
+      searchTerm
+    });
   };
 
   const handleDownloadJSON = () => {

@@ -1,6 +1,6 @@
 import { Appointment, ClinicalRecord, Doctor, Expense, Medicine, Patient } from '../types';
 import { Currency } from './currency';
-import { formatTeethWithPosition } from './toothNumbering';
+import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 
 type ExcelPrimitive = string | number;
 type ExcelRow = Record<string, ExcelPrimitive>;
@@ -188,27 +188,40 @@ export const exportAppointmentsToExcel = async (appointments: Appointment[]) => 
   await saveWorkbook(rows, columns, 'Appointments', `appointments-report-${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
-export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], currency: Currency) => {
+interface ClinicalRecordsExcelExportOptions extends AuditLogFilterOptions {
+  appointments?: Appointment[];
+  includeAppointments?: boolean;
+}
+
+export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], currency: Currency, options: ClinicalRecordsExcelExportOptions = {}) => {
   const columns: ExcelColumn[] = [
-    { header: 'Date', width: 14 },
+    { header: 'Type', width: 14 },
+    { header: 'Date / Time', width: 22 },
     { header: 'Patient', width: 24 },
-    { header: 'Doctor', width: 22 },
-    { header: 'Treatment', width: 32 },
-    { header: 'Teeth', width: 18 },
+    { header: 'Clinician', width: 22 },
+    { header: 'Clinical Activity', width: 48 },
+    { header: 'Recorded By', width: 28 },
+    { header: 'Patient Balance', width: 16 },
     { header: 'Amount', width: 14, format: 'currency' },
     { header: 'Doctor Earned', width: 14, format: 'currency' }
   ];
-  const rows = records.map((record) => ({
-    Date: record.date,
-    Patient: record.patient_name || 'Unknown',
-    Doctor: record.doctor_name ? `Dr. ${record.doctor_name}` : 'N/A',
-    Treatment: record.description,
-    Teeth: record.teeth && record.teeth.length > 0 ? formatTeethWithPosition(record.teeth) : 'General',
-    Amount: record.cost || 0,
-    'Doctor Earned': record.doctorEarnings || 0
+  const exportRows = filterAuditLogRowsForExport(
+    buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false),
+    options
+  );
+  const rows = buildAuditLogExportTableRows(exportRows, currency).map((row) => ({
+    Type: row.type,
+    'Date / Time': row.dateTime,
+    Patient: row.patient,
+    Clinician: row.clinician,
+    'Clinical Activity': row.activity,
+    'Recorded By': row.recordedBy,
+    'Patient Balance': row.patientBalance,
+    Amount: row.amount ?? 0,
+    'Doctor Earned': row.doctorEarned ?? 0
   }));
 
-  await saveWorkbook(rows, columns, 'Clinical Records', `clinical-records-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
+  await saveWorkbook(rows, columns, options.includeAppointments ? 'Audit Log' : 'Clinical Records', `${options.includeAppointments ? 'clinic-audit-logs' : 'clinical-records'}-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
 };
 
 export const exportDoctorsToExcel = async (doctors: Doctor[]) => {

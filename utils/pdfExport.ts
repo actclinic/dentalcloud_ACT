@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { Patient, Appointment, ClinicalRecord, Doctor, Medicine, Expense } from '../types';
 import { formatCurrency, Currency } from './currency';
 import { formatTeethWithPosition } from './toothNumbering';
+import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 
 // Add type declaration for jsPDF with autoTable
 declare module 'jspdf' {
@@ -194,43 +195,64 @@ export const exportAppointmentsToPDF = (appointments: Appointment[]) => {
   doc.save(`appointments-report-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: Currency) => {
-  // Use all records for export (not just filtered/paginated view)
-  const exportRecords = records;
-  const doc = new jsPDF();
+interface ClinicalRecordsExportOptions extends AuditLogFilterOptions {
+  appointments?: Appointment[];
+  includeAppointments?: boolean;
+}
+
+export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: Currency, options: ClinicalRecordsExportOptions = {}) => {
+  const exportRows = filterAuditLogRowsForExport(
+    buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false),
+    options
+  );
+  const tableRows = buildAuditLogExportTableRows(exportRows, currency);
+  const doc = new jsPDF('l', 'mm', 'a4');
   
   // Header
   doc.setFontSize(18);
   doc.setTextColor(40, 40, 40);
-  doc.text('Clinical Records Audit Report', 14, 20);
+  doc.text(options.includeAppointments ? 'Clinical Audit Trail Report' : 'Clinical Records Audit Report', 14, 20);
   
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
   doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
-  doc.text(`Total Records: ${records.length}`, 14, 34);
+  doc.text(`Visible Entries: ${exportRows.length}`, 14, 34);
+  if (options.dateFrom && options.dateTo) {
+    doc.text(`Date Range: ${options.dateFrom} to ${options.dateTo}`, 14, 40);
+  }
   
-  const totalRevenue = exportRecords.reduce((sum, rec) => sum + (rec.cost || 0), 0);
-  doc.text(`Total Revenue: ${formatCurrency(totalRevenue, currency)}`, 14, 40);
+  const totalRevenue = tableRows.reduce((sum, row) => sum + (row.amount || 0), 0);
+  doc.text(`Treatment Revenue: ${formatCurrency(totalRevenue, currency)}`, 14, options.dateFrom && options.dateTo ? 46 : 40);
   
   // Table
   autoTable(doc, {
-    startY: 46,
-    head: [['Date', 'Patient', 'Treatment', 'Teeth', 'Amount', 'Doctor Earned']],
-    body: exportRecords.map(rec => [
-      rec.date,
-      rec.patient_name || 'Unknown',
-      rec.description,
-      rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General',
-      formatCurrency(rec.cost || 0, currency),
-      rec.doctorEarnings ? formatCurrency(rec.doctorEarnings, currency) : '-'
+    startY: options.dateFrom && options.dateTo ? 52 : 46,
+    head: [['Type', 'Date / Time', 'Patient', 'Clinician', 'Clinical Activity', 'Recorded By', 'Patient Balance', 'Amount', 'Doctor Earned']],
+    body: tableRows.map((row) => [
+      row.type,
+      row.dateTime,
+      row.patient,
+      row.clinician,
+      row.activity,
+      row.recordedBy,
+      row.patientBalance,
+      row.amount === null ? '-' : formatCurrency(row.amount, currency),
+      row.doctorEarned === null ? '-' : formatCurrency(row.doctorEarned, currency)
     ]),
     theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229], fontSize: 9, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 8 },
+    headStyles: { fillColor: [79, 70, 229], fontSize: 7.5, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [245, 247, 250] },
     columnStyles: {
-      4: { halign: 'right', fontStyle: 'bold' },
-      5: { halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: 20 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 32 },
+      3: { cellWidth: 30 },
+      4: { cellWidth: 60 },
+      5: { cellWidth: 34 },
+      6: { cellWidth: 24, halign: 'right' },
+      7: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
+      8: { cellWidth: 24, halign: 'right', fontStyle: 'bold' }
     }
   });
   
@@ -243,7 +265,7 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
     doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
   }
   
-  doc.save(`clinical-records-${new Date().toISOString().split('T')[0]}.pdf`);
+  doc.save(`${options.includeAppointments ? 'clinic-audit-logs' : 'clinical-records'}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
 export const exportDoctorsToPDF = (doctors: Doctor[]) => {
