@@ -30,6 +30,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
   const [dateFrom, setDateFrom] = useState(todayKey);
   const [dateTo, setDateTo] = useState(todayKey);
+  const isTodayRange = dateFrom === todayKey && dateTo === todayKey;
   const itemsPerPage = 10;
 
   const handleDateFromChange = (value: string) => {
@@ -74,6 +75,22 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
       <span className={numericBalance > 0 ? 'font-bold text-red-600' : 'font-semibold text-green-600'}>
         {numericBalance > 0 ? formatCurrency(numericBalance, currency) : 'Clear'}
       </span>
+    );
+  };
+
+  const renderTreatmentDescriptionList = (rec: ClinicalRecord) => {
+    const groupedRecords = (rec as any)._groupedRecords as ClinicalRecord[] | undefined;
+    const descriptionRecords = groupedRecords?.length ? groupedRecords : [rec];
+
+    return (
+      <div className="space-y-1">
+        {descriptionRecords.map((record, index) => (
+          <div key={`${record.id || index}-${index}`} className="flex min-w-0 items-start gap-1.5">
+            <span className="mt-0.5 shrink-0 text-blue-500">•</span>
+            <span className="min-w-0 break-words">{record.description || 'Treatment record'}</span>
+          </div>
+        ))}
+      </div>
     );
   };
 
@@ -145,62 +162,67 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+    <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
       <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/40">
-        <div className="p-4 md:p-6 flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-col gap-4 p-3 sm:p-4 md:p-6 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
+        <div className="flex min-w-0 items-start gap-3">
           <div className="hidden sm:flex h-11 w-11 items-center justify-center rounded-2xl theme-accent-soft-bg theme-accent-text border theme-accent-border">
             <ShieldCheck size={22} />
           </div>
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] theme-accent-text mb-1">Clinical governance</p>
-            <h2 className="text-2xl font-bold text-slate-900">{isDoctor ? 'Patient Treatment Records' : 'Clinical Audit Trail'}</h2>
-            <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] theme-accent-text sm:text-[11px] sm:tracking-[0.24em]">Clinical governance</p>
+            <h2 className="break-words text-xl font-bold text-slate-900 sm:text-2xl">{isDoctor ? 'Patient Treatment Records' : 'Clinical Audit Trail'}</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm">
               {isDoctor ? 'Your completed treatments and patient clinical history.' : 'A daily operational record of appointments, treatments, responsible staff, and patient balances.'}
             </p>
             {!isDoctor && (
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">{filteredRows.length} visible entries</span>
-                <span className="rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 font-semibold theme-accent-text">{filteredSummary.appointments} appointments</span>
-                <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">{filteredSummary.treatments} treatments</span>
+              <div className="mt-3 grid grid-cols-1 gap-2 text-xs min-[380px]:grid-cols-3 sm:flex sm:flex-wrap">
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-center font-semibold text-slate-700 sm:text-left">{filteredRows.length} visible</span>
+                <span className="rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 text-center font-semibold theme-accent-text sm:text-left">{filteredSummary.appointments} appts</span>
+                <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-center font-semibold text-emerald-700 sm:text-left">{filteredSummary.treatments} treatments</span>
               </div>
             )}
           </div>
         </div>
         {!isDoctor && (
-          <div className="w-full xl:max-w-5xl space-y-3">
+          <div className="w-full min-w-0 space-y-3 xl:max-w-5xl">
             <div className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-              <div className="flex flex-col lg:flex-row gap-3 lg:items-end lg:justify-between">
-                <div className="grid grid-cols-2 sm:flex gap-2">
-              <div>
+              <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              <div className="min-w-0">
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.16em] mb-1">From</label>
                 <input
                   type="date"
                   value={dateFrom}
                   max={dateTo}
                   onChange={(e) => handleDateFromChange(e.target.value)}
-                  className="w-full sm:w-36 bg-white text-slate-800 text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs text-slate-800 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 min-[380px]:text-sm sm:w-36 sm:px-3"
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.16em] mb-1">To</label>
                 <input
                   type="date"
                   value={dateTo}
                   min={dateFrom}
                   onChange={(e) => handleDateToChange(e.target.value)}
-                  className="w-full sm:w-36 bg-white text-slate-800 text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs text-slate-800 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 min-[380px]:text-sm sm:w-36 sm:px-3"
                 />
               </div>
               <button
                 type="button"
                 onClick={handleResetToToday}
-                className="col-span-2 sm:col-span-1 self-end px-4 py-2.5 text-xs rounded-xl border theme-accent-border theme-accent-soft-bg theme-accent-text font-bold hover:bg-blue-100 transition-colors"
+                title={isTodayRange ? 'Showing today only' : 'Custom date range selected. Click to reset to today.'}
+                className={`col-span-2 min-h-10 w-full self-end rounded-xl border px-4 py-2.5 text-xs font-bold transition-colors sm:col-span-1 sm:w-auto ${
+                  isTodayRange
+                    ? 'theme-accent-border theme-accent-soft-bg theme-accent-text hover:bg-blue-100'
+                    : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                }`}
               >
-                Today
+                {isTodayRange ? 'Today' : 'Custom'}
               </button>
             </div>
-                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                <div className="grid w-full grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:inline-grid sm:w-auto">
               {[
                 { value: 'all', label: 'All' },
                 { value: 'appointments', label: 'Appointments' },
@@ -213,7 +235,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                     setAuditFilter(item.value as AuditFilter);
                     setCurrentPage(1);
                   }}
-                  className={`px-3.5 py-2 text-xs rounded-lg transition-colors ${
+                  className={`rounded-lg px-2 py-2 text-xs transition-colors sm:px-3.5 ${
                     auditFilter === item.value ? 'bg-white theme-accent-text shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -223,8 +245,8 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                 </div>
             </div>
             </div>
-            <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-            <div className="relative w-full lg:max-w-md">
+            <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full min-w-0 lg:max-w-md">
               <input
                 type="text"
                 placeholder="Search patient, doctor, staff, service..."
@@ -233,27 +255,28 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full bg-white shadow-sm"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-3 lg:w-auto lg:flex lg:flex-row">
             <ExportMenu
               disabled={records.length === 0}
               onExportPDF={handleDownloadPDF}
               onExportExcel={handleDownloadExcel}
-              className="w-full sm:w-auto !rounded-xl !bg-slate-800 hover:!bg-slate-900 !font-semibold !shadow-sm"
+              className="!w-full !rounded-xl !bg-slate-800 !font-semibold !shadow-sm hover:!bg-slate-900 lg:!w-auto"
+              buttonLabelClassName="inline"
             />
             <button
               onClick={handleDownloadJSON}
               disabled={records.length === 0}
-              className="flex items-center justify-center gap-2 border border-slate-200 bg-white text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
             >
-              <Download size={16} /> JSON Backup
+              <Download size={16} /> <span className="whitespace-nowrap">JSON Backup</span>
             </button>
             <button
               onClick={onRefresh}
-              className="theme-accent-text theme-accent-soft-bg text-sm font-bold flex items-center justify-center gap-2 border theme-accent-border rounded-xl px-4 py-2 hover:bg-blue-100 transition-colors"
+              className="theme-accent-text theme-accent-soft-bg flex min-h-10 items-center justify-center gap-2 rounded-xl border theme-accent-border px-3 py-2 text-sm font-bold transition-colors hover:bg-blue-100 sm:px-4"
             >
               <RotateCw size={16} /> Refresh
             </button>
@@ -336,21 +359,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                         <td className="px-6 py-4 font-bold text-slate-900">{rec.patient_name || 'Unknown'}</td>
                         <td className="px-6 py-4 text-sm text-slate-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</td>
                         <td className="px-6 py-4 text-sm text-slate-700 max-w-md">
-                          <div className="space-y-0.5">
-                            {(rec as any)._groupedRecords ? (
-                              (rec as any)._groupedRecords.map((r: ClinicalRecord, i: number) => (
-                                <div key={i} className="flex items-start gap-1.5">
-                                  <span className="text-blue-500 mt-0.5 shrink-0">•</span>
-                                  <span>{r.description}</span>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="flex items-start gap-1.5">
-                                <span className="text-blue-500 mt-0.5 shrink-0">•</span>
-                                <span>{rec.description}</span>
-                              </div>
-                            )}
-                          </div>
+                          {renderTreatmentDescriptionList(rec)}
                           <span className="block text-xs font-mono text-gray-500 mt-1">
                             {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
                           </span>
@@ -372,9 +381,9 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
             </table>
           </div>
 
-          <div className="md:hidden divide-y divide-slate-100 bg-slate-50/40">
+          <div className="md:hidden divide-y divide-slate-100 bg-slate-50/40 p-2">
             {filteredRows.length === 0 ? (
-              <div className="px-4 py-10 text-center">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center">
                 <p className="text-sm font-semibold text-slate-600">{isDoctor ? 'No patient treatment records found' : 'No audit records found'}</p>
                 <p className="text-xs text-slate-400 mt-1">{isDoctor ? 'Completed treatments assigned to you will appear here.' : 'Try another date range or search term.'}</p>
               </div>
@@ -383,23 +392,30 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                 if (row.kind === 'appointment') {
                   const appointment = row.appointment;
                   return (
-                    <div key={`appointment-${appointment.id}`} className="m-3 rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-black uppercase tracking-wider theme-accent-text">Appointment</p>
-                          <p className="text-sm font-bold text-slate-900">{appointment.patient_name || 'Unknown'}</p>
-                          <p className="text-xs text-slate-500 mt-1">{appointment.date} at {appointment.time}</p>
+                    <div key={`appointment-${appointment.id}`} className="my-2 min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm min-[380px]:p-4">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-black uppercase tracking-wider theme-accent-text">Appointment</p>
+                          <p className="mt-0.5 break-words text-sm font-bold text-slate-900">{appointment.patient_name || 'Unknown'}</p>
+                          <p className="mt-1 break-words text-xs text-slate-500">{appointment.date} at {appointment.time || 'No time'}</p>
                         </div>
-                        <p className="rounded-full theme-accent-soft-bg px-2 py-1 text-xs font-black theme-accent-text">{appointment.status}</p>
+                        <p className="shrink-0 rounded-full theme-accent-soft-bg px-2 py-1 text-[11px] font-black theme-accent-text">{appointment.status}</p>
                       </div>
-                      <div className="bg-slate-50 rounded-xl p-3">
+                      <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase text-slate-500">Clinical Activity</p>
+                        <p className="mt-1 break-words text-sm text-slate-800">
+                          Appointment made for {appointment.date} at {appointment.time || 'No time'} ({appointment.type || 'Checkup'}, {appointment.status})
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : 'No clinician assigned'}</p>
+                      </div>
+                      <div className="mt-3 rounded-xl bg-slate-50 p-3">
                         <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1">Recorded By</p>
-                        <p className="text-sm text-slate-800">{appointment.created_by_user_name || 'Unknown'}</p>
+                        <p className="break-words text-sm text-slate-800">{appointment.created_by_user_name || 'Unknown'}</p>
                         <p className="text-xs text-slate-500 mt-1">{formatCreatedAt(appointment.created_at)}</p>
                       </div>
-                      <div className="flex justify-between items-center bg-rose-50 rounded-xl p-3">
+                      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-rose-50 p-3">
                         <span className="text-xs font-semibold text-rose-700">Patient Balance</span>
-                        <span className="text-sm">{renderPatientBalance(appointment.patient_balance)}</span>
+                        <span className="min-w-0 text-right text-sm">{renderPatientBalance(appointment.patient_balance)}</span>
                       </div>
                     </div>
                   );
@@ -407,28 +423,37 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
 
                 const rec = row.record;
                 return (
-                  <div key={`treatment-${rec.id}`} className="m-3 rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-emerald-500">Treatment</p>
-                        <p className="text-sm font-bold text-slate-900">{rec.patient_name || 'Unknown'}</p>
-                        <p className="text-xs text-slate-500 mt-1">{rec.date}</p>
+                  <div key={`treatment-${rec.id}`} className="my-2 min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm min-[380px]:p-4">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-500">Treatment</p>
+                        <p className="mt-0.5 break-words text-sm font-bold text-slate-900">{rec.patient_name || 'Unknown'}</p>
+                        <p className="mt-1 text-xs text-slate-500">{rec.date}</p>
+                        <p className="mt-1 break-words text-xs text-slate-500">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : 'No clinician assigned'}</p>
                       </div>
-                      <p className="text-sm font-black text-slate-900">{formatCurrency(rec.cost || 0, currency)}</p>
+                      <p className="shrink-0 text-right text-sm font-black text-slate-900">{formatCurrency(rec.cost || 0, currency)}</p>
                     </div>
                     {rec.doctorEarnings ? (
-                      <div className="flex justify-between items-center bg-emerald-50 rounded-xl p-3">
+                      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 p-3">
                         <span className="text-xs font-semibold text-emerald-700">Doctor Earned</span>
-                        <span className="text-sm font-bold text-emerald-800">{formatCurrency(rec.doctorEarnings, currency)}</span>
+                        <span className="min-w-0 text-right text-sm font-bold text-emerald-800">{formatCurrency(rec.doctorEarnings, currency)}</span>
                       </div>
                     ) : null}
-                    <div className="flex justify-between items-center bg-rose-50 rounded-xl p-3">
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-rose-50 p-3">
                       <span className="text-xs font-semibold text-rose-700">Patient Balance</span>
-                      <span className="text-sm">{renderPatientBalance(rec.patient_balance)}</span>
+                      <span className="min-w-0 text-right text-sm">{renderPatientBalance(rec.patient_balance)}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-xl p-3">
+                    <div className="mt-3 rounded-xl bg-slate-50 p-3">
                       <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1">Treatment</p>
-                      <p className="text-sm text-slate-800">{rec.description}</p>
+                      <div className="break-words text-sm text-slate-800">{renderTreatmentDescriptionList(rec)}</div>
+                      <p className="mt-2 break-words font-mono text-xs text-slate-500">
+                        {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
+                      </p>
+                      {(rec as any)._groupedRecords && (rec as any)._groupedRecords.length > 0 && (
+                        <p className="mt-2 border-t border-slate-200 pt-2 text-xs font-semibold text-slate-600">
+                          Total: {formatCurrency(rec.cost || 0, currency)}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
