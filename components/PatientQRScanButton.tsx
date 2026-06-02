@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ScanLine } from 'lucide-react';
+import { CheckCircle, ScanLine } from 'lucide-react';
 import { Patient } from '../types';
 import { Modal } from './Shared';
 import { decodePatientQR } from './PatientQRCode';
@@ -17,6 +17,7 @@ const PatientQRScanButton: React.FC<PatientQRScanButtonProps> = ({
 }) => {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
+  const [successPatient, setSuccessPatient] = useState<Patient | null>(null);
   const scannerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -50,6 +51,14 @@ const PatientQRScanButton: React.FC<PatientQRScanButtonProps> = ({
     setScannerError(null);
     hasHandledScanRef.current = false;
     stopScanner();
+  };
+
+  const openScannedPatientChart = () => {
+    if (!successPatient) return;
+
+    const patientToOpen = successPatient;
+    setSuccessPatient(null);
+    onSelectPatient(patientToOpen);
   };
 
   React.useEffect(() => {
@@ -137,7 +146,7 @@ const PatientQRScanButton: React.FC<PatientQRScanButtonProps> = ({
           stopScanner();
           setScannerError(null);
           setShowQRScanner(false);
-          onSelectPatient(matchedPatient);
+          setSuccessPatient(matchedPatient);
         };
 
         const scanFrame = () => {
@@ -236,6 +245,30 @@ const PatientQRScanButton: React.FC<PatientQRScanButtonProps> = ({
                 Cancel
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {successPatient && (
+        <Modal title="Patient Chart Opened" maxWidthClassName="max-w-md" onClose={openScannedPatientChart}>
+          <div className="flex flex-col items-center text-center gap-5">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-100 flex items-center justify-center">
+              <CheckCircle className="w-9 h-9 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-gray-900">
+                Successfully opened &quot;{successPatient.name}&quot; Chart
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                The scanned patient chart is ready to view.
+              </p>
+            </div>
+            <button
+              onClick={openScannedPatientChart}
+              className="w-full px-6 py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+            >
+              OK
+            </button>
           </div>
         </Modal>
       )}
