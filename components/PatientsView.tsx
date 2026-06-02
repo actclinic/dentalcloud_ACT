@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, ScanLine, Calendar, Clock, Filter } from 'lucide-react';
+import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, Calendar, Clock, Filter } from 'lucide-react';
 import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType, TreatmentType, Doctor } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
@@ -11,7 +11,7 @@ import { SearchableSelect } from './SearchableSelect';
 import { getMyanmarCities, getTownshipsForCity } from '../utils/myanmarCities';
 import { api } from '../services/api';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS } from '../constants';
-import { decodePatientQR } from './PatientQRCode';
+import PatientQRScanButton from './PatientQRScanButton';
 
 interface PatientsViewProps {
   patients: Patient[];
@@ -86,10 +86,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [treatmentRecordsByPatientId, setTreatmentRecordsByPatientId] = useState<Record<string, ClinicalRecord[]>>({});
   const [treatmentRecordsLoadingForPatientId, setTreatmentRecordsLoadingForPatientId] = useState<string | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
-  const [showQRScanner, setShowQRScanner] = useState(false);
-  const [scannerError, setScannerError] = useState<string | null>(null);
-  const scannerRef = useRef<HTMLDivElement | null>(null);
-  const html5QrCodeRef = useRef<any>(null);
   const itemsPerPage = 10;
 
   const toLocalISODate = (date: Date) => {
@@ -354,105 +350,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     return () => document.removeEventListener('mousedown', handleDocumentClick);
   }, [openActionMenuPatientId]);
 
-  // QR Scanner: start/stop when modal opens/closes
-  React.useEffect(() => {
-    if (!showQRScanner) return;
-
-    let stopped = false;
-
-    const startScanner = async () => {
-      try {
-        const { Html5Qrcode } = await import('html5-qrcode');
-
-        const scannerId = 'patient-qr-scanner';
-        // Check if a previous instance exists in the DOM already
-        let existingEl = document.getElementById(scannerId);
-        if (!existingEl) {
-          const div = document.createElement('div');
-          div.id = scannerId;
-          if (scannerRef.current) {
-            scannerRef.current.innerHTML = '';
-            scannerRef.current.appendChild(div);
-          }
-        }
-
-        const html5QrCode = new Html5Qrcode(scannerId);
-        html5QrCodeRef.current = html5QrCode;
-
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          {
-            fps: 10,
-            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-              // Responsive qrbox: use 65% of the smaller viewfinder dimension,
-              // capped at 280px to stay proportional on both mobile and desktop
-              const size = Math.min(
-                Math.min(viewfinderWidth, viewfinderHeight) * 0.65,
-                280
-              );
-              return { width: size, height: size };
-            },
-          },
-          (decodedText) => {
-            // Successfully scanned
-            const rawId = decodePatientQR(decodedText);
-            if (!rawId) {
-              setScannerError('Invalid QR code format. Please scan a valid patient QR code.');
-              return;
-            }
-
-            // Find the patient by unique ID
-            const matchedPatient = patients.find(
-              (p) => p.patient_unique_id === rawId || p.id === rawId
-            );
-
-            if (!matchedPatient) {
-              setScannerError(`Patient with ID "${rawId}" not found in the current branch.`);
-              return;
-            }
-
-            // Stop scanning
-            if (html5QrCodeRef.current) {
-              try {
-                html5QrCodeRef.current.stop().catch(() => {});
-              } catch (e) {}
-              html5QrCodeRef.current = null;
-            }
-
-            // Close scanner and navigate to patient's chart
-            setScannerError(null);
-            setShowQRScanner(false);
-            onSelectPatient(matchedPatient);
-          },
-          () => {
-            // Ignore scan failures (keep trying)
-          }
-        );
-      } catch (err: any) {
-        if (stopped) return;
-        if (err?.toString()?.includes('NotAllowedError') || err?.toString()?.includes('Permission')) {
-          setScannerError('Camera access denied. Please allow camera permissions and try again.');
-        } else if (err?.toString()?.includes('NotFoundError')) {
-          setScannerError('No camera found on this device. Please use a device with a camera.');
-        } else {
-          setScannerError(`Failed to start scanner: ${err?.message || err}`);
-        }
-      }
-    };
-
-    startScanner();
-
-    return () => {
-      stopped = true;
-      if (html5QrCodeRef.current) {
-        try {
-          html5QrCodeRef.current.stop().catch(() => {});
-        } catch (e) {}
-        html5QrCodeRef.current = null;
-      }
-    };
-  }, [showQRScanner, patients, onSelectPatient]);
-
   const getPatientAddress = (patient: Patient) => {
     const fullAddress = [patient.address, patient.township, patient.city].filter(Boolean).join(', ');
     return fullAddress || 'N/A';
@@ -540,13 +437,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             onExportExcel={handleDownloadExcel}
             className="flex-1 sm:flex-initial"
           />
-          <button
-            onClick={() => setShowQRScanner(true)}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
-            title="Scan patient QR code to quickly open their chart"
-          >
-            <ScanLine className="w-4 h-4" /> <span className="hidden sm:inline">Scan QR</span>
-          </button>
+          <PatientQRScanButton patients={patients} onSelectPatient={onSelectPatient} />
 
           <button onClick={onAddPatient} className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
             <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Patient</span>
@@ -1334,54 +1225,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         </div>
       </Modal>
     )}
-    {showQRScanner && (
-      <Modal title="Scan Patient QR Code" maxWidthClassName="max-w-xl" onClose={() => {
-        setShowQRScanner(false);
-        setScannerError(null);
-        // Stop any running scanner
-        if (html5QrCodeRef.current) {
-          try {
-            html5QrCodeRef.current.stop().catch(() => {});
-          } catch (e) {}
-          html5QrCodeRef.current = null;
-        }
-      }}>
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Point your camera at the patient&apos;s QR code to automatically open their chart.
-          </p>
-          {scannerError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-sm font-semibold text-red-700">{scannerError}</p>
-            </div>
-          )}
-          <div className="relative w-full overflow-hidden rounded-xl bg-gray-900 mx-auto" style={{ maxWidth: '520px', aspectRatio: '4 / 3' }}>
-            <div
-              ref={(el) => { if (!el) return; scannerRef.current = el; }}
-              className="absolute inset-0 w-full h-full"
-            />
 
-          </div>
-          <div className="flex justify-center">
-            <button
-              onClick={() => {
-                setShowQRScanner(false);
-                setScannerError(null);
-                if (html5QrCodeRef.current) {
-                  try {
-                    html5QrCodeRef.current.stop().catch(() => {});
-                  } catch (e) {}
-                  html5QrCodeRef.current = null;
-                }
-              }}
-              className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </Modal>
-    )}
 
   </div>
   );

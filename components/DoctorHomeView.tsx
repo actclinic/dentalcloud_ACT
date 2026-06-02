@@ -1,14 +1,17 @@
 import React, { useMemo } from 'react';
 import { Users, Activity, CalendarCheck2, TrendingUp, DollarSign } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
-import { Appointment, ClinicalRecord } from '../types';
+import { Appointment, ClinicalRecord, Patient } from '../types';
+import PatientQRScanButton from './PatientQRScanButton';
 
 interface DoctorHomeViewProps {
   appointments: Appointment[];
   treatmentRecords: ClinicalRecord[];
+  patients: Patient[];
+  onSelectPatient: (patient: Patient) => void;
 }
 
-const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatmentRecords }) => {
+const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatmentRecords, patients, onSelectPatient }) => {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const currentMonthKey = useMemo(() => {
     const now = new Date();
@@ -94,6 +97,17 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({ appointments, treatment
 
   return (
     <div className="space-y-4 p-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-black text-gray-900">Doctor Dashboard</h2>
+          <p className="text-xs font-medium text-gray-500">Scan a patient QR code to open their chart quickly.</p>
+        </div>
+        <PatientQRScanButton
+          patients={patients}
+          onSelectPatient={onSelectPatient}
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+        />
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <div className="rounded-xl border border-indigo-100 bg-white p-3">
           <div className="mb-1 flex items-center gap-2 text-indigo-600">

@@ -6,6 +6,7 @@ import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 import { Modal, Input, TimeInput } from './Shared';
 import { SearchableSelect } from './SearchableSelect';
+import PatientQRScanButton from './PatientQRScanButton';
 
 export interface UploadProgress {
   fileName: string;
@@ -16,6 +17,7 @@ export interface UploadProgress {
 
 interface ClinicalViewProps {
   selectedPatient: Patient | null;
+  patients: Patient[];
   doctors: Doctor[];
   selectedDoctorId: string;
   selectedTeeth: number[];
@@ -31,6 +33,7 @@ interface ClinicalViewProps {
   onTreatmentSubmit: (t: TreatmentType, chargeLines?: TreatmentChargeLine[]) => void;
   onPaymentRequest: (treatments: ClinicalRecord[]) => void;
   onClosePatient: () => void;
+  onSelectPatient: (patient: Patient) => void;
   onOpenDirectory: () => void;
   onUploadFiles: (files: FileList | File[]) => void;
   onUploadFilesWithProgress?: (files: File[], onProgress: (progress: UploadProgress) => void) => Promise<void>;
@@ -54,6 +57,7 @@ interface ClinicalViewProps {
 
 const ClinicalView: React.FC<ClinicalViewProps> = ({
   selectedPatient,
+  patients,
   doctors,
   selectedDoctorId,
   selectedTeeth,
@@ -69,6 +73,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onTreatmentSubmit,
   onPaymentRequest,
   onClosePatient,
+  onSelectPatient,
   onOpenDirectory,
   onUploadFiles,
   onUploadFilesWithProgress,
@@ -489,11 +494,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 animate-fade-in max-w-full">
     <div className="xl:col-span-2 space-y-4 md:space-y-6 min-w-0">
       <div className={`bg-white rounded-xl shadow-sm border border-gray-100 ${compactToothSelector ? 'p-3 md:p-4' : 'p-4 md:p-6'}`}>
-        <div className={`flex justify-between items-center ${compactToothSelector ? 'mb-3' : 'mb-6'}`}>
+        <div className={`flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center ${compactToothSelector ? 'mb-3' : 'mb-6'}`}>
           <div>
             <h2 className="text-xl font-bold text-gray-800">Odontogram Interface</h2>
             <p className="text-sm text-gray-500">Interactive tooth mapping and service delivery</p>
           </div>
+          <PatientQRScanButton
+            patients={patients}
+            onSelectPatient={onSelectPatient}
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+          />
         </div>
         
         <div className={`flex justify-center w-full overflow-x-auto custom-scrollbar ${compactToothSelector ? 'pb-2' : 'pb-4'}`}>

@@ -2898,6 +2898,8 @@ const App: React.FC = () => {
                 <DoctorHomeView
                   appointments={appointments}
                   treatmentRecords={globalRecords}
+                  patients={patients}
+                  onSelectPatient={handlePatientSelect}
                 />
               ) : (
                 <DashboardView
@@ -2985,6 +2987,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView 
                 appointments={appointments} 
+                patients={patients}
                 loading={loading} 
                 onAddAppointment={() => {setEditingAppointment(null); resetAppointmentForm(); setShowAppointmentModal(true)}} 
                 onEditAppointment={(apt) => {
@@ -3015,6 +3018,7 @@ const App: React.FC = () => {
                 onDeleteAppointment={handleDeleteAppointment} 
                 onUpdateStatus={handleUpdateAppointmentStatus} 
                 onViewChart={handleViewAppointmentChart}
+                onSelectPatient={handlePatientSelect}
                 onConvertLead={handleConvertLeadAppointment}
                 onOpenAppointmentLog={canAccessView('records') && !isDoctor ? () => {
                   setRecordsInitialFilter('appointments');
@@ -3160,6 +3164,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 
+                patients={patients}
                 doctors={doctors}
                 selectedDoctorId={selectedDoctorId}
                 selectedTeeth={selectedTeeth} 
@@ -3178,6 +3183,7 @@ const App: React.FC = () => {
                 onTreatmentSubmit={handleTreatmentSubmit}
                 onPaymentRequest={handleOpenPaymentModal}
                 onClosePatient={handleClosePatient}
+                onSelectPatient={handlePatientSelect}
                 onOpenDirectory={() => setCurrentView('patients')}
                 onGenerateReceipt={handleGenerateReceipt}
                 onAddMedicines={handleAddMedicines}

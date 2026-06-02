@@ -1,21 +1,24 @@
 ﻿import React, { useState, useMemo } from 'react';
 import { Calendar, Plus, Loader2, Edit2, Trash2, Clock, User, FileText, ChevronLeft, ChevronRight, List, CalendarDays, Eye } from 'lucide-react';
-import { Appointment } from '../types';
+import { Appointment, Patient } from '../types';
 import { exportAppointmentsToPDF } from '../utils/pdfExport';
 import { exportAppointmentsToExcel } from '../utils/excelExport';
 import { parseAppointmentClinicalFocus } from '../utils/appointmentClinicalFocus';
 import Pagination from './Pagination';
 import { ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
+import PatientQRScanButton from './PatientQRScanButton';
 
 interface AppointmentsViewProps {
   appointments: Appointment[];
+  patients: Patient[];
   loading: boolean;
   onAddAppointment: () => void;
   onEditAppointment: (appointment: Appointment) => void;
   onDeleteAppointment: (id: string) => void;
   onUpdateStatus: (id: string, status: 'Scheduled' | 'Completed' | 'Cancelled') => void;
   onViewChart: (appointment: Appointment) => void;
+  onSelectPatient: (patient: Patient) => void;
   onConvertLead?: (appointment: Appointment) => void;
   onOpenAppointmentLog?: () => void;
   onExportPDF?: () => Promise<void>;
@@ -30,12 +33,14 @@ interface AppointmentsViewProps {
 
 const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   appointments,
+  patients,
   loading,
   onAddAppointment,
   onEditAppointment,
   onDeleteAppointment,
   onUpdateStatus,
   onViewChart,
+  onSelectPatient,
   onConvertLead,
   onOpenAppointmentLog,
   onExportPDF,
@@ -377,6 +382,11 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             className="flex-1 md:flex-initial"
           />
         )}
+        <PatientQRScanButton
+          patients={patients}
+          onSelectPatient={onSelectPatient}
+          className="flex-1 md:flex-initial flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+        />
         {canCreate && (
           <button
             onClick={onAddAppointment}
