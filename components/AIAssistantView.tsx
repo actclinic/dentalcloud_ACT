@@ -404,6 +404,32 @@ interface EmailSettings {
   updatedAt: string;
 }
 
+const FULL_HISTORY_MAX_MESSAGES = 80;
+const FULL_HISTORY_MAX_CHARS_PER_MESSAGE = 1800;
+
+const compactConversationContent = (content: string, maxChars = FULL_HISTORY_MAX_CHARS_PER_MESSAGE) => {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxChars ? `${normalized.substring(0, maxChars)}…` : normalized;
+};
+
+const buildFullConversationHistory = (history: Message[]) =>
+  history
+    .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+    .slice(-FULL_HISTORY_MAX_MESSAGES)
+    .map(msg => ({
+      role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+      content: compactConversationContent(msg.content)
+    }));
+
+const buildConversationTimelineForPrompt = (history: Message[]) => {
+  const compactHistory = buildFullConversationHistory(history);
+  if (compactHistory.length === 0) return 'No previous messages in this chat session.';
+
+  return compactHistory
+    .map((msg, index) => `${index + 1}. ${msg.role === 'assistant' ? 'Loli' : 'User'}: ${msg.content}`)
+    .join('\n');
+};
+
 interface AIAssistantViewProps {
   patients: Patient[];
   treatmentRecords: ClinicalRecord[];
@@ -2663,6 +2689,8 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
       const contextData = isComplexQuery ? 
         getOptimizedContextData(isActionIntent || isAgentMode, 10000) : 
         getOptimizedContextData(isActionIntent || isAgentMode, 10000);
+      const fullConversationHistory = buildFullConversationHistory(history);
+      const conversationTimeline = buildConversationTimelineForPrompt(history);
       
       const systemPrompt = `You are Loli, an expert dental clinical assistant with advanced reasoning capabilities by WinterArc Myanmar, designed by Min Thuta Saw Naing.
 
@@ -2712,6 +2740,8 @@ Today: ${contextData.td}
 Clinic Time Zone: ${getLocalTimeZone()}
 Current Mode: ${isAgentMode ? 'AGENT (Full CRUD access)' : 'ASK (Read-only analysis)'}
 Persistent Memory: ${memorySummary}
+Full Current Chat Timeline:
+${conversationTimeline}
 Practice Data: ${JSON.stringify(contextData)}
 ${isAgentMode ? API_DOCS : 'Limited to analysis mode - switch to Agent for actions'}
 
@@ -2724,6 +2754,7 @@ CLINICAL DENTAL EXPERTISE:
 
 INTELLIGENCE GUIDELINES:
 - INTERNAL BRAINSTORMING: For every request, silently brainstorm the required steps, potential data needs, and clinical implications. Do not share this brainstorm with the user.
+- FULL CONVERSATION REVIEW: Before every reply, silently read the full current chat timeline from beginning to latest message. Use it to understand what the user is currently talking about, resolve pronouns like "it/that/this patient/that form", and avoid forgetting earlier details. If older messages conflict with the latest user instruction, follow the latest instruction but mention the change only when helpful.
 - PATIENT IDENTIFICATION: Each patient has a human-readable Patient ID (field pid in patient objects, e.g. "PAT-00001"). Staff often refer to patients by this ID in addition to patient names. When a user asks about a patient by ID number, use the pid field from the Practice Data patient list to identify them. Display this ID when referencing specific patients so staff can easily locate them in the system.
 - PATIENT REGISTRATION FORM: The current staff registration form includes Full Patient Name, Primary Email, Mobile Contact, Age, Patient Type, Branch/Location, Clinical Fee apply/skip, Address, City, Township, optional Patient Portal password, and Relevant Medical History. In Agent Mode, use these fields in p_c when supplied and ask for missing required basics instead of assuming them.
 - NO HALLUCINATION: Never invent patient data, treatment costs, or stock levels. If data is not in the "Practice Data" provided, state that you don't know or ask for clarification.
@@ -2742,7 +2773,7 @@ INTELLIGENCE GUIDELINES:
 
 **MANDATORY DOUBLE-CHECK STAGE:**
 After you have planned and (if needed) executed any actions, but BEFORE you send a reply to the user, you MUST:
-1. INTERNAL CONSISTENCY CHECK: Re-read the user's latest request and the data you just fetched. Verify that all facts (names, amounts, balances, times) match the raw system data exactly.
+1. INTERNAL CONSISTENCY CHECK: Re-read the full current chat timeline, the user's latest request, and the data you just fetched. Verify that all facts (names, amounts, balances, times, patient/form details, and pending topic) match the raw system data and conversation context exactly.
 2. ERROR CORRECTION: If you notice any mismatch, fix the answer internally. If information is missing, ask for clarification instead of guessing. Never invent IDs or medical facts.
 3. SAFE OUTPUT: Do not show this checking process to the user. Only show the final, corrected, and verified answer.
 4. RECAP FOR HIGH-RISK ACTIONS: For treatments, payments, or medicine sales, always include a brief, factual recap of what was changed (e.g., "Balance updated from X to Y").
@@ -2813,10 +2844,7 @@ Example table format:
                 role: "system",
                 content: systemPrompt
               },
-              ...history.slice(-10).map(msg => ({
-                role: msg.role === 'assistant' ? 'assistant' : 'user',
-                content: msg.content
-              })),
+              ...fullConversationHistory,
               {
                 role: "user",
                 content: userMessage
