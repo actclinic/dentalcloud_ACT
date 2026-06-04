@@ -310,7 +310,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
   }
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-blue-100">
+    <div className="auth-safe-screen min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-blue-100">
       {/* Left Panel - Branding */}
       <div
         className="hidden lg:flex lg:w-1/2 p-6 flex-col justify-between"
@@ -414,7 +414,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
       </div>
       
       {/* Right Panel - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-4">
+      <div className="auth-safe-panel w-full lg:w-1/2 flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl mb-4 shadow-xl overflow-hidden border border-gray-100">
