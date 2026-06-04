@@ -8,6 +8,7 @@ import { api } from '../services/api';
 import { Currency } from '../utils/currency';
 import { DEFAULT_PATIENT_TYPE_NAME } from '../constants';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { buildAppointmentClinicalFocusNotes } from '../utils/appointmentClinicalFocus';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, AIReportPayload } from '../utils/aiReport';
 import {
   ExpectedAppointmentState,
@@ -854,6 +855,26 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     const doctor = resolveDoctor(params.dr_id || params.doctor_id || params.doctor_name);
     const leadName = (params.guest_name || params.lead_name || params.name || params.patient_name || '').trim();
     const leadPhone = (params.guest_phone || params.lead_phone || params.phone || params.ph || '').trim();
+    const appointmentLocationId = resolveLocationId(params.location_id || params.location_name || params.branch_id || params.branch_name || params.loc) || locationId;
+    const parseAiTargetTeeth = (value: any): number[] => {
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => Number(item))
+          .filter((item) => Number.isFinite(item));
+      }
+      return String(value || '')
+        .split(/[,\s]+/)
+        .map((item) => Number(item.trim()))
+        .filter((item) => Number.isFinite(item));
+    };
+    const clinicalFocus = (params.clinical_focus || params.clinicalFocus || params.focus || params.appointment_focus || '').trim();
+    const targetTeeth = parseAiTargetTeeth(params.target_teeth || params.targetTeeth || params.teeth || params.tooth_numbers);
+    const generalNotes = params.notes || params.n || params.extra_notes || params.extraNotes || '';
+    const compiledNotes = buildAppointmentClinicalFocusNotes({
+      clinicalFocus: clinicalFocus || params.ty || params.type || '',
+      targetTeeth,
+      notes: generalNotes
+    });
 
     if (!patient && (!leadName || !leadPhone)) {
       throw new Error('Appointment creation needs an existing patient, or lead name and phone number.');
@@ -869,24 +890,24 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     }
 
     const appointment = await api.appointments.create({
-      location_id: locationId,
+      location_id: appointmentLocationId,
       patient_id: patient?.id || null,
       doctor_id: doctor?.id,
       date,
       time: params.t || params.tm || params.time,
       type: params.ty || params.type,
-      notes: params.notes || params.n,
-      status: 'Scheduled',
+      notes: compiledNotes || undefined,
+      status: normalizeAppointmentStatus(params.status || 'Scheduled'),
       guest_name: patient ? null : leadName,
       guest_phone: patient ? null : leadPhone,
-      guest_source: patient ? null : (params.guest_source || params.lead_source || params.source || 'AI Assistant Lead'),
+      guest_source: patient ? null : (params.guest_source || params.lead_source || params.source || params.patient_type || 'AI Assistant Lead'),
       guest_notes: patient ? null : (params.guest_notes || params.lead_notes || params.follow_up_notes || null),
       created_by_user_id: currentAdminId || null,
       created_by_user_name: currentStaffUser?.username || 'Loli AI Assistant'
     });
 
     if (patient) {
-      (appointment as any).verification = await verifyAppointmentCreateAction(locationId, params, appointment, patient.id, doctor?.id);
+      (appointment as any).verification = await verifyAppointmentCreateAction(appointmentLocationId, params, appointment, patient.id, doctor?.id);
     }
 
     return appointment;
@@ -2386,9 +2407,11 @@ PATIENT MANAGEMENT:
 - pat_loyalty_history(pid): Get patient loyalty transaction history.
 
 APPOINTMENT MANAGEMENT:
-- apt_c(p_id, dr_id, dt, t, ty, n): Create appointment for a registered patient. p_id=patient id (or use "name"), dr_id=doctor id, dt=date(YYYY-MM-DD), t=time(HH:mm), ty=type, n=notes.
-- apt_c(guest_name, guest_phone, guest_source, guest_notes, dr_id, dt, t, ty, n): Create appointment for an unregistered marketing lead. Do not create a patient profile unless the user asks to register/convert the lead. Lead appointments must include guest_name and guest_phone.
-- apt_u(id, data): Update appointment. data can include {date, time, status, doctor_id, etc}.
+- The Admin Appointments tab modal now has two "Appointment For" paths: Registered Patient and New Patient lead.
+- apt_c(p_id/name, doctor_name/dr_id, dt, t, ty, status, branch_name/location_id, clinical_focus, target_teeth, n/extra_notes): Create appointment for a registered patient. p_id=patient id (or use "name"), doctor is optional, dt=date(YYYY-MM-DD), t=time(HH:mm), ty=appointment type, status defaults to Scheduled, branch/location is required when All Branches is active or the user names a branch.
+- apt_c(guest_name, guest_phone, guest_source, guest_notes, doctor_name/dr_id, dt, t, ty, status, branch_name/location_id, clinical_focus, target_teeth, n/extra_notes): Create appointment for an unregistered New Patient / marketing lead. Do not create a patient profile unless the user asks to register/convert the lead. Lead appointments must include guest_name and guest_phone. guest_source maps to the modal's New Patient Source, and guest_notes maps to New Patient Follow-up Notes.
+- Appointment notes are stored in the same structured format as the form: Clinical Focus, Target Teeth, and Notes. Use clinical_focus for the clinical activity/focus, target_teeth as tooth numbers when provided, and n/extra_notes for optional extra instructions.
+- apt_u(id, data): Update appointment. data can include {date, time, status, doctor_id, type, location_id, notes, guest_name, guest_phone, guest_source, guest_notes}.
 - apt_d(id): Delete appointment.
 - apt_reschedule(id, dt, t): Reschedule appointment.
 - apt_status(id, status): Update appointment status.
@@ -2506,19 +2529,20 @@ Response:
 To perform an action, include a JSON block at the END of your message. 
 IMPORTANT: You can use "name" instead of "pid" or "p_id" for any patient-related action. The system will automatically look up the ID.
 For patient registration, use the updated form fields when the user provides them: age, patient_type, branch/location, address, city, township, optional portal password, clinical fee/balance, and medical history. If the user asks to register a patient but required basics are missing, ask for the missing name/phone/age/branch instead of inventing them.
-For unregistered marketing leads, do not create a patient first. Use apt_c with guest_name and guest_phone, plus guest_source/guest_notes when available.
+For appointments, match the Admin Appointments form: choose Registered Patient when the person already exists, or New Patient lead when they are not registered yet; collect/emit date, time, type, optional doctor, status, branch/location, clinical_focus, target_teeth, and extra notes. Do not invent missing date/time/type/branch/doctor.
+For unregistered New Patient / marketing leads, do not create a patient first. Use apt_c with guest_name and guest_phone, plus guest_source/guest_notes when available. guest_source should come from the user's lead/source wording, and guest_notes should contain marketing context, caller request, or preferred contact time.
 For doctor-related actions, you can use "doctor_name" if you do not know the doctor ID.
 For appointment updates, prefer passing id. If id is unknown, you may pass patient name plus date/time to help match the appointment.
 
 Examples:
 { "action": "p_c", "params": { "n": "John Doe", "e": "john@example.com", "ph": "1234567890", "age": 35, "patient_type": "Walk-in", "address": "No. 12 Main Street", "city": "Yangon", "township": "Bahan", "m": "No known allergies", "branch_name": "Main Clinic" } }
-{ "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2024-01-15", "t": "10:00", "ty": "Checkup", "n": "Routine checkup" } }
-{ "action": "apt_c", "params": { "guest_name": "Aung Aung", "guest_phone": "09123456789", "guest_source": "Marketing Team", "doctor_name": "Mya", "dt": "2026-05-10", "t": "14:00", "ty": "Consultation", "n": "Lead is not registered yet" } }
+{ "action": "apt_c", "params": { "name": "Sarah Johnson", "doctor_name": "Dr. Mya", "dt": "2026-06-15", "t": "10:00", "ty": "Checkup", "branch_name": "Main Clinic", "clinical_focus": "Routine checkup", "target_teeth": [], "n": "Patient prefers morning reminders" } }
+{ "action": "apt_c", "params": { "guest_name": "Aung Aung", "guest_phone": "09123456789", "guest_source": "Marketing Team", "guest_notes": "Caller asked about braces and prefers evening callback", "doctor_name": "Mya", "dt": "2026-06-18", "t": "14:00", "ty": "Consultation", "branch_name": "Main Clinic", "clinical_focus": "Orthodontic consultation", "target_teeth": [], "n": "Lead is not registered yet" } }
 { "action": "tr_create", "params": { "name": "John Doe", "teeth": [18, 19], "desc": "Composite filling", "cost": 150 } }
 { "action": "m_sell", "params": { "name": "Sarah Johnson", "mid": "medicine123", "qty": 2 } }
 { "action": "loyalty_redeem", "params": { "name": "John Smith", "points": 100, "amount": 5000 } }
 { "action": "dr_schedule_add", "params": { "dr_id": "doctor123", "day": 1, "start": "09:00", "end": "17:00" } }
-{ "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2024-01-15", "t": "10:00", "ty": "Checkup", "n": "Routine checkup" } }
+{ "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2026-06-15", "t": "10:00", "ty": "Checkup", "clinical_focus": "Routine checkup", "target_teeth": [], "n": "Routine checkup" } }
 { "action": "tr_create", "params": { "name": "John Doe", "teeth": [18, 19], "desc": "Composite filling", "cost": 150 } }
 { "action": "fin_pay", "params": { "name": "Sarah Johnson", "amt": 175 } }
 { "action": "pat_hist", "params": { "name": "John Smith" } }
@@ -3937,7 +3961,7 @@ I can provide guidance on:
 
       if (allActionMatches.length === 0 && mode === 'agent' && isAppointmentActionIntent(userMessage.content)) {
         try {
-          const recoveryPrompt = `The previous response did not include an executable system action. Convert this appointment request into exactly one JSON action if enough details are present.\n\nUser request: ${userMessage.content}\n\nUse one schema only:\nRegistered patient appointment:\n{ "action": "apt_c", "params": { "name": "registered patient name", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "n": "optional notes" } }\n\nUnregistered marketing lead appointment:\n{ "action": "apt_c", "params": { "guest_name": "lead name", "guest_phone": "phone", "guest_source": "marketing source if provided", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "n": "optional appointment notes" } }\n\nRules:\n- Return JSON only, no markdown.\n- Do not invent patient, lead name, phone, date, time, doctor, branch, or type.\n- If this is a registered patient appointment and patient, date, time, or type is missing, return a short sentence starting with MISSING_APPOINTMENT_DETAILS instead of JSON.\n- If this is a lead appointment and guest_name, guest_phone, date, time, or type is missing, return MISSING_APPOINTMENT_DETAILS instead of JSON.`;
+          const recoveryPrompt = `The previous response did not include an executable system action. Convert this appointment request into exactly one JSON action if enough details are present.\n\nUser request: ${userMessage.content}\n\nUse one schema only, matching the updated Admin Appointments form.\n\nRegistered Patient appointment:\n{ "action": "apt_c", "params": { "name": "registered patient name", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "status": "Scheduled", "branch_name": "branch if provided", "clinical_focus": "clinical activity/focus if provided", "target_teeth": [18], "n": "optional extra notes" } }\n\nNew Patient / unregistered marketing lead appointment:\n{ "action": "apt_c", "params": { "guest_name": "lead name", "guest_phone": "phone", "guest_source": "source if provided", "guest_notes": "follow-up notes if provided", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "status": "Scheduled", "branch_name": "branch if provided", "clinical_focus": "clinical activity/focus if provided", "target_teeth": [18], "n": "optional appointment extra notes" } }\n\nRules:\n- Return JSON only, no markdown.\n- Do not invent patient, lead name, phone, date, time, doctor, branch, appointment type, clinical focus, or target teeth.\n- Use Registered Patient only when the request indicates an existing patient; use New Patient lead fields when the person is not registered yet.\n- If this is a registered patient appointment and patient, date, time, or type is missing, return a short sentence starting with MISSING_APPOINTMENT_DETAILS instead of JSON.\n- If this is a lead appointment and guest_name, guest_phone, date, time, or type is missing, return MISSING_APPOINTMENT_DETAILS instead of JSON.`;
           const recoveredResponse = await callAICompletionAPI(recoveryPrompt, messages);
           const recoveredActionMatches = findAllActions(recoveredResponse);
           if (recoveredActionMatches.length > 0) {

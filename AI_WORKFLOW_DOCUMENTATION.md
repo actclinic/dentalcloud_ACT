@@ -81,6 +81,14 @@ The main component responsible for AI interactions, featuring:
 - Status tracking (Scheduled, Completed, Cancelled)
 - Availability checking for doctors
 
+**Updated Admin Appointment Form:**
+- The appointment modal starts with **Appointment For**: choose **Registered Patient** for an existing patient record or **New Patient** for an unregistered lead.
+- Registered Patient appointments require selecting the patient. New Patient lead appointments require **New Patient Name** and **New Patient Phone**, with optional **New Patient Source** and **New Patient Follow-up Notes**.
+- Doctor selection is optional and uses a searchable doctor field; the appointment can be saved with no specific doctor.
+- Scheduling fields are **Date**, **Time**, **Type**, **Status**, and **Branch / Location**. Status values are Scheduled, Completed, and Cancelled; Scheduled is the normal default.
+- Appointment clinical details are stored in structured notes: **Clinical Focus**, **Target Teeth**, and **Extra Notes**. When the AI creates appointments, it should populate `clinical_focus`, `target_teeth`, and `n` / `extra_notes` so the form can parse them back correctly.
+- Lead appointments stay as appointment-only records until converted. Do not create a patient profile for a New Patient / lead appointment unless the user explicitly asks to register or convert that lead.
+
 **Key Processes:**
 ```
 1. Patient Identification

@@ -74,29 +74,38 @@ GET PATIENT HISTORY:
 3. APPOINTMENT OPERATIONS
 =========================
 
-CREATE APPOINTMENT:
+CREATE REGISTERED PATIENT APPOINTMENT:
 { "action": "apt_c", "params": { 
   "p_id": "patient123", 
   "dr_id": "doctor456", 
   "dt": "2024-02-15", 
   "t": "10:30", 
   "ty": "Checkup", 
-  "n": "Routine dental examination" 
+  "status": "Scheduled",
+  "branch_name": "Main Clinic",
+  "clinical_focus": "Routine dental examination",
+  "target_teeth": [],
+  "n": "Patient prefers morning reminders" 
 } }
 
-CREATE UNREGISTERED MARKETING LEAD APPOINTMENT:
+CREATE NEW PATIENT / UNREGISTERED MARKETING LEAD APPOINTMENT:
 { "action": "apt_c", "params": {
   "guest_name": "Aung Aung",
   "guest_phone": "09123456789",
   "guest_source": "Marketing Team",
+  "guest_notes": "Caller asked about braces and prefers evening callback",
   "doctor_name": "Dr. Mya",
   "dt": "2026-05-10",
   "t": "14:00",
   "ty": "Consultation",
+  "status": "Scheduled",
+  "branch_name": "Main Clinic",
+  "clinical_focus": "Orthodontic consultation",
+  "target_teeth": [],
   "n": "Lead is not registered yet"
 } }
 
-Use guest_name and guest_phone when the person should not become a patient record yet. Do not create a patient first unless the user asks to register or convert the lead.
+Appointment form mapping: choose Registered Patient for existing patients or New Patient for unregistered leads. Required scheduling basics are date (dt), time (t), and appointment type (ty). Doctor is optional. Branch/location should be included when known, especially in All Branches scope. Status is Scheduled, Completed, or Cancelled and defaults to Scheduled. clinical_focus, target_teeth, and n/extra_notes are stored together in the appointment notes as Clinical Focus, Target Teeth, and Notes. Use guest_name and guest_phone when the person should not become a patient record yet. Do not create a patient first unless the user asks to register or convert the lead. guest_source maps to New Patient Source and guest_notes maps to New Patient Follow-up Notes.
 
 UPDATE APPOINTMENT:
 { "action": "apt_u", "params": { 
