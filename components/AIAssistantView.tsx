@@ -360,6 +360,7 @@ if (typeof document !== 'undefined') {
 // 3. The vite.config.ts is already configured to read it as process.env.AI_API_KEY
 // ============================================================
 const MOCK_API_KEY = 'REPLACE_WITH_YOUR_AI_API_KEY';
+const AI_MODEL = 'deepseek-ai/deepseek-v3.2';
 
 interface Message {
   id: string;
@@ -2282,7 +2283,7 @@ Rules:
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: AI_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -2580,7 +2581,7 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
               'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
+              model: AI_MODEL,
               messages: [
                 {
                   role: 'system',
@@ -2781,7 +2782,7 @@ Example table format:
             'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
+            model: AI_MODEL,
             messages: [
               {
                 role: "system",
@@ -3322,7 +3323,7 @@ I can provide guidance on:
 - "What's our inventory status with stock levels?"
 - "Treatment volume analysis with revenue trends"
 
-*Note: Currently using simulated responses. Connect your Gemini API key for AI-powered answers!*`);
+*Note: Currently using simulated responses. Connect your AI API key for AI-powered answers!*`);
         }
       }, 1500); // Simulate network delay
     });
