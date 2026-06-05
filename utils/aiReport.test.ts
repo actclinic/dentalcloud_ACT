@@ -1,8 +1,129 @@
 import { describe, expect, it } from 'vitest';
 import { ClinicalRecord, Expense, Medicine, MedicineSale, PaymentRecord } from '../types';
-import { buildFinancialReport } from './aiReport';
+import { buildFinancialReport, resolveFinancialReportAnchorDate } from './aiReport';
 
 describe('buildFinancialReport', () => {
+
+
+  it('resolves month-specific financial summary requests to that month end date', () => {
+    expect(resolveFinancialReportAnchorDate('Give me Financial Summary for May', '2026-06-05')).toBe('2026-05-31');
+    expect(resolveFinancialReportAnchorDate('financial report for May 2026', '2026-06-05')).toBe('2026-05-31');
+    expect(resolveFinancialReportAnchorDate('show last month revenue', '2026-06-05')).toBe('2026-05-31');
+  });
+
+  it('uses the requested month as the monthly reporting period and caps weekly values at the anchor date', () => {
+    const treatments: ClinicalRecord[] = [
+      {
+        id: 'may_treatment',
+        location_id: 'loc_1',
+        patient_id: 'patient_1',
+        teeth: [18],
+        description: 'May filling',
+        cost: 1000,
+        date: '2026-05-15'
+      },
+      {
+        id: 'may_week_treatment',
+        location_id: 'loc_1',
+        patient_id: 'patient_2',
+        teeth: [21],
+        description: 'May scaling',
+        cost: 2000,
+        date: '2026-05-30'
+      },
+      {
+        id: 'june_treatment',
+        location_id: 'loc_1',
+        patient_id: 'patient_3',
+        teeth: [11],
+        description: 'June treatment',
+        cost: 9999,
+        date: '2026-06-01'
+      }
+    ];
+
+    const expenses: Expense[] = [
+      {
+        id: 'may_expense',
+        location_id: 'loc_1',
+        description: 'May supplies',
+        amount: 500,
+        category: 'Supplies',
+        date: '2026-05-20'
+      },
+      {
+        id: 'june_expense',
+        location_id: 'loc_1',
+        description: 'June supplies',
+        amount: 999,
+        category: 'Supplies',
+        date: '2026-06-01'
+      }
+    ];
+
+    const medicineSales: MedicineSale[] = [
+      {
+        id: 'may_sale',
+        location_id: 'loc_1',
+        patient_id: 'patient_1',
+        medicine_id: 'med_1',
+        quantity: 1,
+        unit_price: 700,
+        total_price: 700,
+        date: '2026-05-25'
+      },
+      {
+        id: 'june_sale',
+        location_id: 'loc_1',
+        patient_id: 'patient_2',
+        medicine_id: 'med_1',
+        quantity: 1,
+        unit_price: 999,
+        total_price: 999,
+        date: '2026-06-02'
+      }
+    ];
+
+    const payments: PaymentRecord[] = [
+      {
+        id: 'may_payment',
+        location_id: 'loc_1',
+        patientId: 'patient_1',
+        amount: 300,
+        date: '2026-05-31',
+        type: 'PARTIAL',
+        remainingBalance: 0
+      },
+      {
+        id: 'june_payment',
+        location_id: 'loc_1',
+        patientId: 'patient_2',
+        amount: 999,
+        date: '2026-06-03',
+        type: 'FULL',
+        remainingBalance: 0
+      }
+    ];
+
+    const report = buildFinancialReport(
+      treatments,
+      expenses,
+      [],
+      'MMK',
+      '2026-05-31',
+      medicineSales,
+      payments
+    );
+
+    expect(report.today).toBe('2026-05-31');
+    expect(report.monthlyLabel).toBe('May 2026');
+    expect(report.revenueDaily).toBe(300);
+    expect(report.revenueWeekly).toBe(3000);
+    expect(report.revenueMonthly).toBe(4000);
+    expect(report.expenseMonthly).toBe(500);
+    expect(report.profitMonthly).toBe(3500);
+  });
+
   it('includes treatments, medicine sales, and collected payments in revenue calculations', () => {
     const treatments: ClinicalRecord[] = [
       {

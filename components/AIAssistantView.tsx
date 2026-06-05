@@ -9,7 +9,7 @@ import { Currency } from '../utils/currency';
 import { DEFAULT_PATIENT_TYPE_NAME } from '../constants';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 import { buildAppointmentClinicalFocusNotes } from '../utils/appointmentClinicalFocus';
-import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, AIReportPayload } from '../utils/aiReport';
+import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, resolveFinancialReportAnchorDate, AIReportPayload } from '../utils/aiReport';
 import {
   ExpectedAppointmentState,
   renderVerificationResult,
@@ -2626,12 +2626,13 @@ ${isAgentMode ? '• **Manage clinic data through direct API actions**' : ''}
     
     const isReportQuery = isReportingQuery(userMessage);
     if (isReportQuery) {
+      const reportAnchorDate = resolveFinancialReportAnchorDate(userMessage);
       const report = buildFinancialReport(
         activeTreatmentRecords,
         activeExpenses,
         activeMedicines,
         currency,
-        undefined,
+        reportAnchorDate,
         activeMedicineSales,
         activePaymentRecords
       );

@@ -55,20 +55,85 @@ export interface UpgradeCheckResult {
 
 const getToday = (): string => new Date().toISOString().split('T')[0];
 
+const formatDateKey = (year: number, monthIndex: number, day: number): string =>
+  new Date(Date.UTC(year, monthIndex, day)).toISOString().split('T')[0];
+
+const parseDateKey = (dateKey: string): Date => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+};
+
 const getWeeklyStart = (today: string): string => {
-  const d = new Date(today);
-  d.setDate(d.getDate() - 7);
+  const d = parseDateKey(today);
+  d.setUTCDate(d.getUTCDate() - 7);
   return d.toISOString().split('T')[0];
 };
 
+const isWithinDateRange = (dateStr: string, startDate: string, endDate: string): boolean =>
+  dateStr >= startDate && dateStr <= endDate;
+
 const isSameMonth = (dateStr: string, today: Date): boolean => {
-  const d = new Date(dateStr);
-  return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+  const d = parseDateKey(dateStr);
+  return d.getUTCMonth() === today.getUTCMonth() && d.getUTCFullYear() === today.getUTCFullYear();
 };
 
 const formatMonthLabel = (date: Date): string => {
-  const month = date.toLocaleString('en-US', { month: 'long' });
-  return `${month} ${date.getFullYear()}`;
+  const month = date.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+  return `${month} ${date.getUTCFullYear()}`;
+};
+
+const MONTH_NAMES = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december'
+];
+
+const getMonthEndDateKey = (year: number, monthIndex: number): string =>
+  formatDateKey(year, monthIndex + 1, 0);
+
+export const resolveFinancialReportAnchorDate = (message: string, currentDate: string = getToday()): string | undefined => {
+  const lower = message.toLowerCase();
+  const current = parseDateKey(currentDate);
+  const currentYear = current.getUTCFullYear();
+  const currentMonthIndex = current.getUTCMonth();
+
+  if (/\blast\s+month\b/.test(lower)) {
+    const lastMonth = new Date(Date.UTC(currentYear, currentMonthIndex - 1, 1));
+    return getMonthEndDateKey(lastMonth.getUTCFullYear(), lastMonth.getUTCMonth());
+  }
+
+  const explicitDate = lower.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (explicitDate) {
+    const year = Number(explicitDate[1]);
+    const month = Number(explicitDate[2]);
+    const day = Number(explicitDate[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return formatDateKey(year, month - 1, day);
+    }
+  }
+
+  for (let monthIndex = 0; monthIndex < MONTH_NAMES.length; monthIndex += 1) {
+    const monthName = MONTH_NAMES[monthIndex];
+    const shortName = monthName.slice(0, 3);
+    const monthPattern = new RegExp(`\\b(${monthName}|${shortName})\\b`, 'i');
+    if (!monthPattern.test(message)) continue;
+
+    const yearNearMonth = message.match(new RegExp(`\\b(?:${monthName}|${shortName})\\s+(20\\d{2})\\b`, 'i'))
+      || message.match(new RegExp(`\\b(20\\d{2})\\s+(?:${monthName}|${shortName})\\b`, 'i'));
+    const year = yearNearMonth ? Number(yearNearMonth[1]) : currentYear;
+    return getMonthEndDateKey(year, monthIndex);
+  }
+
+  return undefined;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -124,14 +189,14 @@ export const buildFinancialReport = (
 ): FinancialReport => {
   const today = todayOverride || getToday();
   const weeklyStart = getWeeklyStart(today);
-  const now = new Date(today);
+  const now = parseDateKey(today);
 
   const treatmentDaily = sumMoney(
     treatmentRecords.filter(tr => tr.date === today).map(tr => tr.cost),
     currency
   );
   const treatmentWeekly = sumMoney(
-    treatmentRecords.filter(tr => tr.date >= weeklyStart).map(tr => tr.cost),
+    treatmentRecords.filter(tr => isWithinDateRange(tr.date, weeklyStart, today)).map(tr => tr.cost),
     currency
   );
   const treatmentMonthly = sumMoney(
@@ -144,7 +209,7 @@ export const buildFinancialReport = (
     currency
   );
   const medicineWeekly = sumMoney(
-    medicineSales.filter(sale => sale.date >= weeklyStart).map(sale => sale.total_price),
+    medicineSales.filter(sale => isWithinDateRange(sale.date, weeklyStart, today)).map(sale => sale.total_price),
     currency
   );
   const medicineMonthly = sumMoney(
@@ -157,7 +222,7 @@ export const buildFinancialReport = (
     currency
   );
   const paymentWeekly = sumMoney(
-    paymentRecords.filter(payment => payment.date >= weeklyStart).map(payment => payment.amount),
+    paymentRecords.filter(payment => isWithinDateRange(payment.date, weeklyStart, today)).map(payment => payment.amount),
     currency
   );
   const paymentMonthly = sumMoney(
@@ -174,7 +239,7 @@ export const buildFinancialReport = (
     currency
   );
   const expenseWeekly = sumMoney(
-    expenses.filter(exp => exp.date >= weeklyStart).map(exp => exp.amount),
+    expenses.filter(exp => isWithinDateRange(exp.date, weeklyStart, today)).map(exp => exp.amount),
     currency
   );
   const expenseMonthly = sumMoney(
@@ -192,13 +257,13 @@ export const buildFinancialReport = (
   const lowStockCount = medicines.filter(m => (m.stock || 0) <= (m.min_stock || 0)).length;
   const outOfStockCount = medicines.filter(m => (m.stock || 0) === 0).length;
 
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+  const thirtyDaysAgo = parseDateKey(today);
+  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 29);
   const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
   const doctorPopularityMap = new Map<string, number>();
 
   treatmentRecords
-    .filter(tr => tr.date >= thirtyDaysAgoStr)
+    .filter(tr => isWithinDateRange(tr.date, thirtyDaysAgoStr, today))
     .forEach(tr => {
       const doctorName = tr.doctor_name?.trim() || 'Unassigned Doctor';
       doctorPopularityMap.set(doctorName, (doctorPopularityMap.get(doctorName) || 0) + 1);
