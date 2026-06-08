@@ -1,60 +1,113 @@
-# Multi-stage build for DentalCloud Pro - Dental Clinic Management Application
-# Stage 1: Build the React application
-FROM node:20-alpine AS builder
+# syntax=docker/dockerfile:1.7
 
-# Set working directory
+################################################################################
+# Production Docker image for DentalCloud (Vite + React static application)
+#
+# Build example:
+#   docker build --build-arg AI_API_KEY=your_key -t dentalcloud:prod .
+#
+# Run example:
+#   docker run --rm -p 3000:3000 dentalcloud:prod
+#
+# Note: Vite embeds client-side environment values at build time. Do not pass
+# secrets that must remain private to AI_API_KEY or other frontend build args.
+################################################################################
+
+FROM node:20-alpine AS deps
+
 WORKDIR /app
 
-# Copy package files
+# Install dependencies in a separate layer for better build caching.
 COPY package.json package-lock.json ./
+RUN npm ci --include=dev --no-audit --no-fund
 
-# Install dependencies
-RUN npm ci
 
-# Copy source code
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the application
-# Vite will use the environment variables at build time
-ARG AI_API_KEY
+# Vite reads this value during build via vite.config.ts.
+ARG AI_API_KEY=
 ENV AI_API_KEY=${AI_API_KEY}
 
 RUN npm run build
 
-# Stage 2: Production server with Nginx
-FROM nginx:alpine
 
-# Install Node.js for any runtime scripts (optional)
-RUN apk add --no-cache nodejs npm
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
-# Copy built assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+ENV NODE_ENV=production
 
-# Copy custom nginx configuration
-RUN echo 'server { \
-    listen 3000; \
-    server_name localhost; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ { \
-        expires 1y; \
-        add_header Cache-Control "public, immutable"; \
-    } \
-    gzip on; \
-    gzip_vary on; \
-    gzip_min_length 1024; \
-    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json; \
-}' > /etc/nginx/conf.d/default.conf
+# nginxinc/nginx-unprivileged listens comfortably on non-privileged ports.
+ENV NGINX_PORT=3000
 
-# Expose port 3000 (matching the vite.config.ts configuration)
+COPY --chown=101:101 --from=build /app/dist /usr/share/nginx/html
+
+USER root
+
+RUN cat > /etc/nginx/conf.d/default.conf <<'EOF'
+server {
+    listen 3000;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    server_tokens off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        application/rss+xml
+        image/svg+xml;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(self), microphone=(), geolocation=()" always;
+
+    location = /health {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
+        try_files $uri =404;
+    }
+
+    location ~* \.(?:js|css|mjs|png|jpg|jpeg|gif|ico|svg|webp|avif|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Client-side routing fallback for the Vite single-page application.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1
 
-# Start Nginx
+USER 101
+
 CMD ["nginx", "-g", "daemon off;"]
