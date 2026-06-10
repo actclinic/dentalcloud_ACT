@@ -165,7 +165,7 @@ CREATE TABLE patient_auth (
 CREATE TABLE otp_codes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   email VARCHAR(255) NOT NULL,
-  code VARCHAR(6) NOT NULL,
+  code VARCHAR(64) NOT NULL,
   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
   used BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -120,6 +120,13 @@ const normalizeMyanmarPhoneForLookup = (value?: string | null): string | null =>
   return /^09\d{9}$/.test(localDigits) ? localDigits : null;
 };
 
+const normalizePhoneForStorage = (value?: string | null): string | null => {
+  const normalizedMyanmarPhone = normalizeMyanmarPhoneForLookup(value);
+  if (normalizedMyanmarPhone) return normalizedMyanmarPhone;
+  const trimmed = value?.trim();
+  return trimmed || null;
+};
+
 const isValidEmailAddress = (email?: string | null) => {
   if (!email) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -816,7 +823,7 @@ export const api = {
       username?: string | null
     ): Promise<void> => {
       const normalizedEmail = email ? email.toLowerCase().trim() : email;
-      const normalizedPhone = phone ? phone.trim() : phone;
+      const normalizedPhone = normalizePhoneForStorage(phone);
       const normalizedUsername = username ? username.trim().toLowerCase() : username;
       const { data: patientRecord, error: patientError } = await supabase
         .from('patients')
@@ -923,16 +930,19 @@ export const api = {
 
           const { data, error } = await supabase
             .from('patient_auth')
-            .select('patient_id, password, is_verified')
+            .select('patient_id, password, is_verified, created_at')
             .eq(column, value)
-            .maybeSingle();
+            .order('is_verified', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(5);
 
           if (error) {
             console.warn(`Patient auth lookup error (${column}):`, error.message);
             return null;
           }
 
-          return data;
+          const rows = data || [];
+          return rows.find((row: any) => row.is_verified !== false) || rows[0] || null;
         };
 
         const lookupPhoneByNormalizedDigits = async (): Promise<{ patient_id: string; password: string | null; is_verified?: boolean | null } | null> => {
@@ -941,14 +951,17 @@ export const api = {
 
           const { data, error } = await supabase
             .from('patient_auth')
-            .select('patient_id, password, phone, is_verified');
+            .select('patient_id, password, phone, is_verified, created_at')
+            .order('is_verified', { ascending: false })
+            .order('created_at', { ascending: false });
 
           if (error) {
             console.warn('Patient auth normalized phone lookup error:', error.message);
             return null;
           }
 
-          return (data || []).find((record: any) => normalizeMyanmarPhoneForLookup(record.phone) === normalizedPhone) || null;
+          const matchingRows = (data || []).filter((record: any) => normalizeMyanmarPhoneForLookup(record.phone) === normalizedPhone);
+          return matchingRows.find((record: any) => record.is_verified !== false) || matchingRows[0] || null;
         };
 
         const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
@@ -1144,7 +1157,7 @@ export const api = {
 
       const normalizedEmail = email.toLowerCase().trim();
       const normalizedUsername = username?.trim() ? username.trim().toLowerCase() : null;
-      const normalizedPhone = phone?.trim() ? phone.trim() : null;
+      const normalizedPhone = normalizePhoneForStorage(phone);
 
       // 2. Check if patient already exists by email
       let { data: existingPatient, error: fetchError } = await supabase

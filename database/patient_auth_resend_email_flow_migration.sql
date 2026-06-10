@@ -36,8 +36,9 @@ UPDATE public.otp_codes
 SET used = false
 WHERE used IS NULL;
 
--- The current frontend stores 6 digit codes. Keep the code column at least 6 chars.
--- This block only widens too-short VARCHAR columns; it will not shrink wider columns.
+-- Signup uses 6 digit OTP codes. Forgot-password uses a longer opaque reset token
+-- so that reset emails do not display a visible OTP number.
+-- Keep the code column at least 64 chars.
 DO $$
 DECLARE
   code_length INTEGER;
@@ -49,8 +50,8 @@ BEGIN
     AND table_name = 'otp_codes'
     AND column_name = 'code';
 
-  IF code_length IS NOT NULL AND code_length < 6 THEN
-    ALTER TABLE public.otp_codes ALTER COLUMN code TYPE VARCHAR(6);
+  IF code_length IS NOT NULL AND code_length < 64 THEN
+    ALTER TABLE public.otp_codes ALTER COLUMN code TYPE VARCHAR(64);
   END IF;
 END $$;
 

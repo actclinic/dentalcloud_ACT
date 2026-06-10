@@ -17,6 +17,15 @@ export const otpService = {
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
 
+  generateResetToken(): string {
+    const bytes = new Uint8Array(16);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+    return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  },
+
   getPendingSignupKey(email: string): string {
     return `pending_patient_signup_${email.toLowerCase().trim()}`;
   },
@@ -87,7 +96,7 @@ export const otpService = {
     const normalizedEmail = email.toLowerCase().trim();
     const normalizedCode = code.trim();
 
-    if (!this.isValidEmail(normalizedEmail) || !/^\d{6}$/.test(normalizedCode)) {
+    if (!this.isValidEmail(normalizedEmail) || !/^[A-Za-z0-9_-]{6,64}$/.test(normalizedCode)) {
       return false;
     }
 
@@ -418,7 +427,7 @@ export const otpService = {
         return { success: true, message: genericSuccess };
       }
 
-      const code = this.generateOTP();
+      const code = this.generateResetToken();
       await this.storeAuthCode(normalizedEmail, code, 20);
 
       const clinicName = await this.getClinicName();
@@ -470,7 +479,7 @@ export const otpService = {
       if (trimmedPassword.length < 6) {
         return { success: false, message: 'Password must be at least 6 characters long.' };
       }
-      if (!this.isValidEmail(normalizedEmail) || !/^\d{6}$/.test(normalizedCode)) {
+      if (!this.isValidEmail(normalizedEmail) || !/^[A-Za-z0-9_-]{6,64}$/.test(normalizedCode)) {
         return { success: false, message: 'This reset link is invalid. Please request a new reset email.' };
       }
 
