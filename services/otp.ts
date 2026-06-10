@@ -12,6 +12,11 @@ export interface OTPRecord {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const normalizePatientUsernameForAuth = (value?: string | null): string | null => {
+  const normalized = value?.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalized || null;
+};
+
 export const otpService = {
   generateOTP(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -184,7 +189,7 @@ export const otpService = {
 
   async cleanupPendingSignupConflicts(email: string, username?: string): Promise<void> {
     const normalizedEmail = email.toLowerCase().trim();
-    const normalizedUsername = username?.trim().toLowerCase();
+    const normalizedUsername = normalizePatientUsernameForAuth(username);
 
     if (!normalizedUsername) return;
 
@@ -382,7 +387,7 @@ export const otpService = {
 
   async isUsernameRegistered(username: string): Promise<boolean> {
     try {
-      const normalized = username.trim().toLowerCase();
+      const normalized = normalizePatientUsernameForAuth(username);
       if (!normalized) return false;
 
       const { data, error } = await supabase

@@ -26,7 +26,8 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
   const [otpCode, setOtpCode] = useState('');
   const [verificationSucceeded, setVerificationSucceeded] = useState(false);
   
-  const isValidUsername = (value: string) => /^[a-zA-Z0-9._-]{3,30}$/.test(value);
+  const normalizeUsernameInput = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const isValidUsername = (value: string) => /^[a-zA-Z0-9 ._-]{3,50}$/.test(value);
 
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
@@ -34,7 +35,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
     setError('');
     setSuccess('');
 
-    const normalizedUsername = username.trim();
+    const normalizedUsername = normalizeUsernameInput(username);
     const normalizedEmail = email.toLowerCase().trim();
     const normalizedPhone = phone.trim();
 
@@ -44,7 +45,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
     }
     
     if (!isValidUsername(normalizedUsername)) {
-      setError('Username must be 3-30 characters and use letters, numbers, dot, underscore, or hyphen.');
+      setError('Username must be 3-50 characters and use letters, numbers, spaces, dot, underscore, or hyphen.');
       return;
     }
 
@@ -206,7 +207,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                   required
                   className="w-full"
                 />
-                <p className="text-[11px] text-gray-400 mt-1">3-30 characters. Letters, numbers, dot, underscore, or hyphen.</p>
+                <p className="text-[11px] text-gray-400 mt-1">3-50 characters. Letters, numbers, spaces, dot, underscore, or hyphen.</p>
               </div>
 
               <div>

@@ -127,6 +127,11 @@ const normalizePhoneForStorage = (value?: string | null): string | null => {
   return trimmed || null;
 };
 
+const normalizePatientUsernameForAuth = (value?: string | null): string | null => {
+  const normalized = value?.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalized || null;
+};
+
 const isValidEmailAddress = (email?: string | null) => {
   if (!email) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -746,7 +751,7 @@ export const api = {
           .insert({
             patient_id: result.id,
             location_id: finalLocationId,
-            username: data.username ? data.username.trim().toLowerCase() : null,
+            username: normalizePatientUsernameForAuth(data.username),
             email: normalizedEmail || null,
             phone: normalizedPhone || null,
             password: data.password,
@@ -824,7 +829,7 @@ export const api = {
     ): Promise<void> => {
       const normalizedEmail = email ? email.toLowerCase().trim() : email;
       const normalizedPhone = normalizePhoneForStorage(phone);
-      const normalizedUsername = username ? username.trim().toLowerCase() : username;
+      const normalizedUsername = normalizePatientUsernameForAuth(username);
       const { data: patientRecord, error: patientError } = await supabase
         .from('patients')
         .select('location_id')
@@ -919,7 +924,7 @@ export const api = {
     authenticate: async (identifier: string, password: string): Promise<Patient | null> => {
       try {
         const trimmedIdentifier = identifier.trim();
-        const normalizedIdentifier = trimmedIdentifier.toLowerCase();
+        const normalizedIdentifier = normalizePatientUsernameForAuth(trimmedIdentifier) || trimmedIdentifier.toLowerCase();
         
         // 1. Try to find patient_auth by email, phone, or username
         const lookupAuthMatch = async (
@@ -1093,7 +1098,7 @@ export const api = {
 
       if (!defaultLocationId) throw new Error('No clinic location found. Please contact admin.');
       const normalizedEmail = email.toLowerCase().trim();
-      const normalizedUsername = username?.trim() ? username.trim().toLowerCase() : null;
+      const normalizedUsername = normalizePatientUsernameForAuth(username);
 
       // 2. Check if patient already exists
       let { data: existingPatient, error: fetchError } = await supabase
@@ -1156,7 +1161,7 @@ export const api = {
       if (!defaultLocationId) throw new Error('No clinic location found. Please contact admin.');
 
       const normalizedEmail = email.toLowerCase().trim();
-      const normalizedUsername = username?.trim() ? username.trim().toLowerCase() : null;
+      const normalizedUsername = normalizePatientUsernameForAuth(username);
       const normalizedPhone = normalizePhoneForStorage(phone);
 
       // 2. Check if patient already exists by email
