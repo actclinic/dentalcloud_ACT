@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, CheckCircle, XCircle, ArrowLeft, RefreshCw, Inbox, Phone } from 'lucide-react';
+import { User, Mail, Lock, CheckCircle, XCircle, ArrowLeft, RefreshCw, Inbox, Phone, KeyRound } from 'lucide-react';
 import { otpService } from '../services/otp';
 import { Input } from './Shared';
 
@@ -12,8 +12,8 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
   onBack, 
   onRegistrationComplete
 }) => {
-  // Flow: signup → waiting (check email) → complete
-  const [step, setStep] = useState<'signup' | 'waiting' | 'complete'>('signup');
+  // Flow: signup -> otp -> result
+  const [step, setStep] = useState<'signup' | 'otp' | 'result'>('signup');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -23,10 +23,11 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [verificationSucceeded, setVerificationSucceeded] = useState(false);
   
   const isValidUsername = (value: string) => /^[a-zA-Z0-9._-]{3,30}$/.test(value);
 
-  // Confirmation links are now handled by LoginView with the custom Resend-backed flow.
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,15 +81,15 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
       }
 
       
-      // Send confirmation email through the existing Resend-backed email provider.
-      const result = await otpService.sendSignupConfirmationEmail(normalizedEmail, {
+      // Send OTP email through the existing Resend-backed email provider.
+      const result = await otpService.sendSignupOtpEmail(normalizedEmail, {
         username: normalizedUsername,
         phone: normalizedPhone,
       }, password);
       
       if (result.success) {
-        setSuccess('Please check your email and click the confirmation link to verify your account.');
-        setStep('waiting');
+        setSuccess(result.message);
+        setStep('otp');
       } else {
         setError(result.message || 'Failed to create account');
       }
@@ -105,16 +106,47 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
     setResending(true);
     
     try {
-      const result = await otpService.resendConfirmationEmail(email);
+      const result = await otpService.resendSignupOtp(email);
       if (result.success) {
         setSuccess(result.message);
       } else {
         setError(result.message);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to resend confirmation email');
+      setError(err.message || 'Failed to resend OTP code');
     } finally {
       setResending(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedCode = otpCode.trim();
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      setError('Please enter the 6-digit OTP code from your email.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await otpService.verifySignupOtp(normalizedEmail, normalizedCode);
+      setVerificationSucceeded(result.success);
+      if (result.success) {
+        setSuccess(result.message || 'Account verified successfully. You can now log in.');
+      } else {
+        setError(result.message || 'OTP verification failed. Please try again.');
+      }
+      setStep('result');
+    } catch (err: any) {
+      setVerificationSucceeded(false);
+      setError(err.message || 'Failed to verify OTP code.');
+      setStep('result');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,8 +162,8 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Patient Registration</h1>
             <p className="text-gray-600">
               {step === 'signup' && 'Create your account'}
-              {step === 'waiting' && 'Check your email'}
-              {step === 'complete' && 'Registration Complete!'}
+              {step === 'otp' && 'Enter OTP code'}
+              {step === 'result' && (verificationSucceeded ? 'Registration Complete!' : 'Verification Failed')}
             </p>
           </div>
 
@@ -140,20 +172,20 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
             <div className="flex items-center space-x-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                 step === 'signup' ? 'bg-indigo-600 text-white' : 
-                step === 'waiting' || step === 'complete' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+                step === 'otp' || step === 'result' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
               }`}>
                 {step === 'signup' ? '1' : <CheckCircle className="w-5 h-5" />}
               </div>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                step === 'waiting' ? 'bg-indigo-600 text-white' : 
-                step === 'complete' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+                step === 'otp' ? 'bg-indigo-600 text-white' : 
+                step === 'result' && verificationSucceeded ? 'bg-green-500 text-white' : step === 'result' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'
               }`}>
-                {step === 'waiting' ? '2' : step === 'complete' ? <CheckCircle className="w-5 h-5" /> : '2'}
+                {step === 'otp' ? '2' : step === 'result' ? (verificationSucceeded ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />) : '2'}
               </div>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                step === 'complete' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+                step === 'result' && verificationSucceeded ? 'bg-green-500 text-white' : step === 'result' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'
               }`}>
-                {step === 'complete' ? <CheckCircle className="w-5 h-5" /> : '3'}
+                {step === 'result' ? (verificationSucceeded ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />) : '3'}
               </div>
             </div>
           </div>
@@ -291,51 +323,76 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
             </form>
           )}
 
-          {/* Waiting for Email Confirmation Step */}
-          {step === 'waiting' && (
-            <div className="space-y-6">
+          {/* OTP Verification Step */}
+          {step === 'otp' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-6">
               <div className="text-center">
                 <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Inbox className="w-10 h-10 text-blue-600" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Check Your Email</h2>
-                <p className="text-gray-600">
-                  We've sent a confirmation link to:
-                </p>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Enter OTP Code</h2>
+                <p className="text-gray-600">We've sent a 6-digit OTP code to:</p>
                 <p className="font-medium text-indigo-600 mt-1">{email}</p>
               </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
-                <p className="font-medium mb-2">Next steps:</p>
-                <ol className="list-decimal list-inside space-y-1">
-                  <li>Open your email inbox</li>
-                  <li>Find the email from DentalCloud</li>
-                  <li>Click the "Confirm your email" link</li>
-                  <li>You'll be redirected back to complete registration</li>
-                </ol>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                  <KeyRound className="w-4 h-4" />
+                  OTP Code
+                </label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter 6-digit code"
+                  required
+                  className="w-full text-center tracking-[0.4em] font-bold text-lg"
+                />
+                <p className="text-xs text-gray-500 mt-2">The code expires in 30 minutes.</p>
               </div>
 
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
                 <p><strong>Tip:</strong> If you don't see the email, check your spam or junk folder.</p>
               </div>
-              
+
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
                   <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   {error}
                 </div>
               )}
-              
+
               {success && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700 flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   {success}
                 </div>
               )}
-              
+
+              <button
+                type="submit"
+                disabled={loading || otpCode.length !== 6}
+                className="w-full bg-[var(--hover-600)] hover:bg-[var(--hover-700)] text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    Verify OTP
+                  </>
+                )}
+              </button>
+
               <div className="text-center space-y-3">
                 <p className="text-sm text-gray-600">
-                  Didn't receive the email?{' '}
+                  Didn't receive the code?{' '}
                   <button
                     type="button"
                     onClick={handleResendEmail}
@@ -348,15 +405,16 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                         Resending...
                       </>
                     ) : (
-                      'Resend Email'
+                      'Resend OTP'
                     )}
                   </button>
                 </p>
-                
+
                 <button
                   type="button"
                   onClick={() => {
                     setStep('signup');
+                    setOtpCode('');
                     setError('');
                     setSuccess('');
                   }}
@@ -366,11 +424,11 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                   Use a different email
                 </button>
               </div>
-            </div>
+            </form>
           )}
 
-          {/* Complete Step */}
-          {step === 'complete' && (
+          {/* Result Step */}
+          {step === 'result' && (
             <div className="text-center space-y-4">
               {loading ? (
                 <>
@@ -382,20 +440,22 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                 </>
               ) : (
                 <>
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${verificationSucceeded ? 'bg-green-100' : 'bg-red-100'}`}>
+                    {verificationSucceeded ? <CheckCircle className="w-8 h-8 text-green-600" /> : <XCircle className="w-8 h-8 text-red-600" />}
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">Registration Complete!</h2>
+                  <h2 className="text-xl font-bold text-gray-900">{verificationSucceeded ? 'Registration Complete!' : 'Verification Failed'}</h2>
                   <p className="text-gray-600">
-                    Your account has been created successfully. You can now login to access your dashboard.
+                    {verificationSucceeded ? 'Your account has been verified successfully. You can now log in to access your dashboard.' : (error || 'OTP verification failed. Please try again or request a new code.')}
                   </p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
-                    <p className="font-medium mb-1">Your Login Credentials:</p>
-                    <p><span className="font-medium">Email:</span> {email}</p>
-                    {username && <p><span className="font-medium">Username:</span> {username}</p>}
-                    {phone && <p><span className="font-medium">Phone:</span> {phone}</p>}
-                    <p><span className="font-medium">Password:</span> (The password you set)</p>
-                  </div>
+                  {verificationSucceeded && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+                      <p className="font-medium mb-1">Your Login Credentials:</p>
+                      <p><span className="font-medium">Email:</span> {email}</p>
+                      {username && <p><span className="font-medium">Username:</span> {username}</p>}
+                      {phone && <p><span className="font-medium">Phone:</span> {phone}</p>}
+                      <p><span className="font-medium">Password:</span> (The password you set)</p>
+                    </div>
+                  )}
                   
                   {error && (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
@@ -405,10 +465,18 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                   )}
                   
                   <button
-                    onClick={onRegistrationComplete}
+                    onClick={() => {
+                      if (verificationSucceeded) {
+                        onRegistrationComplete();
+                      } else {
+                        setStep('otp');
+                        setError('');
+                        setSuccess('');
+                      }
+                    }}
                     className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors"
                   >
-                    Go to Login
+                    {verificationSucceeded ? 'Go to Login' : 'Try Again'}
                   </button>
                 </>
               )}
@@ -416,7 +484,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
           )}
 
           {/* Back to Login */}
-          {step !== 'complete' && (
+          {step !== 'result' && (
             <div className="mt-6 text-center">
               <button
                 onClick={onBack}

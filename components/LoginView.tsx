@@ -51,46 +51,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
     generateCaptcha();
 
     const urlParams = new URLSearchParams(window.location.search);
-    const confirmCode = urlParams.get('confirm_patient');
-    const confirmEmail = urlParams.get('email');
     const resetCode = urlParams.get('code');
     const resetEmail = urlParams.get('email');
-
-    const initCustomSignupConfirmation = async () => {
-      if (!confirmCode || !confirmEmail) return;
-
-      setLoginMode('patient');
-      setShowForgotPassword(false);
-      setIsRecoveryMode(false);
-      setShowRegistration(false);
-      setLoading(true);
-      setError('');
-      setInfoMessage('Confirming your email and creating your patient account...');
-
-      try {
-        const result = await otpService.confirmPatientSignup(confirmEmail, confirmCode);
-        if (!result.success) {
-          setError(result.message);
-          setInfoMessage('');
-          return;
-        }
-
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-        setUsername(result.email || confirmEmail);
-        setInfoMessage(result.message + ' You can now log in with your email, username, or phone.');
-      } catch (err: any) {
-        setError(err.message || 'Failed to confirm your email.');
-        setInfoMessage('');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (confirmCode && confirmEmail) {
-      initCustomSignupConfirmation();
-      return;
-    }
 
     if (urlParams.get('reset') === 'password') {
       setLoginMode('patient');

@@ -1,11 +1,11 @@
--- Patient auth email flow migration for Resend-based signup confirmation and password reset.
+-- Patient auth email flow migration for Resend-based signup OTP and password reset.
 --
 -- Context for backend team:
 -- The frontend no longer uses Supabase Auth mail templates for patient signup
--- confirmation or forgot-password recovery. It now uses the existing Resend-backed
+-- OTP verification or forgot-password recovery. It now uses the existing Resend-backed
 -- Edge Function (`send-manager-email`) and these application tables:
 --   - patient_auth: stores patient portal credentials and verification state
---   - otp_codes: stores one-time 6 digit confirmation/reset codes
+--   - otp_codes: stores one-time 6 digit signup OTP/reset codes
 --
 -- Run this script once on production Supabase/Postgres. It is intentionally
 -- idempotent and safe to re-run.
@@ -54,7 +54,7 @@ BEGIN
   END IF;
 END $$;
 
--- 3) Helpful indexes for confirmation/reset lookups.
+-- 3) Helpful indexes for OTP/reset lookups.
 CREATE INDEX IF NOT EXISTS idx_patient_auth_email_verified
   ON public.patient_auth (email, is_verified);
 

@@ -124,8 +124,6 @@ export const otpService = {
     title: string;
     eyebrow: string;
     message: string;
-    buttonText: string;
-    buttonUrl: string;
     code: string;
     expiryText: string;
     clinicName: string;
@@ -133,8 +131,6 @@ export const otpService = {
     const safeTitle = this.escapeHtml(params.title);
     const safeEyebrow = this.escapeHtml(params.eyebrow);
     const safeMessage = this.escapeHtml(params.message);
-    const safeButtonText = this.escapeHtml(params.buttonText);
-    const safeButtonUrl = this.escapeHtml(params.buttonUrl);
     const safeCode = this.escapeHtml(params.code);
     const safeExpiryText = this.escapeHtml(params.expiryText);
     const safeClinicName = this.escapeHtml(params.clinicName);
@@ -148,15 +144,11 @@ export const otpService = {
               <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#38bdf8;font-weight:800;margin-bottom:12px;">${safeEyebrow}</div>
               <h1 style="margin:0 0 14px;font-size:28px;line-height:1.15;color:#ffffff;font-weight:900;">${safeTitle}</h1>
               <p style="margin:0 0 24px;color:#cbd5e1;font-size:15px;line-height:1.65;">${safeMessage}</p>
-              <div style="margin:24px 0;text-align:center;">
-                <a href="${safeButtonUrl}" style="display:inline-block;text-decoration:none;background:linear-gradient(135deg,#2563eb,#06b6d4);color:#ffffff;font-weight:800;border-radius:14px;padding:14px 24px;box-shadow:0 12px 30px rgba(37,99,235,.35);">${safeButtonText}</a>
-              </div>
-              <div style="background:#111827;border:1px solid #334155;border-radius:16px;padding:18px;margin:22px 0;">
-                <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin-bottom:8px;">Verification code</div>
-                <div style="font-size:30px;letter-spacing:.28em;color:#ffffff;font-weight:900;">${safeCode}</div>
+              <div style="background:#111827;border:1px solid #334155;border-radius:16px;padding:22px;margin:22px 0;text-align:center;">
+                <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin-bottom:10px;">Your OTP code</div>
+                <div style="font-size:34px;letter-spacing:.32em;color:#ffffff;font-weight:900;">${safeCode}</div>
               </div>
               <p style="margin:0;color:#94a3b8;font-size:13px;line-height:1.55;">${safeExpiryText}</p>
-              <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.55;">If the button does not work, copy and paste this link into your browser:<br><span style="color:#93c5fd;word-break:break-all;">${safeButtonUrl}</span></p>
             </div>
             <div style="padding:18px 30px;background:#020617;border-top:1px solid #1e293b;color:#64748b;font-size:12px;">${safeClinicName} - Secure patient portal</div>
           </div>
@@ -181,7 +173,7 @@ export const otpService = {
     });
   },
 
-  async sendSignupConfirmationEmail(
+  async sendSignupOtpEmail(
     email: string,
     profile: { username?: string; phone?: string },
     password: string
@@ -214,39 +206,36 @@ export const otpService = {
       localStorage.setItem(this.getPendingSignupKey(normalizedEmail), JSON.stringify(pendingData));
 
       const clinicName = await this.getClinicName();
-      const confirmUrl = `${window.location.origin}${window.location.pathname}?confirm_patient=${encodeURIComponent(code)}&email=${encodeURIComponent(normalizedEmail)}`;
       const html = this.buildEmailHtml({
-        title: 'Confirm your patient portal email',
+        title: 'Your patient portal OTP code',
         eyebrow: 'DentalCloud patient signup',
-        message: `Welcome to ${clinicName}. Please confirm this email address to finish creating your patient portal account.`,
-        buttonText: 'Confirm email',
-        buttonUrl: confirmUrl,
+        message: `Welcome to ${clinicName}. Enter the OTP code below in the registration form to finish creating your patient portal account.`,
         code,
-        expiryText: 'This confirmation link and code expire in 30 minutes. If you did not request this account, you can ignore this email.',
+        expiryText: 'This OTP code expires in 30 minutes. If you did not request this account, you can ignore this email.',
         clinicName
       });
 
       await this.sendPatientAuthEmail({
         to: normalizedEmail,
-        subject: `Confirm your ${clinicName} patient portal email`,
+        subject: `Your ${clinicName} patient portal OTP code`,
         html,
-        text: `Confirm your ${clinicName} patient portal email. Open this link: ${confirmUrl}\n\nVerification code: ${code}\n\nThis code expires in 30 minutes.`,
+        text: `Your ${clinicName} patient portal OTP code is: ${code}\n\nEnter this code in the registration form. This code expires in 30 minutes.`,
         clinicName
       });
 
-      return { success: true, message: 'Please check your email and click the confirmation link to verify your account.' };
+      return { success: true, message: 'OTP code sent to your email. Please enter it below to verify your account.' };
     } catch (error: any) {
-      console.error('Custom signup confirmation failed:', error);
-      return { success: false, message: error.message || 'Failed to send confirmation email.' };
+      console.error('Custom signup OTP email failed:', error);
+      return { success: false, message: error.message || 'Failed to send OTP email.' };
     }
   },
 
-  async confirmPatientSignup(email: string, code: string): Promise<{ success: boolean; message: string; email?: string }> {
+  async verifySignupOtp(email: string, code: string): Promise<{ success: boolean; message: string; email?: string }> {
     try {
       const normalizedEmail = email.toLowerCase().trim();
       const valid = await this.verifyAuthCode(normalizedEmail, code, true);
       if (!valid) {
-        return { success: false, message: 'This confirmation link is invalid or has expired. Please request a new confirmation email.' };
+        return { success: false, message: 'This OTP code is invalid or has expired. Please request a new code.' };
       }
 
       const { data: existingAuth, error: fetchError } = await supabase
@@ -271,12 +260,12 @@ export const otpService = {
       localStorage.removeItem(this.getPendingSignupKey(normalizedEmail));
       return { success: true, message: 'Email verified and account created successfully!', email: normalizedEmail };
     } catch (error: any) {
-      console.error('Custom patient signup confirmation failed:', error);
-      return { success: false, message: error.message || 'Failed to confirm patient signup.' };
+      console.error('Custom patient signup OTP verification failed:', error);
+      return { success: false, message: error.message || 'Failed to verify OTP code.' };
     }
   },
 
-  async resendConfirmationEmail(email: string): Promise<{ success: boolean; message: string }> {
+  async resendSignupOtp(email: string): Promise<{ success: boolean; message: string }> {
     try {
       const normalizedEmail = email.toLowerCase().trim();
       const { data: existingAuth, error: fetchError } = await supabase
@@ -292,13 +281,13 @@ export const otpService = {
         return { success: false, message: 'This email is already verified. Please log in instead.' };
       }
 
-      return await this.sendSignupConfirmationEmail(normalizedEmail, {
+      return await this.sendSignupOtpEmail(normalizedEmail, {
         username: existingAuth.username,
         phone: existingAuth.phone
       }, existingAuth.password);
     } catch (error: any) {
-      console.error('Custom resend confirmation failed:', error);
-      return { success: false, message: error.message || 'Failed to resend confirmation email.' };
+      console.error('Custom resend signup OTP failed:', error);
+      return { success: false, message: error.message || 'Failed to resend OTP code.' };
     }
   },
 
@@ -377,9 +366,7 @@ export const otpService = {
       const html = this.buildEmailHtml({
         title: 'Reset your patient portal password',
         eyebrow: 'DentalCloud password recovery',
-        message: `We received a request to reset your ${clinicName} patient portal password. Use the secure link below to choose a new password.`,
-        buttonText: 'Reset password',
-        buttonUrl: resetUrl,
+        message: `We received a request to reset your ${clinicName} patient portal password. Open this reset link, then enter your new password: ${resetUrl}`,
         code,
         expiryText: 'This password reset link and code expire in 20 minutes. If you did not request a password reset, you can ignore this email.',
         clinicName
