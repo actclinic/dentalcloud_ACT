@@ -918,12 +918,12 @@ export const api = {
         const lookupAuthMatch = async (
           column: 'email' | 'phone' | 'username',
           value: string
-        ): Promise<{ patient_id: string; password: string | null } | null> => {
+        ): Promise<{ patient_id: string; password: string | null; is_verified?: boolean | null } | null> => {
           if (!value) return null;
 
           const { data, error } = await supabase
             .from('patient_auth')
-            .select('patient_id, password')
+            .select('patient_id, password, is_verified')
             .eq(column, value)
             .maybeSingle();
 
@@ -935,13 +935,13 @@ export const api = {
           return data;
         };
 
-        const lookupPhoneByNormalizedDigits = async (): Promise<{ patient_id: string; password: string | null } | null> => {
+        const lookupPhoneByNormalizedDigits = async (): Promise<{ patient_id: string; password: string | null; is_verified?: boolean | null } | null> => {
           const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
           if (!normalizedPhone) return null;
 
           const { data, error } = await supabase
             .from('patient_auth')
-            .select('patient_id, password, phone');
+            .select('patient_id, password, phone, is_verified');
 
           if (error) {
             console.warn('Patient auth normalized phone lookup error:', error.message);
@@ -959,6 +959,11 @@ export const api = {
           await lookupPhoneByNormalizedDigits();
 
         if (authMatch?.patient_id) {
+          if (authMatch.is_verified === false) {
+            console.log('Patient auth record is not verified yet.');
+            return null;
+          }
+
           if (authMatch.password !== password) {
             console.log('Password mismatch for patient_auth record.');
             return null;
@@ -998,12 +1003,17 @@ export const api = {
 
           const { data: phoneAuthData, error: phoneAuthError } = await supabase
             .from('patient_auth')
-            .select('password')
+            .select('password, is_verified')
             .eq('patient_id', phonePatient.id)
             .maybeSingle();
 
           if (phoneAuthError || !phoneAuthData) {
             console.log('No auth record found for phone patient:', phonePatient.name);
+            return null;
+          }
+
+          if (phoneAuthData.is_verified === false) {
+            console.log('Phone patient auth record is not verified yet.');
             return null;
           }
 
@@ -1035,12 +1045,17 @@ export const api = {
 
         const { data: authData, error: aError } = await supabase
           .from('patient_auth')
-          .select('password')
+          .select('password, is_verified')
           .eq('patient_id', patientData.id)
           .maybeSingle();
 
         if (aError || !authData) {
           console.log('No auth record found for patient:', patientData.name);
+          return null;
+        }
+
+        if (authData.is_verified === false) {
+          console.log('Patient auth record is not verified yet:', patientData.name);
           return null;
         }
 
@@ -1118,7 +1133,8 @@ export const api = {
       password: string, 
       supabaseUserId?: string,
       username?: string,
-      phone?: string
+      phone?: string,
+      isVerified: boolean = true
     ): Promise<Patient> => {
       // 1. Get first location as default
       const { data: locations } = await supabase.from('locations').select('id').limit(1);
@@ -1173,7 +1189,7 @@ export const api = {
         const updateData: any = {
           patient_id: patient.id,
           location_id: patient.location_id || defaultLocationId,
-          is_verified: true
+          is_verified: isVerified
         };
         if (supabaseUserId) {
           updateData.supabase_user_id = supabaseUserId;
@@ -1183,6 +1199,9 @@ export const api = {
         }
         if (normalizedPhone) {
           updateData.phone = normalizedPhone;
+        }
+        if (password) {
+          updateData.password = password;
         }
 
         const { error: updateError } = await supabase
@@ -1202,8 +1221,8 @@ export const api = {
           username: normalizedUsername,
           email: normalizedEmail,
           phone: normalizedPhone || patient.phone || null,
-          is_verified: true,
-          password: password || null // May be empty for Supabase Auth users
+          is_verified: isVerified,
+          password: password || null
         };
 
         if (supabaseUserId) {

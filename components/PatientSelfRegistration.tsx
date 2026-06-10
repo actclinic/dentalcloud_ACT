@@ -1,23 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User, Mail, Lock, CheckCircle, XCircle, ArrowLeft, RefreshCw, Inbox, Phone } from 'lucide-react';
 import { otpService } from '../services/otp';
-import { api } from '../services/api';
-import { supabase } from '../services/supabase';
 import { Input } from './Shared';
 
 interface PatientRegistrationProps {
   onBack: () => void;
   onRegistrationComplete: () => void;
-  // Optional: if user was redirected from email confirmation
-  emailConfirmed?: boolean;
-  confirmedEmail?: string;
 }
 
 const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({ 
   onBack, 
-  onRegistrationComplete,
-  emailConfirmed,
-  confirmedEmail
+  onRegistrationComplete
 }) => {
   // Flow: signup → waiting (check email) → complete
   const [step, setStep] = useState<'signup' | 'waiting' | 'complete'>('signup');
@@ -31,120 +24,9 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  const pendingKeyFor = (value: string) => `pending_patient_signup_${value.toLowerCase().trim()}`;
-
-  const savePendingSignup = (value: string, data: { username?: string; phone?: string }) => {
-    try {
-      localStorage.setItem(pendingKeyFor(value), JSON.stringify(data));
-    } catch (err) {
-      console.warn('Failed to store pending signup info:', err);
-    }
-  };
-
-  const loadPendingSignup = (value: string): { username?: string; phone?: string } | null => {
-    try {
-      const raw = localStorage.getItem(pendingKeyFor(value));
-      return raw ? JSON.parse(raw) : null;
-    } catch (err) {
-      console.warn('Failed to read pending signup info:', err);
-      return null;
-    }
-  };
-
-  const clearPendingSignup = (value: string) => {
-    try {
-      localStorage.removeItem(pendingKeyFor(value));
-    } catch (err) {
-      console.warn('Failed to clear pending signup info:', err);
-    }
-  };
-
   const isValidUsername = (value: string) => /^[a-zA-Z0-9._-]{3,30}$/.test(value);
 
-  // Handle email confirmation redirect
-  useEffect(() => {
-    if (emailConfirmed && confirmedEmail) {
-      setEmail(confirmedEmail);
-      // Small delay to ensure Supabase session is fully initialized
-      const timer = setTimeout(() => {
-        handleEmailConfirmed(confirmedEmail);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [emailConfirmed, confirmedEmail]);
-
-  // Called when user's email has been confirmed via link click
-  const handleEmailConfirmed = async (confirmedEmail: string) => {
-    setLoading(true);
-    setError('');
-    setStep('complete'); // Show loading state in complete step
-    
-    try {
-      // Wait a moment for Supabase to fully process the session
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Try to get the session first (more reliable than getUser for redirect flows)
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      console.log('Session check result:', { session: !!session, error: sessionError });
-      
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-      }
-      
-      let userId: string | undefined;
-      
-      if (session?.user) {
-        userId = session.user.id;
-        console.log('Got user from session:', userId);
-      } else {
-        // Fallback: try getUser
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (user) {
-          userId = user.id;
-          console.log('Got user from getUser:', userId);
-        } else {
-          console.error('No user found. Error:', userError);
-        }
-      }
-      
-      if (!userId) {
-        // Session might not be available - still try to create patient without Supabase link
-        console.warn('No Supabase session found, creating patient without Supabase link');
-      }
-
-      const pending = loadPendingSignup(confirmedEmail);
-      const pendingUsername = pending?.username || username;
-      const pendingPhone = pending?.phone || phone;
-
-      if (pendingUsername && !username) setUsername(pendingUsername);
-      if (pendingPhone && !phone) setPhone(pendingPhone);
-
-      // Create patient record (with or without Supabase user ID)
-      await (api.patients as any).registerWithSupabase(
-        confirmedEmail, 
-        '', 
-        userId, 
-        pendingUsername, 
-        pendingPhone
-      );
-      
-      clearPendingSignup(confirmedEmail);
-      
-      setSuccess('Email verified and account created successfully!');
-      
-      // Auto-redirect after 3 seconds
-      setTimeout(() => {
-        onRegistrationComplete();
-      }, 3000);
-    } catch (err: any) {
-      console.error('Error creating patient after email confirmation:', err);
-      setError(err.message || 'Failed to complete registration. Please try again.');
-      setStep('signup'); // Allow user to retry
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Confirmation links are now handled by LoginView with the custom Resend-backed flow.
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,13 +79,12 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
         return;
       }
 
-      savePendingSignup(normalizedEmail, { username: normalizedUsername, phone: normalizedPhone });
       
-      // Sign up with Supabase Auth (sends confirmation email automatically)
-      const result = await otpService.signUpWithEmailConfirmation(normalizedEmail, password, {
+      // Send confirmation email through the existing Resend-backed email provider.
+      const result = await otpService.sendSignupConfirmationEmail(normalizedEmail, {
         username: normalizedUsername,
         phone: normalizedPhone,
-      });
+      }, password);
       
       if (result.success) {
         setSuccess('Please check your email and click the confirmation link to verify your account.');
@@ -510,7 +391,7 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                   </p>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
                     <p className="font-medium mb-1">Your Login Credentials:</p>
-                    <p><span className="font-medium">Email:</span> {email || confirmedEmail}</p>
+                    <p><span className="font-medium">Email:</span> {email}</p>
                     {username && <p><span className="font-medium">Username:</span> {username}</p>}
                     {phone && <p><span className="font-medium">Phone:</span> {phone}</p>}
                     <p><span className="font-medium">Password:</span> (The password you set)</p>

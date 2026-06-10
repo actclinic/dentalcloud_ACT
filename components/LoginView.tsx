@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Eye, EyeOff, RefreshCw, Lock, User, Building2, Mail, Calendar, FileText, ArrowLeft } from 'lucide-react';
 import { auth } from '../services/auth';
 import { otpService } from '../services/otp';
-import { supabase } from '../services/supabase';
 import PatientSelfRegistration from './PatientSelfRegistration';
 
 interface LoginViewProps {
@@ -31,11 +30,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
   const [isPreparingRecovery, setIsPreparingRecovery] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [confirmResetPassword, setConfirmResetPassword] = useState('');
-  
-  // Email confirmation handling
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
-  const [confirmedEmail, setConfirmedEmail] = useState('');
   const logoSrc = appLogoUrl || '/assets/WinterArcLogo.png';
+
 
   useEffect(() => {
     document.documentElement.classList.add('auth-screen');
@@ -44,134 +40,74 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
     };
   }, []);
 
-  const hasPendingSignup = (value: string | null | undefined) => {
-    if (!value) return false;
-
-    try {
-      return !!localStorage.getItem(`pending_patient_signup_${value.toLowerCase().trim()}`);
-    } catch (err) {
-      console.warn('Unable to read pending signup state:', err);
-      return false;
-    }
-  };
-
   // Generate new CAPTCHA
   const generateCaptcha = () => {
-    const digits = Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)); // 4 random digits 0-9
+    const digits = Array.from({ length: 4 }, () => Math.floor(Math.random() * 10));
     setCaptchaDigits(digits);
     setCaptchaAnswer('');
   };
 
   useEffect(() => {
     generateCaptcha();
-    
-    // Check for email confirmation redirect
-    // Supabase redirects with: ?confirmed=true&email=xxx#access_token=xxx&refresh_token=xxx
+
     const urlParams = new URLSearchParams(window.location.search);
-    const confirmed = urlParams.get('confirmed');
-    const email = urlParams.get('email');
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const hasAuthTokens =
-      hashParams.has('access_token') ||
-      hashParams.has('refresh_token') ||
-      urlParams.has('code') ||
-      urlParams.has('token_hash');
-    
-    const initSignupConfirmation = async () => {
-      if (hasAuthTokens) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+    const confirmCode = urlParams.get('confirm_patient');
+    const confirmEmail = urlParams.get('email');
+    const resetCode = urlParams.get('code');
+    const resetEmail = urlParams.get('email');
 
-      let signupEmail = email ? decodeURIComponent(email) : '';
+    const initCustomSignupConfirmation = async () => {
+      if (!confirmCode || !confirmEmail) return;
 
-      if (!signupEmail || confirmed === 'true' || urlParams.has('code') || urlParams.has('token_hash')) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const sessionEmail = session?.user?.email?.toLowerCase().trim() || '';
-
-        if (sessionEmail && hasPendingSignup(sessionEmail)) {
-          signupEmail = sessionEmail;
-        }
-      }
-
-      if (!signupEmail || !hasPendingSignup(signupEmail)) {
-        return;
-      }
-
-      setEmailConfirmed(true);
-      setConfirmedEmail(signupEmail);
-      setShowRegistration(true);
+      setLoginMode('patient');
       setShowForgotPassword(false);
       setIsRecoveryMode(false);
+      setShowRegistration(false);
+      setLoading(true);
       setError('');
-      setInfoMessage('Email confirmed. Finishing your patient account setup...');
+      setInfoMessage('Confirming your email and creating your patient account...');
 
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-    };
-
-    if (confirmed === 'true' || urlParams.has('code') || urlParams.has('token_hash')) {
-      initSignupConfirmation();
-    }
-
-    if (urlParams.get('reset') === 'password' || hashParams.get('type') === 'recovery') {
-      const initRecoverySession = async () => {
-        setLoginMode('patient');
-        setShowForgotPassword(false);
-        setIsRecoveryMode(true);
-        setIsPreparingRecovery(true);
-        setError('');
-        setInfoMessage('Verifying your password reset link...');
-
-        if (hasAuthTokens) {
-          const recoveryResult = await otpService.waitForRecoverySession();
-          if (!recoveryResult.success) {
-            setError(recoveryResult.message || 'Unable to verify your reset link.');
-          } else {
-            setInfoMessage('Set your new password below to finish resetting your patient account.');
-          }
-        } else {
-          setInfoMessage('Set your new password below to finish resetting your patient account.');
+      try {
+        const result = await otpService.confirmPatientSignup(confirmEmail, confirmCode);
+        if (!result.success) {
+          setError(result.message);
+          setInfoMessage('');
+          return;
         }
 
-        setIsPreparingRecovery(false);
-      };
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        setUsername(result.email || confirmEmail);
+        setInfoMessage(result.message + ' You can now log in with your email, username, or phone.');
+      } catch (err: any) {
+        setError(err.message || 'Failed to confirm your email.');
+        setInfoMessage('');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      initRecoverySession();
+    if (confirmCode && confirmEmail) {
+      initCustomSignupConfirmation();
+      return;
     }
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setLoginMode('patient');
-        setShowForgotPassword(false);
-        setIsRecoveryMode(true);
-        setIsPreparingRecovery(false);
-        setError('');
-        setInfoMessage('Set your new password below to finish resetting your patient account.');
-      } else if (
-        event === 'SIGNED_IN' &&
-        !isRecoveryMode &&
-        hasPendingSignup(session?.user?.email || '')
-      ) {
-        setEmailConfirmed(true);
-        setConfirmedEmail(session?.user?.email || '');
-        setShowRegistration(true);
-        setShowForgotPassword(false);
-        setError('');
-        setInfoMessage('Email confirmed. Finishing your patient account setup...');
-      } else if (
-        event === 'SIGNED_IN' &&
-        (new URLSearchParams(window.location.search).get('reset') === 'password' ||
-          new URLSearchParams(window.location.hash.substring(1)).get('type') === 'recovery')
-      ) {
-        setIsPreparingRecovery(false);
+    if (urlParams.get('reset') === 'password') {
+      setLoginMode('patient');
+      setShowForgotPassword(false);
+      setIsRecoveryMode(true);
+      setIsPreparingRecovery(false);
+      setError('');
+
+      if (resetCode && resetEmail) {
+        setForgotPasswordEmail(resetEmail);
+        setInfoMessage('Reset link verified. Set your new password below to finish resetting your patient account.');
+      } else {
+        setError('This reset link is missing required information. Please request a new reset email.');
+        setInfoMessage('');
       }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    }
   }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -263,7 +199,12 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
     setLoading(true);
 
     try {
-      const result = await otpService.completePasswordReset(resetPassword);
+      const urlParams = new URLSearchParams(window.location.search);
+      const result = await otpService.completePasswordReset(
+        resetPassword,
+        urlParams.get('email') || forgotPasswordEmail,
+        urlParams.get('code') || undefined
+      );
       if (!result.success) {
         setError(result.message);
         return;
@@ -273,7 +214,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
       resetRecoveryState();
       setLoginMode('patient');
       setPassword('');
-      setUsername(result.email || forgotPasswordEmail || confirmedEmail || '');
+      setUsername(result.email || forgotPasswordEmail || '');
       setForgotPasswordEmail('');
       setInfoMessage(result.message);
     } catch (err: any) {
@@ -286,8 +227,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
   // Handle registration completion
   const handleRegistrationComplete = () => {
     setShowRegistration(false);
-    setEmailConfirmed(false);
-    setConfirmedEmail('');
     setLoginMode('patient');
     setError('');
     setInfoMessage('');
@@ -299,12 +238,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
       <PatientSelfRegistration 
         onBack={() => {
           setShowRegistration(false);
-          setEmailConfirmed(false);
-          setConfirmedEmail('');
         }}
         onRegistrationComplete={handleRegistrationComplete}
-        emailConfirmed={emailConfirmed}
-        confirmedEmail={confirmedEmail}
       />
     );
   }
