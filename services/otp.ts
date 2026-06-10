@@ -173,6 +173,64 @@ export const otpService = {
     });
   },
 
+  async cleanupPendingSignupConflicts(email: string, username?: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedUsername = username?.trim().toLowerCase();
+
+    if (!normalizedUsername) return;
+
+    try {
+      const { data: pendingAuthRows, error } = await supabase
+        .from('patient_auth')
+        .select('id, patient_id, email, username, is_verified')
+        .eq('username', normalizedUsername)
+        .eq('is_verified', false);
+
+      if (error || !pendingAuthRows?.length) {
+        if (error) console.warn('Pending signup cleanup lookup failed:', error.message);
+        return;
+      }
+
+      const staleRows = pendingAuthRows.filter((row: any) => row.email !== normalizedEmail);
+      if (staleRows.length === 0) return;
+
+      const staleAuthIds = staleRows.map((row: any) => row.id).filter(Boolean);
+      const stalePatientIds = staleRows.map((row: any) => row.patient_id).filter(Boolean);
+      const staleEmails = staleRows.map((row: any) => row.email).filter(Boolean);
+
+      if (staleAuthIds.length) {
+        const { error: authDeleteError } = await supabase
+          .from('patient_auth')
+          .delete()
+          .in('id', staleAuthIds);
+        if (authDeleteError) {
+          console.warn('Pending signup auth cleanup failed:', authDeleteError.message);
+          return;
+        }
+      }
+
+      if (stalePatientIds.length) {
+        const { error: patientDeleteError } = await supabase
+          .from('patients')
+          .delete()
+          .in('id', stalePatientIds);
+        if (patientDeleteError) {
+          console.warn('Pending signup patient cleanup failed:', patientDeleteError.message);
+        }
+      }
+
+      if (staleEmails.length) {
+        await supabase
+          .from('otp_codes')
+          .update({ used: true })
+          .in('email', staleEmails)
+          .eq('used', false);
+      }
+    } catch (error) {
+      console.warn('Pending signup cleanup failed:', error);
+    }
+  },
+
   async sendSignupOtpEmail(
     email: string,
     profile: { username?: string; phone?: string },
@@ -186,6 +244,8 @@ export const otpService = {
       if (!password || password.length < 6) {
         return { success: false, message: 'Password must be at least 6 characters long.' };
       }
+
+      await this.cleanupPendingSignupConflicts(normalizedEmail, profile.username);
 
       await api.patients.registerWithSupabase(
         normalizedEmail,
@@ -318,7 +378,7 @@ export const otpService = {
 
       const { data, error } = await supabase
         .from('patient_auth')
-        .select('id')
+        .select('id, is_verified')
         .eq('username', normalized)
         .limit(1);
 
@@ -363,20 +423,34 @@ export const otpService = {
 
       const clinicName = await this.getClinicName();
       const resetUrl = `${window.location.origin}${window.location.pathname}?reset=password&email=${encodeURIComponent(normalizedEmail)}&code=${encodeURIComponent(code)}`;
-      const html = this.buildEmailHtml({
-        title: 'Reset your patient portal password',
-        eyebrow: 'DentalCloud password recovery',
-        message: `We received a request to reset your ${clinicName} patient portal password. Open this reset link, then enter your new password: ${resetUrl}`,
-        code,
-        expiryText: 'This password reset link and code expire in 20 minutes. If you did not request a password reset, you can ignore this email.',
-        clinicName
-      });
+      const safeClinicName = this.escapeHtml(clinicName);
+      const safeResetUrl = this.escapeHtml(resetUrl);
+      const html = `
+        <div style="margin:0;padding:0;background:#020617;font-family:Inter,Arial,sans-serif;color:#e5e7eb;">
+          <div style="max-width:620px;margin:0 auto;padding:32px 18px;">
+            <div style="background:#0f172a;border:1px solid #1e293b;border-radius:22px;overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.45);">
+              <div style="height:7px;background:linear-gradient(90deg,#2563eb,#06b6d4,#8b5cf6);"></div>
+              <div style="padding:30px;">
+                <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#38bdf8;font-weight:800;margin-bottom:12px;">DentalCloud password recovery</div>
+                <h1 style="margin:0 0 14px;font-size:28px;line-height:1.15;color:#ffffff;font-weight:900;">Reset your patient portal password</h1>
+                <p style="margin:0 0 24px;color:#cbd5e1;font-size:15px;line-height:1.65;">We received a request to reset your ${safeClinicName} patient portal password. Click the button below to choose a new password.</p>
+                <div style="margin:24px 0;text-align:center;">
+                  <a href="${safeResetUrl}" style="display:inline-block;text-decoration:none;background:linear-gradient(135deg,#2563eb,#06b6d4);color:#ffffff;font-weight:800;border-radius:14px;padding:14px 24px;box-shadow:0 12px 30px rgba(37,99,235,.35);">Reset password</a>
+                </div>
+                <p style="margin:0;color:#94a3b8;font-size:13px;line-height:1.55;">This reset link expires in 20 minutes. If you did not request a password reset, you can ignore this email.</p>
+                <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.55;">If the button does not work, copy and paste this link into your browser:<br><span style="color:#93c5fd;word-break:break-all;">${safeResetUrl}</span></p>
+              </div>
+              <div style="padding:18px 30px;background:#020617;border-top:1px solid #1e293b;color:#64748b;font-size:12px;">${safeClinicName} - Secure patient portal</div>
+            </div>
+          </div>
+        </div>
+      `;
 
       await this.sendPatientAuthEmail({
         to: normalizedEmail,
         subject: `Reset your ${clinicName} patient portal password`,
         html,
-        text: `Reset your ${clinicName} patient portal password. Open this link: ${resetUrl}\n\nVerification code: ${code}\n\nThis code expires in 20 minutes.`,
+        text: `Reset your ${clinicName} patient portal password. Open this link to choose a new password: ${resetUrl}\n\nThis reset link expires in 20 minutes.`,
         clinicName
       });
 
