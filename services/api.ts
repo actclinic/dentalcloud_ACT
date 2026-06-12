@@ -114,9 +114,19 @@ const getAppointmentDoctorDisplayName = (appointmentRow: any, clinicalDoctorName
   return getTrimmedDoctorName(appointmentRow?.doctors?.name);
 };
 
-const normalizeMyanmarPhoneForLookup = (value?: string | null): string | null => {
+export const normalizeMyanmarPhoneForLookup = (value?: string | null): string | null => {
   const digits = (value || '').replace(/\D/g, '');
-  const localDigits = digits.length === 10 && digits.startsWith('9') ? `0${digits}` : digits;
+  let localDigits = digits;
+
+  if (digits.startsWith('95')) {
+    const withoutCountryCode = digits.slice(2);
+    if (withoutCountryCode.length === 10 && withoutCountryCode.startsWith('9')) {
+      localDigits = `0${withoutCountryCode}`;
+    }
+  } else if (digits.length === 10 && digits.startsWith('9')) {
+    localDigits = `0${digits}`;
+  }
+
   return /^09\d{9}$/.test(localDigits) ? localDigits : null;
 };
 
@@ -720,7 +730,7 @@ export const api = {
       }
       
       const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
-      const normalizedPhone = data.phone ? data.phone.trim() : data.phone;
+      const normalizedPhone = normalizePhoneForStorage(data.phone);
       const payload = {
         location_id: finalLocationId,
         name: data.name,
@@ -767,7 +777,7 @@ export const api = {
     },
     update: async (id: string, data: Partial<Patient>): Promise<Patient> => {
       const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
-      const normalizedPhone = data.phone ? data.phone.trim() : data.phone;
+      const normalizedPhone = normalizePhoneForStorage(data.phone);
       const payload = {
         location_id: data.location_id,
         name: data.name,
