@@ -120,14 +120,22 @@ export const normalizeMyanmarPhoneForLookup = (value?: string | null): string | 
 
   if (digits.startsWith('95')) {
     const withoutCountryCode = digits.slice(2);
-    if (withoutCountryCode.length === 10 && withoutCountryCode.startsWith('9')) {
+    if (withoutCountryCode.length >= 8 && withoutCountryCode.length <= 10 && withoutCountryCode.startsWith('9')) {
       localDigits = `0${withoutCountryCode}`;
     }
-  } else if (digits.length === 10 && digits.startsWith('9')) {
+  } else if (digits.length >= 8 && digits.length <= 10 && digits.startsWith('9')) {
     localDigits = `0${digits}`;
   }
 
-  return /^09\d{9}$/.test(localDigits) ? localDigits : null;
+  return /^09\d{7,9}$/.test(localDigits) ? localDigits : null;
+};
+
+const normalizePhoneDigitsForLookup = (value?: string | null): string | null => {
+  const normalizedMyanmarPhone = normalizeMyanmarPhoneForLookup(value);
+  if (normalizedMyanmarPhone) return normalizedMyanmarPhone;
+
+  const digits = (value || '').replace(/\D/g, '');
+  return digits.length >= 7 ? digits : null;
 };
 
 const normalizePhoneForStorage = (value?: string | null): string | null => {
@@ -961,8 +969,8 @@ export const api = {
         };
 
         const lookupPhoneByNormalizedDigits = async (): Promise<{ patient_id: string; password: string | null; is_verified?: boolean | null } | null> => {
-          const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
-          if (!normalizedPhone) return null;
+          const normalizedPhoneDigits = normalizePhoneDigitsForLookup(trimmedIdentifier);
+          if (!normalizedPhoneDigits) return null;
 
           const { data, error } = await supabase
             .from('patient_auth')
@@ -975,7 +983,7 @@ export const api = {
             return null;
           }
 
-          const matchingRows = (data || []).filter((record: any) => normalizeMyanmarPhoneForLookup(record.phone) === normalizedPhone);
+          const matchingRows = (data || []).filter((record: any) => normalizePhoneDigitsForLookup(record.phone) === normalizedPhoneDigits);
           return matchingRows.find((record: any) => record.is_verified !== false) || matchingRows[0] || null;
         };
 
@@ -983,6 +991,7 @@ export const api = {
         const authMatch =
           await lookupAuthMatch('email', normalizedIdentifier) ||
           await lookupAuthMatch('username', normalizedIdentifier) ||
+          await lookupAuthMatch('phone', trimmedIdentifier) ||
           await lookupAuthMatch('phone', normalizedPhone || '') ||
           await lookupPhoneByNormalizedDigits();
 
@@ -1014,8 +1023,8 @@ export const api = {
 
         // 2. Fallback: allow phone login when patient_auth.phone is missing but patients.phone is present.
         const lookupPatientByNormalizedPhone = async (): Promise<Patient | null> => {
-          const normalizedPhone = normalizeMyanmarPhoneForLookup(trimmedIdentifier);
-          if (!normalizedPhone) return null;
+          const normalizedPhoneDigits = normalizePhoneDigitsForLookup(trimmedIdentifier);
+          if (!normalizedPhoneDigits) return null;
 
           const { data: patientRows, error: patientRowsError } = await supabase
             .from('patients')
@@ -1026,7 +1035,7 @@ export const api = {
             return null;
           }
 
-          const phonePatient = (patientRows || []).find((record: any) => normalizeMyanmarPhoneForLookup(record.phone) === normalizedPhone);
+          const phonePatient = (patientRows || []).find((record: any) => normalizePhoneDigitsForLookup(record.phone) === normalizedPhoneDigits);
           if (!phonePatient?.id) return null;
 
           const { data: phoneAuthData, error: phoneAuthError } = await supabase
