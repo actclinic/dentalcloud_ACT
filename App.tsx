@@ -1078,7 +1078,12 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchDashboardData = async (scopeLocationId?: string, knownLocations?: Location[]) => {
+  const fetchDashboardData = async (
+    scopeLocationId?: string,
+    knownLocations?: Location[],
+    // Preloaded data from fetchInitialData to avoid redundant API calls.
+    preloaded?: { patients?: Patient[]; appointments?: Appointment[]; records?: ClinicalRecord[]; expenses?: Expense[] }
+  ) => {
     const requestId = ++dashboardFetchRequestRef.current;
     const session = auth.getSession();
     const restrictedLocationId = getSessionRestrictedLocationId(session);
@@ -1092,12 +1097,11 @@ const App: React.FC = () => {
       ? storedPayments.filter((record) => record.location_id === queryLocationId)
       : storedPayments;
 
-    const [patData, aptData, recordsData, expenseData] = await Promise.all([
-      api.patients.getAll(queryLocationId),
-      api.appointments.getAll(queryLocationId),
-      api.treatments.getAllRecords(queryLocationId),
-      api.expenses.getAll(queryLocationId)
-    ]);
+    // Use preloaded data when available; only fetch what's missing (reduces up to 4 API calls).
+    const patData     = preloaded?.patients     ?? (await api.patients.getAll(queryLocationId));
+    const aptData     = preloaded?.appointments ?? (await api.appointments.getAll(queryLocationId));
+    const recordsData = preloaded?.records      ?? (await api.treatments.getAllRecords(queryLocationId));
+    const expenseData = preloaded?.expenses     ?? (await api.expenses.getAll(queryLocationId));
 
     if (requestId !== dashboardFetchRequestRef.current) {
       return;
@@ -1211,7 +1215,7 @@ const App: React.FC = () => {
       
       // Only fetch data if we have a valid location
       if (locId) {
-        // — Critical data: what the main views need immediately —
+        // ï¿½ Critical data: what the main views need immediately ï¿½
         const [patData, aptData, docData, typeData, recordsData, medData] = await Promise.all([
           api.patients.getAll(locId),
           api.appointments.getAll(locId),
@@ -1253,7 +1257,7 @@ const App: React.FC = () => {
           setLoading(false);
         }
 
-        // — Deferred data: load in background so the UI is interactive faster —
+        // ï¿½ Deferred data: load in background so the UI is interactive faster ï¿½
         void (async () => {
           try {
             const [loyaltyData, expenseData, recallData, salesData] = await Promise.all([
@@ -1272,10 +1276,17 @@ const App: React.FC = () => {
             console.warn('Deferred data fetch failed:', deferredErr);
           }
         })();
+
+        if (requestId === initialDataFetchRequestRef.current) {
+          await fetchDashboardData(locId, locData, {
+            patients: scopedPatients,
+            appointments: doctorAppointments,
+            records: doctorRecords,
+          });
+        }
       }
 
       if (requestId !== initialDataFetchRequestRef.current) return;
-      await fetchDashboardData(locId, locData);
     } catch (err: any) {
       if (requestId !== initialDataFetchRequestRef.current) return;
       console.error('Error fetching initial data:', err);
