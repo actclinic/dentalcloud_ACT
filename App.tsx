@@ -72,6 +72,7 @@ import { supabase } from './services/supabase';
 import { resolveAllowedTabs } from './utils/permissions';
 import { loadEmailSettings } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
+import { dataCache, cacheKey } from './utils/dataCache';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -1210,17 +1211,14 @@ const App: React.FC = () => {
       
       // Only fetch data if we have a valid location
       if (locId) {
-        const [patData, aptData, docData, typeData, recordsData, medData, loyaltyData, expenseData, recallData, salesData] = await Promise.all([
+        // — Critical data: what the main views need immediately —
+        const [patData, aptData, docData, typeData, recordsData, medData] = await Promise.all([
           api.patients.getAll(locId),
           api.appointments.getAll(locId),
           api.doctors.getAll(locId),
           api.treatments.getTypes(locId),
           api.treatments.getAllRecords(locId),
           api.medicines.getAll(locId),
-          api.loyalty.getRules(locId),
-          api.expenses.getAll(locId),
-          api.recalls.getAll(locId),
-          api.medicines.getSales(locId)
         ]);
         if (requestId !== initialDataFetchRequestRef.current) return;
 
@@ -1249,10 +1247,31 @@ const App: React.FC = () => {
         setTreatmentTypes(typeData);
         setGlobalRecords(doctorRecords);
         setMedicines(medData);
-        setLoyaltyRules(loyaltyData);
-        setExpenses(expenseData);
-        setRecalls(recallData);
-        setMedicineSales(salesData);
+
+        // Unhide the main UI as soon as the critical data is in state.
+        if (requestId === initialDataFetchRequestRef.current) {
+          setLoading(false);
+        }
+
+        // — Deferred data: load in background so the UI is interactive faster —
+        void (async () => {
+          try {
+            const [loyaltyData, expenseData, recallData, salesData] = await Promise.all([
+              api.loyalty.getRules(locId),
+              api.expenses.getAll(locId),
+              api.recalls.getAll(locId),
+              api.medicines.getSales(locId),
+            ]);
+            if (requestId !== initialDataFetchRequestRef.current) return;
+
+            setLoyaltyRules(loyaltyData);
+            setExpenses(expenseData);
+            setRecalls(recallData);
+            setMedicineSales(salesData);
+          } catch (deferredErr) {
+            console.warn('Deferred data fetch failed:', deferredErr);
+          }
+        })();
       }
 
       if (requestId !== initialDataFetchRequestRef.current) return;
@@ -1293,17 +1312,8 @@ const App: React.FC = () => {
     setEditingExpense(null);
     setEditingTreatmentType(null);
     setConvertingLeadAppointment(null);
+    dataCache.clear(); // Fresh branch = fresh data
     await fetchInitialData(locId);
-    // Ensure Patients page always reflects the newly selected branch,
-    // even if another parallel data request inside fetchInitialData is flaky.
-    const refreshedPatients = await api.patients.getAll(locId);
-    const refreshedAppointments = await api.appointments.getAll(locId);
-    const refreshedDoctors = await api.doctors.getAll(locId);
-    const refreshedRecalls = await api.recalls.getAll(locId);
-    setPatients(refreshedPatients);
-    setAppointments(refreshedAppointments);
-    setDoctors(refreshedDoctors);
-    setRecalls(refreshedRecalls);
   };
 
   const handleDashboardLocationChange = async (locId: string) => {
