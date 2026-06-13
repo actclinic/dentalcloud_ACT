@@ -86,6 +86,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [treatmentRecordsByPatientId, setTreatmentRecordsByPatientId] = useState<Record<string, ClinicalRecord[]>>({});
   const [treatmentRecordsLoadingForPatientId, setTreatmentRecordsLoadingForPatientId] = useState<string | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const deletePatientIdRef = useRef<string | null>(null);
+  const deletePatientNameRef = useRef<string>('this patient');
   const itemsPerPage = 10;
 
   const toLocalISODate = (date: Date) => {
@@ -1145,7 +1147,19 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           {onDeletePatient && (
             <button
               type="button"
-              onClick={() => setDeleteConfirmOpen(true)}
+              onClick={() => {
+                // Close the edit modal first so the delete confirmation
+                // dialog is not visually obscured by the edit modal.
+                const patientToDelete = editModal.patient;
+                setEditModal({ open: false, patient: null });
+                // Use a microtask to ensure the edit modal unmounts
+                // before the confirm dialog opens, preventing z-index overlap.
+                queueMicrotask(() => {
+                  deletePatientIdRef.current = patientToDelete?.id || null;
+                  deletePatientNameRef.current = patientToDelete?.name || 'this patient';
+                  setDeleteConfirmOpen(true);
+                });
+              }}
               className="w-full bg-red-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all mt-2"
             >
               Delete Patient
@@ -1159,25 +1173,31 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     <ConfirmDialog
       isOpen={deleteConfirmOpen}
       title="Delete Patient"
-      message={`Are you sure you want to delete ${editModal.patient?.name}? This will permanently remove the patient and all related records. This action cannot be undone.`}
+      message={`Are you sure you want to delete ${deletePatientNameRef.current}? This will permanently remove the patient and all related records. This action cannot be undone.`}
       confirmText="Delete Patient"
       cancelText="Cancel"
       type="danger"
       isLoading={isDeleting}
       onConfirm={async () => {
-        if (!editModal.patient || !onDeletePatient) return;
+        const patientId = deletePatientIdRef.current;
+        if (!patientId || !onDeletePatient) return;
         setIsDeleting(true);
         try {
-          await onDeletePatient(editModal.patient.id);
-          setEditModal({ open: false, patient: null });
+          await onDeletePatient(patientId);
           setDeleteConfirmOpen(false);
         } catch (err: any) {
           alert(err?.message || 'Failed to delete patient');
         } finally {
           setIsDeleting(false);
+          deletePatientIdRef.current = null;
+          deletePatientNameRef.current = 'this patient';
         }
       }}
-      onCancel={() => setDeleteConfirmOpen(false)}
+      onCancel={() => {
+        setDeleteConfirmOpen(false);
+        deletePatientIdRef.current = null;
+        deletePatientNameRef.current = 'this patient';
+      }}
     />
 
     {redeemModal.open && redeemModal.patient && (
