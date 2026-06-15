@@ -3,7 +3,7 @@ import * as tus from 'tus-js-client';
 import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
-import { loadEmailSettings } from '../utils/emailSettings';
+import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
 import { buildSupabasePublicUrl, deleteSupabaseStorageFile, isSupabaseStorageReady, listSupabaseStorageFiles, normalizeSupabaseStorageUrl, uploadSupabaseStorageFile } from '../utils/supabaseStorage';
 import { findInvalidTeeth } from '../utils/toothNumbering';
@@ -2401,6 +2401,12 @@ export const api = {
 
       storageConfigVersion += 1;
     },
+    getEmailSettings: async (): Promise<EmailSettings> => {
+      return loadEmailSettingsAsync();
+    },
+    saveEmailSettings: async (settings: EmailSettings): Promise<EmailSettings> => {
+      return saveEmailSettingsAsync(settings);
+    },
     getClinicalFeeSettings: async (): Promise<{ enabled: boolean; amount: number }> => {
       try {
         const { data, error } = await supabase
@@ -2789,7 +2795,7 @@ export const api = {
      * Calculate optimal chunk size for the primary (cloud) Supabase TUS endpoint.
      * Supabase TUS requires chunk sizes that are multiples of 6 MB.
      *
-     * Optimised for UNSTABLE internet — uses the smallest valid chunk (6 MB)
+     * Optimised for UNSTABLE internet ï¿½ uses the smallest valid chunk (6 MB)
      * so each request completes quickly and retries are cheap.
      *
      * NOTE: The self-hosted Supabase path uses its own chunk-size logic inside
@@ -2800,7 +2806,7 @@ export const api = {
      */
     calculateOptimalChunkSize: (fileSize: number): number => {
       void fileSize; // kept for future tuning
-      return 6 * 1024 * 1024; // 6 MB — smallest valid TUS chunk
+      return 6 * 1024 * 1024; // 6 MB ï¿½ smallest valid TUS chunk
     },
 
     /**
@@ -4371,7 +4377,7 @@ export const api = {
         return;
       }
 
-      const emailSettings = loadEmailSettings();
+      const emailSettings = await loadEmailSettingsAsync();
       if (!emailSettings.enabled || !emailSettings.messageNotificationsEnabled) {
         return;
       }

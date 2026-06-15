@@ -70,7 +70,7 @@ import { auth } from './services/auth';
 import { getMyanmarCities, getTownshipsForCity } from './utils/myanmarCities';
 import { supabase } from './services/supabase';
 import { resolveAllowedTabs } from './utils/permissions';
-import { loadEmailSettings } from './utils/emailSettings';
+import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
 
@@ -616,7 +616,6 @@ const App: React.FC = () => {
     category: ''
   });
   const [newExpenseData, setNewExpenseData] = useState<Partial<Expense>>(getDefaultExpenseFormData());
-  const emailSettings = useMemo(() => loadEmailSettings(), []);
   const cityOptions = useMemo(
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
     []
@@ -2141,6 +2140,8 @@ const App: React.FC = () => {
           </div>
         </div>
       `;
+
+      const emailSettings = await loadEmailSettingsAsync();
 
       await api.email.sendManagerEmail({
         to: patientEmail,

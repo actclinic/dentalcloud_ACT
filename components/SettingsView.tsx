@@ -3,7 +3,8 @@ import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, Rota
 import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize, PatientType, AppointmentType } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
-import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, saveEmailSettings as persistEmailSettings } from '../utils/emailSettings';
+import { supabase } from '../services/supabase';
+import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, loadEmailSettingsAsync, saveEmailSettings as persistEmailSettings, saveEmailSettingsAsync } from '../utils/emailSettings';
 
 interface SettingsViewProps {
   currency: 'USD' | 'MMK';
@@ -222,15 +223,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }));
   };
 
-  const handleSaveEmailSettings = () => {
+  const handleSaveEmailSettings = async () => {
     const nextSettings: EmailSettings = {
       ...emailSettings,
       updatedAt: new Date().toISOString()
     };
-    persistEmailSettings(nextSettings);
-    setEmailSettings(nextSettings);
-    setEmailSettingsMessage('Email settings saved. Refreshing...');
-    window.location.reload();
+    try {
+      const savedSettings = await saveEmailSettingsAsync(nextSettings);
+      setEmailSettings(savedSettings);
+      setEmailSettingsMessage('Email settings saved and synced across devices.');
+    } catch (error: any) {
+      console.error('Failed to save email settings:', error);
+      setEmailSettingsMessage(error?.message || 'Failed to save email settings.');
+    }
   };
 
   const updateS3Settings = (updates: Partial<S3Settings>) => {
@@ -548,6 +553,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   useEffect(() => {
     localStorage.removeItem('dc_email_outbox');
+    let isMounted = true;
 
     const stored = localStorage.getItem(EMAIL_SETTINGS_KEY);
     if (stored) {
@@ -562,12 +568,67 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             updatedAt: new Date().toISOString()
           };
           persistEmailSettings(migrated);
-          setEmailSettings(migrated);
+          saveEmailSettingsAsync(migrated).catch((error) => {
+            console.warn('Failed to migrate email settings to shared storage:', error);
+          });
+          if (isMounted) setEmailSettings(migrated);
         }
       } catch (error) {
         // Ignore malformed legacy settings
       }
     }
+
+    loadEmailSettingsAsync()
+      .then((settings) => {
+        if (isMounted) {
+          setEmailSettings(settings);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load shared email settings:', error);
+      });
+
+    const settingsChannel = supabase
+      .channel(`settings-shared-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'app_settings' },
+        (payload) => {
+          const row = payload.new as any;
+          if (!row || row.id !== 1) return;
+
+          const nextEmailSettings: EmailSettings = {
+            enabled: row.email_delivery_enabled ?? false,
+            senderName: row.email_sender_name || 'DentalCloud',
+            senderEmail: row.email_sender_email || '',
+            messageNotificationsEnabled: row.email_message_notifications_enabled ?? true,
+            updatedAt: row.email_settings_updated_at || row.updated_at || new Date().toISOString()
+          };
+          persistEmailSettings(nextEmailSettings);
+          setEmailSettings(nextEmailSettings);
+
+          setSupabaseStorage({
+            storageUrl: row.storage_url || '',
+            anonKey: row.storage_anon_key || '',
+            serviceKey: row.storage_service_key || '',
+            bucket: row.storage_bucket || '',
+            updated_at: row.updated_at
+          });
+          setS3Settings({
+            url: row.s3_url || '',
+            accessKey: row.s3_access_key || '',
+            secretKey: row.s3_secret_key || '',
+            region: row.s3_region || '',
+            updated_at: row.updated_at
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(settingsChannel);
+    };
   }, []);
 
   useEffect(() => {

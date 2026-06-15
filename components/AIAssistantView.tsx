@@ -35,6 +35,7 @@ import {
   silentlyRememberFact,
   MemoryClassifierContext
 } from '../utils/assistantMemory';
+import { loadEmailSettingsAsync } from '../utils/emailSettings';
 
 // Custom CSS for animations
 const customStyles = `
@@ -3598,7 +3599,7 @@ I can provide guidance on:
               const body = (pendingAction.params?.body || pendingAction.params?.message || pendingAction.params?.text || '').toString();
               if (!subject && !body) throw new Error("Email subject or body is required.");
 
-              const emailSettings = loadEmailSettings();
+              const emailSettings = await loadEmailSettingsAsync();
               if (!emailSettings.enabled) {
                 throw new Error("Email delivery is disabled. Enable it in Settings first.");
               }
@@ -3624,7 +3625,7 @@ I can provide guidance on:
           case 'email_schedule':
             {
               const recipient = resolveManagerRecipient(pendingAction.params);
-              const emailSettings = loadEmailSettings();
+              const emailSettings = await loadEmailSettingsAsync();
               if (!emailSettings.enabled) {
                 throw new Error("Email delivery is disabled. Enable it in Settings first.");
               }
@@ -3651,7 +3652,7 @@ I can provide guidance on:
           case 'report_schedule':
             {
               const recipient = resolveManagerRecipient(pendingAction.params);
-              const emailSettings = loadEmailSettings();
+              const emailSettings = await loadEmailSettingsAsync();
               if (!emailSettings.enabled) {
                 throw new Error("Email delivery is disabled. Enable it in Settings first.");
               }
@@ -4417,7 +4418,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'mgr_email_send':
               try {
                 const recipient = resolveManagerRecipient(params);
-                const emailSettings = loadEmailSettings();
+                const emailSettings = await loadEmailSettingsAsync();
                 if (!emailSettings.enabled) {
                   throw new Error("Email delivery is disabled. Enable it in Settings first.");
                 }
@@ -4449,7 +4450,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'email_schedule':
               try {
                 const recipient = resolveManagerRecipient(params);
-                const emailSettings = loadEmailSettings();
+                const emailSettings = await loadEmailSettingsAsync();
                 if (!emailSettings.enabled) {
                   throw new Error("Email delivery is disabled. Enable it in Settings first.");
                 }
@@ -4481,7 +4482,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             case 'report_schedule':
               try {
                 const recipient = resolveManagerRecipient(params);
-                const emailSettings = loadEmailSettings();
+                const emailSettings = await loadEmailSettingsAsync();
                 if (!emailSettings.enabled) {
                   throw new Error("Email delivery is disabled. Enable it in Settings first.");
                 }

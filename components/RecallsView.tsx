@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BellRing, Plus, Mail, Send } from 'lucide-react';
 import { Recall, Patient } from '../types';
 import { Modal, Input } from './Shared';
-import { loadEmailSettings } from '../utils/emailSettings';
+import { loadEmailSettings, loadEmailSettingsAsync } from '../utils/emailSettings';
 
 interface RecallsViewProps {
   recalls: Recall[];
@@ -38,8 +38,23 @@ const RecallsView: React.FC<RecallsViewProps> = ({
     notes: ''
   });
 
-  const emailSettings = useMemo(() => loadEmailSettings(), []);
+  const [emailSettings, setEmailSettings] = useState(() => loadEmailSettings());
   const isEmailEnabled = emailSettings.enabled && emailSettings.senderEmail;
+
+  useEffect(() => {
+    let mounted = true;
+    loadEmailSettingsAsync()
+      .then((settings) => {
+        if (mounted) setEmailSettings(settings);
+      })
+      .catch((error) => {
+        console.warn('Failed to load shared email settings:', error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const today = new Date().toISOString().split('T')[0];
 

@@ -71,6 +71,7 @@ export const rateLimitedApi = {
     ...api.appSettings,
     saveS3Settings: createRateLimitedFunction('appSettings:saveS3Settings', api.appSettings.saveS3Settings, RATE_LIMIT_PRESETS.WRITE),
     saveSupabaseStorage: createRateLimitedFunction('appSettings:saveSupabaseStorage', api.appSettings.saveSupabaseStorage, RATE_LIMIT_PRESETS.WRITE),
+    saveEmailSettings: createRateLimitedFunction('appSettings:saveEmailSettings', api.appSettings.saveEmailSettings, RATE_LIMIT_PRESETS.WRITE),
   },
 
   files: {

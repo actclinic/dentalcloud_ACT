@@ -85,6 +85,14 @@ CREATE TABLE app_settings (
   app_logo_path TEXT,
   receipt_email TEXT,
   receipt_phone TEXT,
+
+  -- Shared Email Delivery settings (Settings > Email)
+  -- Stored centrally so all devices use the same sender/delivery configuration.
+  email_delivery_enabled BOOLEAN DEFAULT FALSE,
+  email_sender_name TEXT DEFAULT 'DentalCloud',
+  email_sender_email TEXT,
+  email_message_notifications_enabled BOOLEAN DEFAULT TRUE,
+  email_settings_updated_at TIMESTAMP WITH TIME ZONE,
   hover_theme TEXT NOT NULL DEFAULT 'blue' CHECK (hover_theme IN ('blue', 'green', 'yellow', 'brown', 'dark')),
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -433,6 +441,11 @@ CREATE INDEX IF NOT EXISTS idx_recalls_due_date ON recalls(due_date);
 -- newer app_settings columns exist even if table definitions drift.
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_email TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_phone TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_delivery_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_sender_name TEXT DEFAULT 'DentalCloud';
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_sender_email TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_message_notifications_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_settings_updated_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_logo_url TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_logo_path TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS hover_theme TEXT NOT NULL DEFAULT 'blue';
@@ -634,9 +647,31 @@ INSERT INTO locations (id, name, address, phone)
 VALUES ('fffda6dc-a75d-450c-bc96-94602c5d1194', 'Main Clinic', '123 Dental St, Yangon', '09-123456789');
 
 -- Default app settings row
-INSERT INTO app_settings (id)
-VALUES (1)
+INSERT INTO app_settings (
+    id,
+    email_delivery_enabled,
+    email_sender_name,
+    email_message_notifications_enabled,
+    email_settings_updated_at
+)
+VALUES (
+    1,
+    FALSE,
+    'DentalCloud',
+    TRUE,
+    NOW()
+)
 ON CONFLICT (id) DO NOTHING;
+
+-- Ensure shared app settings defaults are populated if this setup is rerun
+-- against an older/drifted database that already had the singleton row.
+UPDATE app_settings
+SET
+    email_delivery_enabled = COALESCE(email_delivery_enabled, FALSE),
+    email_sender_name = COALESCE(NULLIF(email_sender_name, ''), 'DentalCloud'),
+    email_message_notifications_enabled = COALESCE(email_message_notifications_enabled, TRUE),
+    email_settings_updated_at = COALESCE(email_settings_updated_at, NOW())
+WHERE id = 1;
 
 -- Public PNG-only clinic logo bucket
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
