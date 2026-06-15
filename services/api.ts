@@ -1939,6 +1939,43 @@ export const api = {
   },
 
   doctors: {
+    checkDoctorRecords: async (doctorId: string, locationId?: string): Promise<{
+      hasAppointments: boolean;
+      hasTreatments: boolean;
+      hasAny: boolean;
+    }> => {
+      let appointmentsQuery = supabase
+        .from('appointments')
+        .select('id', { count: 'exact', head: true })
+        .eq('doctor_id', doctorId);
+
+      if (locationId) {
+        appointmentsQuery = appointmentsQuery.eq('location_id', locationId);
+      }
+
+      const [
+        { count: appointmentCount, error: appointmentError },
+        { count: treatmentCount, error: treatmentError }
+      ] = await Promise.all([
+        appointmentsQuery,
+        supabase
+          .from('treatments')
+          .select('id', { count: 'exact', head: true })
+          .eq('doctor_id', doctorId)
+      ]);
+
+      if (appointmentError) throw new Error(appointmentError.message);
+      if (treatmentError) throw new Error(treatmentError.message);
+
+      const hasAppointments = (appointmentCount || 0) > 0;
+      const hasTreatments = (treatmentCount || 0) > 0;
+
+      return {
+        hasAppointments,
+        hasTreatments,
+        hasAny: hasAppointments || hasTreatments
+      };
+    },
     getAll: async (locationId?: string): Promise<Doctor[]> => {
       try {
         let query = supabase
@@ -2128,8 +2165,23 @@ export const api = {
         throw new Error('Doctor email is required for doctor login accounts.');
       }
 
+      if (data.location_id !== undefined) {
+        const isBranchTransfer =
+          !!data.location_id &&
+          !!existingDoctor?.location_id &&
+          data.location_id !== existingDoctor.location_id;
+
+        if (isBranchTransfer) {
+          const doctorRecordState = await api.doctors.checkDoctorRecords(id, existingDoctor.location_id || undefined);
+          if (doctorRecordState.hasAny) {
+            throw new Error('Cannot transfer doctor: Doctor has existing appointments or treatment history in this branch.');
+          }
+        }
+      }
+
       // Update doctor info
       const doctorUpdatePayload: any = {
+        location_id: data.location_id,
         name: data.name,
         email: nextEmail || null,
         phone: data.phone,

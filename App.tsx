@@ -394,6 +394,8 @@ const App: React.FC = () => {
   const [showMedicineModal, setShowMedicineModal] = useState(false);
   const [showMedicineSelectionModal, setShowMedicineSelectionModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [doctorTransferBlockedOpen, setDoctorTransferBlockedOpen] = useState(false);
+  const [doctorTransferBlockedReasons, setDoctorTransferBlockedReasons] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; show: boolean }>({ message: '', type: 'success', show: false });
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
@@ -1769,6 +1771,16 @@ const App: React.FC = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
+    const isDoctorTransferValidationError = (error: unknown) =>
+      error instanceof Error && error.message.includes('Cannot transfer doctor: Doctor has existing appointments or treatment history in this branch.');
+
+    const getDoctorTransferBlockedReasons = (recordState: { hasAppointments: boolean; hasTreatments: boolean; hasAny: boolean }) => {
+      const reasons: string[] = [];
+      if (recordState.hasAppointments) reasons.push('Appointments');
+      if (recordState.hasTreatments) reasons.push('Treatment Records');
+      return reasons;
+    };
+
     const trimmedDoctorPassword = (newDoctorData.password || '').trim();
     if (!editingDoctor && !trimmedDoctorPassword) {
       alert('Password is required for a new doctor account.');
@@ -1832,6 +1844,17 @@ const App: React.FC = () => {
       setEditingDoctor(null);
       setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
     } catch (err: any) {
+      if (isDoctorTransferValidationError(err) && editingDoctor) {
+        try {
+          const recordState = await api.doctors.checkDoctorRecords(editingDoctor.id, editingDoctor.location_id || undefined);
+          setDoctorTransferBlockedReasons(getDoctorTransferBlockedReasons(recordState));
+        } catch (recordError) {
+          console.warn('Doctor transfer validation details lookup failed:', recordError);
+          setDoctorTransferBlockedReasons(['Appointments or Treatment Records']);
+        }
+        setDoctorTransferBlockedOpen(true);
+        return;
+      }
       alert(err.message);
     } finally {
       setIsSubmitting(false);
@@ -3845,6 +3868,66 @@ const App: React.FC = () => {
               {editingDoctor ? 'Update Doctor' : 'Create Doctor'}
             </button>
           </form>
+        </Modal>
+      )}
+
+      {doctorTransferBlockedOpen && (
+        <Modal
+          title="Doctor Transfer Blocked"
+          onClose={() => {
+            setDoctorTransferBlockedOpen(false);
+            setDoctorTransferBlockedReasons([]);
+          }}
+          maxWidthClassName="max-w-md"
+        >
+          <div className="space-y-5">
+            <div className="rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-4 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <p className="text-base font-black tracking-tight text-gray-900">
+                    This doctor cannot be transferred to another branch.
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-gray-600">
+                    Existing branch-linked activity was found for this doctor.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Why This Is Blocked
+              </p>
+              <p className="mt-2 text-sm leading-6 text-gray-700">
+                This doctor has existing records in the current branch:
+              </p>
+              <ul className="mt-3 space-y-2">
+                {doctorTransferBlockedReasons.map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <span className="h-2 w-2 rounded-full bg-amber-500" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-sm leading-6 text-gray-700">
+                Resolve or move these records first before transferring the doctor to another branch.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setDoctorTransferBlockedOpen(false);
+                setDoctorTransferBlockedReasons([]);
+              }}
+              className="w-full rounded-2xl bg-amber-600 px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-amber-600/20 transition-all hover:bg-amber-700 hover:shadow-amber-700/25"
+            >
+              Understood
+            </button>
+          </div>
         </Modal>
       )}
 
