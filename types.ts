@@ -118,6 +118,7 @@ export interface Doctor {
   password?: string;
   schedules: DoctorSchedule[]; // Array of schedules for different days/times
   commission_percentage?: number; // e.g., 50 means 50% of treatment cost goes to doctor
+  custom_commissions?: DoctorTreatmentCommission[];
   created_at?: string;
 }
 
@@ -133,6 +134,20 @@ export interface DoctorInput {
   schedules?: DoctorScheduleInput[];
   commission_percentage?: number; // e.g., 50 means 50% of treatment cost goes to doctor
   created_at?: string;
+}
+
+export interface DoctorTreatmentCommission {
+  id?: string;
+  doctor_id?: string;
+  treatment_id: string;
+  commission_rate: number;
+  created_at?: string;
+  updated_at?: string;
+  treatment_name?: string;
+}
+
+export interface DoctorProfileSaveInput extends Partial<Doctor> {
+  custom_commissions?: DoctorTreatmentCommission[];
 }
 
 export interface Appointment {

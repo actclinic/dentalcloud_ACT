@@ -253,6 +253,24 @@ CREATE TABLE treatments (
   CONSTRAINT treatments_doctor_earnings_check CHECK (doctor_earnings >= 0)
 );
 
+-- Doctor Treatment Commissions
+CREATE TABLE doctor_treatment_commissions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  doctor_id UUID NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  treatment_id UUID NOT NULL REFERENCES treatment_types(id) ON DELETE CASCADE,
+  commission_rate DECIMAL(5,2) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT doctor_treatment_commissions_doctor_treatment_key UNIQUE (doctor_id, treatment_id),
+  CONSTRAINT doctor_treatment_commissions_commission_rate_check CHECK (commission_rate >= 0 AND commission_rate <= 100)
+);
+
+CREATE INDEX idx_doctor_treatment_commissions_doctor_id
+  ON doctor_treatment_commissions (doctor_id);
+
+CREATE INDEX idx_doctor_treatment_commissions_treatment_id
+  ON doctor_treatment_commissions (treatment_id);
+
 -- Appointments
 CREATE TABLE appointments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -563,6 +581,36 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+CREATE OR REPLACE FUNCTION get_applicable_commission_rate(
+  p_doctor_id UUID,
+  p_treatment_id UUID
+)
+RETURNS DECIMAL(5,2) AS $$
+DECLARE
+  v_custom_rate DECIMAL(5,2);
+  v_default_rate DECIMAL(5,2);
+BEGIN
+  SELECT dtc.commission_rate
+  INTO v_custom_rate
+  FROM doctor_treatment_commissions dtc
+  WHERE dtc.doctor_id = p_doctor_id
+    AND dtc.treatment_id = p_treatment_id
+  LIMIT 1;
+
+  IF v_custom_rate IS NOT NULL THEN
+    RETURN v_custom_rate;
+  END IF;
+
+  SELECT COALESCE(d.commission_percentage, 0)
+  INTO v_default_rate
+  FROM doctors d
+  WHERE d.id = p_doctor_id
+  LIMIT 1;
+
+  RETURN COALESCE(v_default_rate, 0);
+END;
+$$ LANGUAGE plpgsql;
+
 -- Trigger: Update users.updated_at
 CREATE TRIGGER update_users_updated_at 
     BEFORE UPDATE ON users
@@ -576,6 +624,11 @@ CREATE TRIGGER update_medicines_updated_at
 -- Trigger: Update expenses.updated_at
 CREATE TRIGGER update_expenses_updated_at 
     BEFORE UPDATE ON expenses
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger: Update doctor_treatment_commissions.updated_at
+CREATE TRIGGER update_doctor_treatment_commissions_updated_at
+    BEFORE UPDATE ON doctor_treatment_commissions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger: Update patient_auth.updated_at
@@ -813,6 +866,7 @@ DECLARE
     'appointment_types',
     'doctors',
     'doctor_schedules',
+    'doctor_treatment_commissions',
     'treatment_types',
     'treatments',
     'appointments',

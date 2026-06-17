@@ -8,7 +8,12 @@ interface DoctorProfileViewProps {
   hoverTheme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 }
 
-const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({ doctor, loading, onSave, hoverTheme }) => {
+const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({
+  doctor,
+  loading,
+  onSave,
+  hoverTheme
+}) => {
   const [formData, setFormData] = useState<Partial<Doctor>>({
     name: '',
     email: '',

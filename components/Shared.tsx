@@ -193,7 +193,7 @@ const getDisplayTimeValue = (value: string) => {
   return `${String(displayHours).padStart(2, '0')}:${match[2]}`;
 };
 
-const formatTypedTime = (rawValue: string, meridiem: Meridiem, completeOnly = false) => {
+export const formatTypedTime = (rawValue: string, meridiem: Meridiem, completeOnly = false) => {
   const raw = rawValue.trim();
   if (!raw) return '';
 
@@ -203,6 +203,14 @@ const formatTypedTime = (rawValue: string, meridiem: Meridiem, completeOnly = fa
     : meridiem;
   const sanitized = raw.replace(/[^\d:]/g, '');
   const colonMatch = sanitized.match(/^(\d{1,2}):(\d{1,2})$/);
+
+  if (!completeOnly && sanitized.includes(':') && !colonMatch) {
+    return sanitized;
+  }
+
+  if (!completeOnly && colonMatch && colonMatch[2].length < 2) {
+    return sanitized;
+  }
 
   if (colonMatch && (colonMatch[2].length === 2 || completeOnly)) {
     const hours = Number(colonMatch[1]);

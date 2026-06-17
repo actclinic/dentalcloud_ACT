@@ -37,6 +37,7 @@ import {
   PatientFile,
   Doctor,
   DoctorInput,
+  DoctorTreatmentCommission,
   DoctorSchedule,
   DoctorScheduleInput,
   User, 
@@ -604,6 +605,9 @@ const App: React.FC = () => {
   });
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: '' });
   const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
+  const [doctorCommissionRows, setDoctorCommissionRows] = useState<DoctorTreatmentCommission[]>([]);
+  const [doctorCommissionAdvancedOpen, setDoctorCommissionAdvancedOpen] = useState(false);
+  const [doctorCommissionLoading, setDoctorCommissionLoading] = useState(false);
   const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({
@@ -1664,6 +1668,57 @@ const App: React.FC = () => {
     setAppointmentGeneralNotes('');
   };
 
+  const createEmptyDoctorCommissionRow = (): DoctorTreatmentCommission => ({
+    treatment_id: '',
+    commission_rate: 0
+  });
+
+  const resetDoctorCommissionEditor = () => {
+    setDoctorCommissionRows([]);
+    setDoctorCommissionAdvancedOpen(false);
+    setDoctorCommissionLoading(false);
+  };
+
+  useEffect(() => {
+    if (!showDoctorModal) {
+      resetDoctorCommissionEditor();
+      return;
+    }
+
+    if (!editingDoctor?.id) {
+      setDoctorCommissionRows([]);
+      setDoctorCommissionLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDoctorCommissions = async () => {
+      setDoctorCommissionLoading(true);
+      try {
+        const rows = await api.doctorTreatmentCommissions.getByDoctor(editingDoctor.id);
+        if (!cancelled) {
+          setDoctorCommissionRows(rows);
+          setDoctorCommissionAdvancedOpen(rows.length > 0);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          alert(err.message || 'Failed to load doctor treatment commissions.');
+        }
+      } finally {
+        if (!cancelled) {
+          setDoctorCommissionLoading(false);
+        }
+      }
+    };
+
+    void loadDoctorCommissions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showDoctorModal, editingDoctor?.id]);
+
   const handleCreateAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -1688,13 +1743,13 @@ const App: React.FC = () => {
         guest_notes: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_notes || '').trim() : null,
         doctor_id: (newAppointmentData.doctor_id || '').trim() || undefined,
         location_id: targetLocationId,
-        notes: compiledNotes || undefined,
-        created_by_user_id: auth.getSession()?.userId || null,
-        created_by_user_name: currentUser || auth.getSession()?.username || null
+        notes: compiledNotes || undefined
       };
       if (editingAppointment) {
         await api.appointments.update(editingAppointment.id, payload);
       } else {
+        payload.created_by_user_id = auth.getSession()?.userId || null;
+        payload.created_by_user_name = currentUser || auth.getSession()?.username || null;
         await api.appointments.create(payload);
       }
       setShowAppointmentModal(false);
@@ -1823,6 +1878,28 @@ const App: React.FC = () => {
     const daySet = new Set(schedules.map(s => s.day_of_week));
     if (daySet.size !== schedules.length) {
       alert('Error: You cannot have multiple schedules for the same day. Please combine them into one schedule with a longer time range.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    const normalizedCommissionRows = doctorCommissionRows
+      .filter((row) => row.treatment_id)
+      .map((row) => ({
+        treatment_id: row.treatment_id,
+        commission_rate: Number(row.commission_rate)
+      }));
+
+    const uniqueTreatmentIds = new Set(normalizedCommissionRows.map((row) => row.treatment_id));
+    if (uniqueTreatmentIds.size !== normalizedCommissionRows.length) {
+      alert('Each treatment can only have one custom commission rate.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    const invalidCommissionRate = normalizedCommissionRows.find((row) => Number.isNaN(row.commission_rate) || row.commission_rate < 0 || row.commission_rate > 100);
+    if (invalidCommissionRate) {
+      alert('Custom commission rates must be between 0 and 100.');
+      setIsSubmitting(false);
       return;
     }
 
@@ -1834,15 +1911,26 @@ const App: React.FC = () => {
         schedules: schedules
       };
 
+      let savedDoctor: Doctor;
       if (editingDoctor) {
-        await api.doctors.update(editingDoctor.id, doctorDataToSave);
+        savedDoctor = await api.doctors.update(editingDoctor.id, doctorDataToSave);
       } else {
-        await api.doctors.create(doctorDataToSave);
+        savedDoctor = await api.doctors.create(doctorDataToSave);
+      }
+
+      try {
+        await api.doctorTreatmentCommissions.replaceForDoctor(savedDoctor.id, normalizedCommissionRows);
+      } catch (commissionErr: any) {
+        if (!editingDoctor) {
+          await api.doctors.delete(savedDoctor.id);
+        }
+        throw new Error(commissionErr.message || 'Failed to save custom treatment commission rates.');
       }
       setShowDoctorModal(false);
       fetchInitialData();
       setEditingDoctor(null);
       setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
+      resetDoctorCommissionEditor();
     } catch (err: any) {
       if (isDoctorTransferValidationError(err) && editingDoctor) {
         try {
@@ -2362,6 +2450,7 @@ const App: React.FC = () => {
           location_id: currentLocationId,
           patient_id: selectedPatient.id,
           doctor_id: selectedDoctorId || undefined,
+          treatment_type_id: treatment.id,
           teeth: line.teeth,
           description: treatment.name,
           cost: lineCost,
@@ -3104,7 +3193,7 @@ const App: React.FC = () => {
                    await exportAppointmentsToExcel(freshAppointments);
                 }}
             />}
-            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' }); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
+            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
@@ -3730,7 +3819,7 @@ const App: React.FC = () => {
       {showDoctorModal && (
         <Modal
           title={editingDoctor ? "Edit Doctor" : "New Doctor"}
-          onClose={() => {setShowDoctorModal(false); setEditingDoctor(null);}}
+          onClose={() => {setShowDoctorModal(false); setEditingDoctor(null); resetDoctorCommissionEditor();}}
           maxWidthClassName="max-w-3xl"
         >
           <form onSubmit={handleCreateDoctor} className="space-y-5">
@@ -3770,8 +3859,100 @@ const App: React.FC = () => {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">%</span>
                 </div>
                 <p className="mt-1 text-xs text-gray-400">Percentage of treatment fee paid to this doctor.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDoctorCommissionAdvancedOpen((prev) => {
+                      const next = !prev;
+                      if (next && doctorCommissionRows.length === 0) {
+                        setDoctorCommissionRows([createEmptyDoctorCommissionRow()]);
+                      }
+                      return next;
+                    });
+                  }}
+                  className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                  {doctorCommissionAdvancedOpen ? 'Hide advanced treatment commission setup' : 'Advanced: Set custom commission per treatment'}
+                </button>
               </div>
             </div>
+            {doctorCommissionAdvancedOpen && (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Custom Treatment Commissions</label>
+                    <p className="text-xs text-gray-500">Override the fixed commission percentage for specific treatments. If no custom rate exists, the fixed percentage above is used.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDoctorCommissionRows((prev) => [...prev, createEmptyDoctorCommissionRow()])}
+                    className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                  >
+                    + Add Treatment Rate
+                  </button>
+                </div>
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  {doctorCommissionLoading ? (
+                    <div className="rounded-lg bg-white px-4 py-6 text-center text-sm text-gray-500">
+                      Loading custom commission rates...
+                    </div>
+                  ) : doctorCommissionRows.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">
+                      No custom treatment rates yet.
+                    </div>
+                  ) : (
+                    doctorCommissionRows.map((row, index) => (
+                      <div key={row.id || `doctor-commission-${index}`} className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Treatment</label>
+                          <select
+                            className="w-full border-gray-200 border rounded-lg p-2 text-sm bg-white"
+                            value={row.treatment_id}
+                            onChange={(e: any) => {
+                              const updated = [...doctorCommissionRows];
+                              updated[index] = { ...updated[index], treatment_id: e.target.value };
+                              setDoctorCommissionRows(updated);
+                            }}
+                          >
+                            <option value="">Select treatment</option>
+                            {treatmentTypes.map((treatment) => (
+                              <option key={treatment.id} value={treatment.id}>{treatment.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Commission %</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            className="w-full border-gray-200 border rounded-lg p-2 text-sm"
+                            value={row.commission_rate}
+                            onChange={(e: any) => {
+                              const updated = [...doctorCommissionRows];
+                              updated[index] = { ...updated[index], commission_rate: parseFloat(e.target.value) || 0 };
+                              setDoctorCommissionRows(updated);
+                            }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...doctorCommissionRows];
+                            updated.splice(index, 1);
+                            setDoctorCommissionRows(updated);
+                          }}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
             <div>
               <Input
                 label={editingDoctor ? 'Doctor Login Password (optional)' : 'Doctor Login Password'}

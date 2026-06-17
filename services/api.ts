@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -1717,6 +1717,7 @@ export const api = {
       location_id: string; 
       patient_id: string;
       doctor_id?: string;
+      treatment_type_id?: string;
       teeth: number[];
       description: string;
       cost: number;
@@ -1776,18 +1777,35 @@ export const api = {
         cost: data.cost,
         date: treatmentDate
       };
-      // 4a. Calculate doctor earnings based on commission percentage
+      // 4a. Calculate doctor earnings using custom treatment commission when configured,
+      //     otherwise fall back to the doctor's default commission percentage.
       let doctorEarnings = 0;
       if (data.doctor_id) {
-        const { data: doctorRow } = await supabase
-          .from("doctors")
-          .select("commission_percentage")
-          .eq("id", data.doctor_id)
-          .maybeSingle();
-        if (doctorRow?.commission_percentage) {
-          const pct = Number(doctorRow.commission_percentage) / 100;
-          doctorEarnings = Math.round(data.cost * pct * 100) / 100;
+        let commissionRate = 0;
+
+        if (data.treatment_type_id) {
+          const { data: rpcRate, error: rpcError } = await supabase.rpc('get_applicable_commission_rate', {
+            p_doctor_id: data.doctor_id,
+            p_treatment_id: data.treatment_type_id
+          });
+
+          if (rpcError) {
+            throw new Error(`Failed to resolve doctor commission rate: ${rpcError.message}`);
+          }
+
+          commissionRate = Number(rpcRate || 0);
+        } else {
+          const { data: doctorRow } = await supabase
+            .from("doctors")
+            .select("commission_percentage")
+            .eq("id", data.doctor_id)
+            .maybeSingle();
+
+          commissionRate = Number(doctorRow?.commission_percentage || 0);
         }
+
+        const pct = commissionRate / 100;
+        doctorEarnings = Math.round(data.cost * pct * 100) / 100;
       }
       const treatmentData = {
         ...legacyTreatmentData,
@@ -2399,6 +2417,72 @@ export const api = {
       });
 
       return availableTimes.sort();
+    }
+  },
+
+  doctorTreatmentCommissions: {
+    getByDoctor: async (doctorId: string): Promise<DoctorTreatmentCommission[]> => {
+      const { data, error } = await supabase
+        .from('doctor_treatment_commissions')
+        .select(`
+          id,
+          doctor_id,
+          treatment_id,
+          commission_rate,
+          created_at,
+          updated_at,
+          treatment_types:treatment_id (
+            name
+          )
+        `)
+        .eq('doctor_id', doctorId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw new Error(error.message);
+
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        doctor_id: row.doctor_id,
+        treatment_id: row.treatment_id,
+        commission_rate: Number(row.commission_rate ?? 0),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        treatment_name: row.treatment_types?.name || undefined
+      }));
+    },
+    replaceForDoctor: async (doctorId: string, commissions: DoctorTreatmentCommission[]): Promise<void> => {
+      const normalized = commissions
+        .filter((entry) => entry.treatment_id)
+        .map((entry) => ({
+          doctor_id: doctorId,
+          treatment_id: entry.treatment_id,
+          commission_rate: Number(entry.commission_rate)
+        }));
+
+      const { error: deleteError } = await supabase
+        .from('doctor_treatment_commissions')
+        .delete()
+        .eq('doctor_id', doctorId);
+
+      if (deleteError) throw new Error(deleteError.message);
+
+      if (normalized.length === 0) return;
+
+      const { error: upsertError } = await supabase
+        .from('doctor_treatment_commissions')
+        .upsert(normalized, { onConflict: 'doctor_id,treatment_id' });
+
+      if (upsertError) throw new Error(upsertError.message);
+    },
+    getApplicableRate: async (doctorId: string, treatmentId: string): Promise<number> => {
+      const { data, error } = await supabase.rpc('get_applicable_commission_rate', {
+        p_doctor_id: doctorId,
+        p_treatment_id: treatmentId
+      });
+
+      if (error) throw new Error(error.message);
+
+      return Number(data ?? 0);
     }
   },
 
