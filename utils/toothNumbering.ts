@@ -7,6 +7,7 @@
  * ISO 3950 Standard:
  * - Permanent teeth: 11-48 (2-digit system: quadrant + tooth)
  * - Primary teeth: 51-85 (quadrants 5-8, teeth 1-5)
+ * - Primary display labels: 1A-1E, 2A-2E, 3A-3E, 4A-4E
  * 
  * Universal System (US only):
  * - Permanent teeth: 1-32
@@ -14,7 +15,8 @@
  * 
  * Storage Strategy:
  * - Database stores FDI/ISO numbers (11-48, 51-85) for international compliance
- * - UI can display in either FDI/ISO or Universal based on user preference
+ * - UI preserves the existing permanent-tooth display and shows primary teeth
+ *   as quadrant + letter labels (for example, 51 -> 1A)
  * - All conversions go through this utility to ensure consistency
  */
 
@@ -107,6 +109,77 @@ export const findInvalidTeeth = (teeth: number[]): number[] => {
 // ============================================================
 
 /**
+ * Convert an FDI primary tooth number to the clinic's primary display label.
+ *
+ * 51-55 -> 1A-1E
+ * 61-65 -> 2A-2E
+ * 71-75 -> 3A-3E
+ * 81-85 -> 4A-4E
+ */
+export const fdiPrimaryToDisplayLabel = (tooth: number): string | null => {
+  if (!isValidFDIPrimary(tooth)) return null;
+
+  const displayQuadrant = Math.floor(tooth / 10) - 4;
+  const toothLetter = String.fromCharCode('A'.charCodeAt(0) + (tooth % 10) - 1);
+  return `${displayQuadrant}${toothLetter}`;
+};
+
+/**
+ * Parse either a stored numeric tooth number or a primary display label.
+ * Returns the canonical numeric value used by the database and APIs.
+ */
+export const parseToothDisplayLabel = (value: string | number): number | null => {
+  const normalized = String(value).trim().toUpperCase();
+  const primaryMatch = normalized.match(/^([1-4])([A-E])$/);
+
+  if (primaryMatch) {
+    const storedQuadrant = Number(primaryMatch[1]) + 4;
+    const toothInQuadrant = primaryMatch[2].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+    return storedQuadrant * 10 + toothInQuadrant;
+  }
+
+  if (!/^\d+$/.test(normalized)) return null;
+  const numericTooth = Number(normalized);
+  return isValidToothNumber(numericTooth) ? numericTooth : null;
+};
+
+export interface ParsedTeethInput {
+  teeth: number[];
+  invalidLabels: string[];
+}
+
+/**
+ * Parse staff-entered tooth labels from arrays or comma/space-separated text.
+ * Baby teeth use 1A-4E. Numeric 51-85 values remain readable for legacy data
+ * and integrations, but all staff-facing formatting uses the new labels.
+ */
+export const parseTeethInput = (value: unknown): ParsedTeethInput => {
+  const tokens = Array.isArray(value)
+    ? value.flatMap((item) => String(item).split(/[,\s]+/))
+    : String(value ?? '').split(/[,\s]+/);
+
+  const teeth: number[] = [];
+  const invalidLabels: string[] = [];
+
+  tokens
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .forEach((token) => {
+      const parsed = parseToothDisplayLabel(token);
+      if (parsed === null) {
+        invalidLabels.push(token);
+      } else {
+        teeth.push(parsed);
+      }
+    });
+
+  return {
+    teeth: Array.from(new Set(teeth)).sort((a, b) => a - b),
+    invalidLabels: Array.from(new Set(invalidLabels))
+  };
+};
+
+/**
  * Convert Universal (1-32) to FDI/ISO (11-48)
  * 
  * Mapping logic:
@@ -165,7 +238,7 @@ export const fdiToUniversal = (fdi: number): number => {
   }
   
   if (!isValidFDIPermanent(fdi)) {
-    throw new Error(`Invalid FDI tooth number: ${fdi}. Must be 11-48 or 51-85.`);
+    throw new Error(`Invalid tooth label: ${fdi}. Use adult FDI numbers or baby labels 1A-4E.`);
   }
   
   const quadrant = Math.floor(fdi / 10);
@@ -304,7 +377,18 @@ export const getToothType = (tooth: number): string => {
     return 'Unknown';
   }
   
-  const types: Record<number, string> = {
+  if (isValidFDIPrimary(tooth)) {
+    const primaryTypes: Record<number, string> = {
+      1: 'Central Incisor',
+      2: 'Lateral Incisor',
+      3: 'Canine',
+      4: 'First Molar',
+      5: 'Second Molar',
+    };
+    return primaryTypes[toothInQuadrant] || 'Unknown';
+  }
+
+  const permanentTypes: Record<number, string> = {
     1: 'Central Incisor',
     2: 'Lateral Incisor',
     3: 'Canine',
@@ -315,7 +399,7 @@ export const getToothType = (tooth: number): string => {
     8: 'Third Molar (Wisdom)',
   };
   
-  return types[toothInQuadrant] || 'Unknown';
+  return permanentTypes[toothInQuadrant] || 'Unknown';
 };
 
 // ============================================================
@@ -329,6 +413,9 @@ export const formatTooth = (
   tooth: number, 
   displaySystem: 'FDI' | 'Universal' = 'FDI'
 ): string => {
+  const primaryLabel = fdiPrimaryToDisplayLabel(tooth);
+  if (primaryLabel) return primaryLabel;
+
   const display = toDisplayFormat(tooth, displaySystem);
   return display.toString();
 };
@@ -354,7 +441,7 @@ export const formatTeethWithPosition = (
   if (!teeth || teeth.length === 0) return 'General';
   
   return teeth.map(tooth => {
-    const display = toDisplayFormat(tooth, displaySystem);
+    const display = formatTooth(tooth, displaySystem);
     const position = getToothPosition(tooth);
     return `${display} (${position})`;
   }).join(', ');
@@ -370,7 +457,7 @@ export const formatTeethWithType = (
   if (!teeth || teeth.length === 0) return 'General';
   
   return teeth.map(tooth => {
-    const display = toDisplayFormat(tooth, displaySystem);
+    const display = formatTooth(tooth, displaySystem);
     const type = getToothType(tooth);
     const position = getToothPosition(tooth);
     return `${display} - ${type} (${position})`;
@@ -393,7 +480,7 @@ export const normalizeToFDI = (tooth: number): number => {
   if (isValidUniversalPermanent(tooth)) {
     return universalToFDI(tooth); // Convert Universal to FDI
   }
-  throw new Error(`Invalid tooth number: ${tooth}`);
+  throw new Error(`Invalid tooth label: ${tooth}. Use adult FDI numbers or baby labels 1A-4E.`);
 };
 
 /**
@@ -411,7 +498,7 @@ export const normalizeToUniversal = (tooth: number): number => {
   if (isValidFDIPrimary(tooth)) {
     return tooth; // Primary teeth stay as FDI (Universal doesn't standardize primary)
   }
-  throw new Error(`Invalid tooth number: ${tooth}`);
+  throw new Error(`Invalid tooth label: ${tooth}. Use adult FDI numbers or baby labels 1A-4E.`);
 };
 
 /**

@@ -3,7 +3,7 @@ import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, Rot
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
-import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { formatTeethArray, formatTeethWithPosition } from '../utils/toothNumbering';
 import { Modal, Input, TimeInput } from './Shared';
 import { SearchableSelect } from './SearchableSelect';
 import PatientQRScanButton from './PatientQRScanButton';
@@ -539,7 +539,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           <div className="mt-6 p-4 md:p-5 bg-indigo-50 rounded-lg border border-indigo-100">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
               <h4 className="font-bold text-indigo-900 leading-tight">
-                {selectedTeeth.length > 0 ? `Apply to Teeth: ${selectedTeeth.join(', ')}` : 'Select Teeth to Perform Treatment'}
+                {selectedTeeth.length > 0 ? `Apply to Teeth: ${formatTeethArray(selectedTeeth)}` : 'Select Teeth to Perform Treatment'}
               </h4>
               <label className={`flex items-center gap-3 cursor-pointer self-start sm:self-auto rounded-2xl border px-5 py-3 shadow-sm transition ${
                 useFlatRate
@@ -1077,7 +1077,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                          const finalCost = Number.isFinite(currentCost) ? Math.max(0, currentCost) : 0;
                          const adjustment = Math.max(0, line.standardCost - finalCost);
                          const lineLabel = line.teeth.length > 0
-                           ? `Tooth ${line.teeth.join(', ')}`
+                           ? `Tooth ${formatTeethArray(line.teeth)}`
                            : 'Flat-rate treatment';
 
                          return (

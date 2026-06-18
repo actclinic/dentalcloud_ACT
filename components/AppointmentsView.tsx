@@ -1,9 +1,10 @@
 ﻿import React, { useState, useMemo } from 'react';
 import { Calendar, Plus, Loader2, Edit2, Trash2, Clock, User, FileText, ChevronLeft, ChevronRight, List, CalendarDays, Eye } from 'lucide-react';
-import { Appointment, Patient } from '../types';
+import { Appointment, Doctor, Patient, TreatmentType } from '../types';
 import { exportAppointmentsToPDF } from '../utils/pdfExport';
 import { exportAppointmentsToExcel } from '../utils/excelExport';
 import { parseAppointmentClinicalFocus } from '../utils/appointmentClinicalFocus';
+import { formatTeethArray } from '../utils/toothNumbering';
 import Pagination from './Pagination';
 import { ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
@@ -12,6 +13,8 @@ import PatientQRScanButton from './PatientQRScanButton';
 interface AppointmentsViewProps {
   appointments: Appointment[];
   patients: Patient[];
+  doctors?: Pick<Doctor, 'id' | 'name'>[];
+  treatmentTypes?: TreatmentType[];
   loading: boolean;
   onAddAppointment: () => void;
   onEditAppointment: (appointment: Appointment) => void;
@@ -34,6 +37,8 @@ interface AppointmentsViewProps {
 const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   appointments,
   patients,
+  doctors = [],
+  treatmentTypes = [],
   loading,
   onAddAppointment,
   onEditAppointment,
@@ -60,6 +65,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow' | 'today' | 'custom'>('today');
   const [dateFilter, setDateFilter] = useState('');
+  const [doctorFilter, setDoctorFilter] = useState('');
+  const [treatmentFilter, setTreatmentFilter] = useState('');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -175,11 +182,61 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
   const isNewPatientToday = (patientId: string) => firstVisitDateByPatient.get(patientId) === todayLocalISO;
 
+  const makeUniqueSortedOptions = (values: string[]) =>
+    Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b));
+
+  const doctorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    doctors.forEach((doctor) => {
+      if (doctor.id && doctor.name?.trim()) {
+        map.set(doctor.id, doctor.name.trim());
+      }
+    });
+    return map;
+  }, [doctors]);
+
+  const doctorOptions = useMemo(() => {
+    const configuredOptions = doctors
+      .filter((doctor) => doctor.id && doctor.name?.trim())
+      .map((doctor) => ({ value: `id:${doctor.id}`, label: doctor.name.trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const configuredNames = new Set(configuredOptions.map((option) => option.label.toLowerCase()));
+    const historicalOptions = makeUniqueSortedOptions(
+      appointments.map((appointment) => appointment.doctor_name || '')
+    )
+      .filter((name) => !configuredNames.has(name.toLowerCase()))
+      .map((name) => ({ value: `name:${name}`, label: name }));
+
+    return [...configuredOptions, ...historicalOptions];
+  }, [appointments, doctors]);
+
+  const treatmentOptions = useMemo(() => {
+    const configuredNames = makeUniqueSortedOptions(
+      treatmentTypes.map((treatmentType) => treatmentType.name || '')
+    );
+    const configuredNameSet = new Set(configuredNames.map((name) => name.toLowerCase()));
+    const historicalNames = makeUniqueSortedOptions(
+      appointments.flatMap((appointment) => {
+        const clinicalFocus = parseAppointmentClinicalFocus(appointment.notes).clinicalFocus;
+        return [appointment.type || '', clinicalFocus];
+      })
+    ).filter((name) => !configuredNameSet.has(name.toLowerCase()));
+
+    return [...configuredNames, ...historicalNames];
+  }, [appointments, treatmentTypes]);
+
   const searchFilteredAppointments = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return appointments.filter(apt => {
       const clinicalPlan = parseAppointmentClinicalFocus(apt.notes);
-      const focusTeethText = clinicalPlan.targetTeeth.join(', ');
+      const focusTeethText = clinicalPlan.targetTeeth.length > 0
+        ? [
+            clinicalPlan.targetTeeth.join(', '),
+            formatTeethArray(clinicalPlan.targetTeeth)
+          ].join(' ').toLowerCase()
+        : '';
       const matchesSearch = !searchTerm || (
         apt.patient_name?.toLowerCase().includes(term) ||
         apt.guest_phone?.toLowerCase().includes(term) ||
@@ -196,9 +253,34 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
       );
 
       if (!matchesSearch) return false;
+
+      if (doctorFilter) {
+        const isDoctorIdFilter = doctorFilter.startsWith('id:');
+        const doctorFilterValue = doctorFilter.replace(/^(id|name):/, '');
+        const selectedDoctorName = isDoctorIdFilter
+          ? doctorNameById.get(doctorFilterValue)
+          : doctorFilterValue;
+        const appointmentDoctorName = apt.doctor_name?.trim();
+        const matchesDoctor = isDoctorIdFilter
+          ? apt.doctor_id === doctorFilterValue ||
+            (!!selectedDoctorName && appointmentDoctorName === selectedDoctorName)
+          : appointmentDoctorName === doctorFilterValue;
+
+        if (!matchesDoctor) return false;
+      }
+
+      if (treatmentFilter) {
+        const selectedTreatment = treatmentFilter.trim().toLowerCase();
+        const appointmentType = (apt.type || '').trim().toLowerCase();
+        const clinicalFocus = clinicalPlan.clinicalFocus.trim().toLowerCase();
+        if (appointmentType !== selectedTreatment && clinicalFocus !== selectedTreatment) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [appointments, searchTerm]);
+  }, [appointments, searchTerm, doctorFilter, treatmentFilter, doctorNameById]);
 
   const filteredAppointments = useMemo(() => {
     return searchFilteredAppointments.filter(apt => {
@@ -416,6 +498,34 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         </svg>
       </div>
       <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:ml-auto">
+        <select
+          value={doctorFilter}
+          onChange={(e) => {
+            setDoctorFilter(e.target.value);
+            resetAppointmentPages();
+          }}
+          className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[130px] max-w-[180px]"
+          aria-label="Filter appointments by doctor"
+        >
+          <option value="">Doctor</option>
+          {doctorOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select
+          value={treatmentFilter}
+          onChange={(e) => {
+            setTreatmentFilter(e.target.value);
+            resetAppointmentPages();
+          }}
+          className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[130px] max-w-[200px]"
+          aria-label="Filter appointments by treatment"
+        >
+          <option value="">Treatment</option>
+          {treatmentOptions.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap">
             <span>Filter day</span>
@@ -472,6 +582,19 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             Today
           </button>
         </div>
+        {(doctorFilter || treatmentFilter) && (
+          <button
+            type="button"
+            onClick={() => {
+              setDoctorFilter('');
+              setTreatmentFilter('');
+              resetAppointmentPages();
+            }}
+            className="h-8 inline-flex items-center justify-center rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors bg-white"
+          >
+            Reset
+          </button>
+        )}
       </div>
     </div>
 
@@ -854,7 +977,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                               <div className="mt-0.5 text-[11px] md:text-xs text-indigo-700 truncate">
                                 {clinicalPlan.clinicalFocus ? `Focus: ${clinicalPlan.clinicalFocus}` : ''}
                                 {clinicalPlan.clinicalFocus && clinicalPlan.targetTeeth.length > 0 ? ' • ' : ''}
-                                {clinicalPlan.targetTeeth.length > 0 ? `Teeth: ${clinicalPlan.targetTeeth.join(', ')}` : ''}
+                                {clinicalPlan.targetTeeth.length > 0 ? `Teeth: ${formatTeethArray(clinicalPlan.targetTeeth)}` : ''}
                               </div>
                             )}
                           </div>

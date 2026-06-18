@@ -1,11 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { TeethDiagram } from 'react-teeth-selector';
 import { 
   normalizeToFDI, 
-  normalizeToUniversal, 
   isValidFDIPrimary,
   isValidFDIPermanent,
-  isValidUniversalPermanent
+  formatTooth
 } from '../utils/toothNumbering';
 
 interface SelectorProps {
@@ -64,6 +63,61 @@ export const ToothSelector: React.FC<SelectorProps> = ({
 
   const diagramMaxWidth = doctorCompact ? '100%' : (compact ? '260px' : '380px');
 
+  useEffect(() => {
+    const tooltipObservers = new Set<MutationObserver>();
+    const observedTooltips = new WeakSet<HTMLDivElement>();
+
+    const isLibraryTooltip = (element: Element): element is HTMLDivElement =>
+      element instanceof HTMLDivElement &&
+      element.style.position === 'fixed' &&
+      element.style.pointerEvents === 'none' &&
+      element.style.zIndex === '99999';
+
+    const translateTooltip = (element: HTMLDivElement) => {
+      const match = element.textContent?.match(/^Tooth\s+(\d+)$/);
+      if (!match) return;
+
+      const displayLabel = formatTooth(Number(match[1]));
+      if (displayLabel !== match[1]) {
+        element.textContent = `Tooth ${displayLabel}`;
+      }
+    };
+
+    const observeTooltip = (element: HTMLDivElement) => {
+      if (observedTooltips.has(element)) return;
+      observedTooltips.add(element);
+      translateTooltip(element);
+
+      const observer = new MutationObserver(() => translateTooltip(element));
+      observer.observe(element, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+      tooltipObservers.add(observer);
+    };
+
+    Array.from(document.body.children).forEach((element) => {
+      if (isLibraryTooltip(element)) observeTooltip(element);
+    });
+
+    const bodyObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element && isLibraryTooltip(node)) {
+            observeTooltip(node);
+          }
+        });
+      });
+    });
+    bodyObserver.observe(document.body, { childList: true });
+
+    return () => {
+      bodyObserver.disconnect();
+      tooltipObservers.forEach((observer) => observer.disconnect());
+    };
+  }, []);
+
   return (
     <div 
       className={`flex flex-col items-center bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 shadow-sm w-full max-w-full mx-auto backdrop-blur-sm ${
@@ -85,7 +139,7 @@ export const ToothSelector: React.FC<SelectorProps> = ({
           </svg>
           Clinical Odontogram
         </h3>
-        <p className="text-[10px] text-slate-500">FDI/ISO 3950 Standard</p>
+        <p className="text-[10px] text-slate-500">Adult FDI/ISO • Baby 1A–4E</p>
       </div>
 
       {/* Orientation Labels - Dentist's perspective (facing patient) */}

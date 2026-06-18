@@ -1,6 +1,7 @@
 import { Appointment, ClinicalRecord, Doctor, Expense, Medicine, Patient } from '../types';
 import { Currency } from './currency';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
+import { formatAppointmentNotesForDisplay } from './appointmentClinicalFocus';
 
 type ExcelPrimitive = string | number;
 type ExcelRow = Record<string, ExcelPrimitive>;
@@ -182,7 +183,7 @@ export const exportAppointmentsToExcel = async (appointments: Appointment[]) => 
       Type: appointment.type || 'Checkup',
       Doctor: appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : 'N/A',
       Status: appointment.status,
-      Notes: appointment.notes || ''
+      Notes: formatAppointmentNotesForDisplay(appointment.notes)
     }));
 
   await saveWorkbook(rows, columns, 'Appointments', `appointments-report-${new Date().toISOString().split('T')[0]}.xlsx`);

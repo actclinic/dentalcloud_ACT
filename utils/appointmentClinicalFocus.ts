@@ -1,3 +1,5 @@
+import { formatTeethArray, parseTeethInput } from './toothNumbering';
+
 export interface AppointmentClinicalFocus {
   clinicalFocus: string;
   targetTeeth: number[];
@@ -7,14 +9,6 @@ export interface AppointmentClinicalFocus {
 const FOCUS_PREFIX = 'Clinical Focus:';
 const TEETH_PREFIX = 'Target Teeth:';
 const NOTES_PREFIX = 'Notes:';
-
-const parseTeeth = (value: string): number[] =>
-  value
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => Number(part))
-    .filter((value) => Number.isFinite(value));
 
 export const parseAppointmentClinicalFocus = (rawNotes?: string | null): AppointmentClinicalFocus => {
   const notesText = (rawNotes || '').trim();
@@ -28,7 +22,9 @@ export const parseAppointmentClinicalFocus = (rawNotes?: string | null): Appoint
   const notesIndex = lines.findIndex((line) => line.startsWith(NOTES_PREFIX));
 
   const clinicalFocus = focusLine ? focusLine.slice(FOCUS_PREFIX.length).trim() : '';
-  const targetTeeth = teethLine ? parseTeeth(teethLine.slice(TEETH_PREFIX.length).trim()) : [];
+  const targetTeeth = teethLine
+    ? parseTeethInput(teethLine.slice(TEETH_PREFIX.length).trim()).teeth
+    : [];
 
   if (focusLine || teethLine || notesIndex >= 0) {
     const parsedNotes = notesIndex >= 0
@@ -58,8 +54,23 @@ export const buildAppointmentClinicalFocusNotes = (data: AppointmentClinicalFocu
 
   const lines: string[] = [];
   if (cleanedFocus) lines.push(`${FOCUS_PREFIX} ${cleanedFocus}`);
-  if (cleanedTeeth.length > 0) lines.push(`${TEETH_PREFIX} ${cleanedTeeth.join(', ')}`);
+  if (cleanedTeeth.length > 0) lines.push(`${TEETH_PREFIX} ${formatTeethArray(cleanedTeeth)}`);
   if (cleanedNotes) lines.push(`${NOTES_PREFIX} ${cleanedNotes}`);
 
   return lines.join('\n').trim();
+};
+
+export const formatAppointmentNotesForDisplay = (rawNotes?: string | null): string => {
+  return (rawNotes || '')
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine.startsWith(TEETH_PREFIX)) return line;
+
+      const parsedTeeth = parseTeethInput(trimmedLine.slice(TEETH_PREFIX.length).trim()).teeth;
+      return parsedTeeth.length > 0
+        ? `${TEETH_PREFIX} ${formatTeethArray(parsedTeeth)}`
+        : TEETH_PREFIX;
+    })
+    .join('\n');
 };

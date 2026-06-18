@@ -1733,7 +1733,7 @@ export const api = {
       if (data.teeth && data.teeth.length > 0) {
         const invalidTeeth = findInvalidTeeth(data.teeth);
         if (invalidTeeth.length > 0) {
-          throw new Error(`Invalid tooth numbers: ${invalidTeeth.join(', ')}. Must be FDI/ISO permanent (11-48) or primary (51-85).`);
+          throw new Error(`Invalid tooth labels: ${invalidTeeth.join(', ')}. Use adult FDI numbers or baby labels 1A-4E.`);
         }
       }
 

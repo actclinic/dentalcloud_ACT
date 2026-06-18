@@ -1,7 +1,7 @@
 import type { Appointment, ClinicalRecord } from '../types';
 import { Currency, formatCurrency } from './currency';
 import { filterAuditRowsByDateRange } from './auditLogFilters';
-import { formatTeethWithPosition } from './toothNumbering';
+import { formatTeethArray, formatTeethWithPosition } from './toothNumbering';
 
 export type AuditFilter = 'all' | 'appointments' | 'treatments';
 
@@ -120,6 +120,7 @@ export const filterAuditLogRowsForExport = <T extends AuditExportRow>(rows: T[],
         (record.doctor_name || '').toLowerCase().includes(term) ||
         (record.description || '').toLowerCase().includes(term) ||
         (record.date || '').toLowerCase().includes(term) ||
+        formatTeethArray(record.teeth || []).toLowerCase().includes(term) ||
         (record.teeth || []).some((tooth) => tooth.toString().includes(term))
       );
     }

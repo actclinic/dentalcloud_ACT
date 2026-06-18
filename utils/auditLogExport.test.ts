@@ -148,4 +148,15 @@ describe('audit log export rows', () => {
     expect(formatAuditPatientBalance(0, 'USD')).toBe('Clear');
     expect(formatAuditPatientBalance(12.5, 'USD')).toBe('12.50$');
   });
+
+  it('searches primary teeth using the staff-facing labels', () => {
+    const primaryRecord: ClinicalRecord = {
+      ...records[0],
+      id: 'tr-primary',
+      teeth: [51]
+    };
+    const rows = buildAuditLogRows([primaryRecord], [], false);
+
+    expect(filterAuditLogRowsForExport(rows, { searchTerm: '1A' })).toHaveLength(1);
+  });
 });

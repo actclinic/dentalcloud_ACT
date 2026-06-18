@@ -7,7 +7,7 @@ import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as Us
 import { api } from '../services/api';
 import { Currency } from '../utils/currency';
 import { DEFAULT_PATIENT_TYPE_NAME } from '../constants';
-import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { formatTeethArray, formatTeethWithPosition, parseTeethInput } from '../utils/toothNumbering';
 import { buildAppointmentClinicalFocusNotes } from '../utils/appointmentClinicalFocus';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, resolveFinancialReportAnchorDate, AIReportPayload } from '../utils/aiReport';
 import {
@@ -866,19 +866,12 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     const leadName = (params.guest_name || params.lead_name || params.name || params.patient_name || '').trim();
     const leadPhone = (params.guest_phone || params.lead_phone || params.phone || params.ph || '').trim();
     const appointmentLocationId = resolveLocationId(params.location_id || params.location_name || params.branch_id || params.branch_name || params.loc) || locationId;
-    const parseAiTargetTeeth = (value: any): number[] => {
-      if (Array.isArray(value)) {
-        return value
-          .map((item) => Number(item))
-          .filter((item) => Number.isFinite(item));
-      }
-      return String(value || '')
-        .split(/[,\s]+/)
-        .map((item) => Number(item.trim()))
-        .filter((item) => Number.isFinite(item));
-    };
     const clinicalFocus = (params.clinical_focus || params.clinicalFocus || params.focus || params.appointment_focus || '').trim();
-    const targetTeeth = parseAiTargetTeeth(params.target_teeth || params.targetTeeth || params.teeth || params.tooth_numbers);
+    const parsedTargetTeeth = parseTeethInput(params.target_teeth || params.targetTeeth || params.teeth || params.tooth_numbers);
+    if (parsedTargetTeeth.invalidLabels.length > 0) {
+      throw new Error(`Invalid tooth labels: ${parsedTargetTeeth.invalidLabels.join(', ')}. Baby teeth must use 1A-4E.`);
+    }
+    const targetTeeth = parsedTargetTeeth.teeth;
     const generalNotes = params.notes || params.n || params.extra_notes || params.extraNotes || '';
     const compiledNotes = buildAppointmentClinicalFocusNotes({
       clinicalFocus: clinicalFocus || params.ty || params.type || '',
@@ -2422,7 +2415,7 @@ APPOINTMENT MANAGEMENT:
 - The Admin Appointments tab modal now has two "Appointment For" paths: Registered Patient and New Patient lead.
 - apt_c(p_id/name, doctor_name/dr_id, dt, t, ty, status, branch_name/location_id, clinical_focus, target_teeth, n/extra_notes): Create appointment for a registered patient. p_id=patient id (or use "name"), doctor is optional, dt=date(YYYY-MM-DD), t=time(HH:mm), ty=appointment type, status defaults to Scheduled, branch/location is required when All Branches is active or the user names a branch.
 - apt_c(guest_name, guest_phone, guest_source, guest_notes, doctor_name/dr_id, dt, t, ty, status, branch_name/location_id, clinical_focus, target_teeth, n/extra_notes): Create appointment for an unregistered New Patient / marketing lead. Do not create a patient profile unless the user asks to register/convert the lead. Lead appointments must include guest_name and guest_phone. guest_source maps to the modal's New Patient Source, and guest_notes maps to New Patient Follow-up Notes.
-- Appointment notes are stored in the same structured format as the form: Clinical Focus, Target Teeth, and Notes. Use clinical_focus for the clinical activity/focus, target_teeth as tooth numbers when provided, and n/extra_notes for optional extra instructions.
+- Appointment notes are stored in the same structured format as the form: Clinical Focus, Target Teeth, and Notes. Use clinical_focus for the clinical activity/focus, target_teeth for adult FDI numbers or baby labels 1A-4E, and n/extra_notes for optional extra instructions. Never show baby teeth as 51-85.
 - apt_u(id, data): Update appointment. data can include {date, time, status, doctor_id, type, location_id, notes, guest_name, guest_phone, guest_source, guest_notes}.
 - apt_d(id): Delete appointment.
 - apt_reschedule(id, dt, t): Reschedule appointment.
@@ -2468,7 +2461,7 @@ MEDICATION INVENTORY:
 - med_sales_report(): Get medicine sales summary.
 
 TREATMENT RECORDS:
-- tr_create(pid, teeth[], desc, cost, meds[]): Record treatment. pid=patient id (or use "name"), teeth=array of tooth numbers, desc=description, cost=amount, meds=[{id, qty}].
+- tr_create(pid, teeth[], desc, cost, meds[]): Record treatment. pid=patient id (or use "name"), teeth=array using adult FDI numbers and baby labels 1A-4E, desc=description, cost=amount, meds=[{id, qty}]. Never show baby teeth as 51-85.
 - tr_undo(id, pid, cost): Undo treatment record.
 - treatment_plan(patient_name, symptoms, proposed_treatments[]): AI-assisted treatment planning.
 - treatment_types_get(): Get all treatment types.
@@ -2542,6 +2535,7 @@ To perform an action, include a JSON block at the END of your message.
 IMPORTANT: You can use "name" instead of "pid" or "p_id" for any patient-related action. The system will automatically look up the ID.
 For patient registration, use the updated form fields when the user provides them: age, patient_type, branch/location, address, city, township, optional portal password, clinical fee/balance, and medical history. If the user asks to register a patient but required basics are missing, ask for the missing name/phone/age/branch instead of inventing them.
 For appointments, match the Admin Appointments form: choose Registered Patient when the person already exists, or New Patient lead when they are not registered yet; collect/emit date, time, type, optional doctor, status, branch/location, clinical_focus, target_teeth, and extra notes. Do not invent missing date/time/type/branch/doctor.
+For every staff-facing workflow, baby teeth must be written as 1A-1E, 2A-2E, 3A-3E, or 4A-4E. Numeric 51-85 values are legacy internal identifiers and must never be presented to users.
 For unregistered New Patient / marketing leads, do not create a patient first. Use apt_c with guest_name and guest_phone, plus guest_source/guest_notes when available. guest_source should come from the user's lead/source wording, and guest_notes should contain marketing context, caller request, or preferred contact time.
 For doctor-related actions, you can use "doctor_name" if you do not know the doctor ID.
 For appointment updates, prefer passing id. If id is unknown, you may pass patient name plus date/time to help match the appointment.
@@ -3982,7 +3976,7 @@ I can provide guidance on:
 
       if (allActionMatches.length === 0 && mode === 'agent' && isAppointmentActionIntent(userMessage.content)) {
         try {
-          const recoveryPrompt = `The previous response did not include an executable system action. Convert this appointment request into exactly one JSON action if enough details are present.\n\nUser request: ${userMessage.content}\n\nUse one schema only, matching the updated Admin Appointments form.\n\nRegistered Patient appointment:\n{ "action": "apt_c", "params": { "name": "registered patient name", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "status": "Scheduled", "branch_name": "branch if provided", "clinical_focus": "clinical activity/focus if provided", "target_teeth": [18], "n": "optional extra notes" } }\n\nNew Patient / unregistered marketing lead appointment:\n{ "action": "apt_c", "params": { "guest_name": "lead name", "guest_phone": "phone", "guest_source": "source if provided", "guest_notes": "follow-up notes if provided", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "status": "Scheduled", "branch_name": "branch if provided", "clinical_focus": "clinical activity/focus if provided", "target_teeth": [18], "n": "optional appointment extra notes" } }\n\nRules:\n- Return JSON only, no markdown.\n- Do not invent patient, lead name, phone, date, time, doctor, branch, appointment type, clinical focus, or target teeth.\n- Use Registered Patient only when the request indicates an existing patient; use New Patient lead fields when the person is not registered yet.\n- If this is a registered patient appointment and patient, date, time, or type is missing, return a short sentence starting with MISSING_APPOINTMENT_DETAILS instead of JSON.\n- If this is a lead appointment and guest_name, guest_phone, date, time, or type is missing, return MISSING_APPOINTMENT_DETAILS instead of JSON.`;
+          const recoveryPrompt = `The previous response did not include an executable system action. Convert this appointment request into exactly one JSON action if enough details are present.\n\nUser request: ${userMessage.content}\n\nUse one schema only, matching the updated Admin Appointments form.\n\nRegistered Patient appointment:\n{ "action": "apt_c", "params": { "name": "registered patient name", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "status": "Scheduled", "branch_name": "branch if provided", "clinical_focus": "clinical activity/focus if provided", "target_teeth": [18], "n": "optional extra notes" } }\n\nNew Patient / unregistered marketing lead appointment:\n{ "action": "apt_c", "params": { "guest_name": "lead name", "guest_phone": "phone", "guest_source": "source if provided", "guest_notes": "follow-up notes if provided", "doctor_name": "doctor name if provided", "dt": "YYYY-MM-DD", "t": "HH:mm", "ty": "appointment type", "status": "Scheduled", "branch_name": "branch if provided", "clinical_focus": "clinical activity/focus if provided", "target_teeth": [18], "n": "optional appointment extra notes" } }\n\nRules:\n- Return JSON only, no markdown.\n- Do not invent patient, lead name, phone, date, time, doctor, branch, appointment type, clinical focus, or target teeth.\n- Baby target teeth must use string labels such as "1A" through "4E"; never use 51-85.\n- Use Registered Patient only when the request indicates an existing patient; use New Patient lead fields when the person is not registered yet.\n- If this is a registered patient appointment and patient, date, time, or type is missing, return a short sentence starting with MISSING_APPOINTMENT_DETAILS instead of JSON.\n- If this is a lead appointment and guest_name, guest_phone, date, time, or type is missing, return MISSING_APPOINTMENT_DETAILS instead of JSON.`;
           const recoveredResponse = await callAICompletionAPI(recoveryPrompt, messages);
           const recoveredActionMatches = findAllActions(recoveredResponse);
           if (recoveredActionMatches.length > 0) {
@@ -4917,17 +4911,22 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 const currentState = await api.planning.getPatientState(resolvedPatientId, locationId);
                 console.log('Planning State for Treatment:', currentState);
 
+                const parsedTreatmentTeeth = parseTeethInput(params.teeth || params.tooth_numbers || []);
+                if (parsedTreatmentTeeth.invalidLabels.length > 0) {
+                  throw new Error(`Invalid tooth labels: ${parsedTreatmentTeeth.invalidLabels.join(', ')}. Baby teeth must use 1A-4E.`);
+                }
+
                 result = await api.treatments.record({
                   location_id: locationId,
                   patient_id: resolvedPatientId,
-                  teeth: params.teeth || [],
+                  teeth: parsedTreatmentTeeth.teeth,
                   description: params.desc,
                   cost: params.cost || 0,
                   medications: params.meds // Pass medications directly to service
                 });
                 
                 const pName = currentState?.name || resolvedPatientId;
-                currentActionResult = `✅ Treatment recorded successfully for ${pName}. 
+                currentActionResult = `✅ Treatment recorded successfully for ${pName}${parsedTreatmentTeeth.teeth.length > 0 ? ` on teeth ${formatTeethArray(parsedTreatmentTeeth.teeth)}` : ''}.
 💰 Previous Balance: ${currentState?.balance} MMK
 📈 New Balance: ${result.new_balance} MMK.`;
               } catch (err: any) {

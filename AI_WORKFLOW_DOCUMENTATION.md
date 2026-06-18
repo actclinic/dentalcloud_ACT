@@ -86,7 +86,7 @@ The main component responsible for AI interactions, featuring:
 - Registered Patient appointments require selecting the patient. New Patient lead appointments require **New Patient Name** and **New Patient Phone**, with optional **New Patient Source** and **New Patient Follow-up Notes**.
 - Doctor selection is optional and uses a searchable doctor field; the appointment can be saved with no specific doctor.
 - Scheduling fields are **Date**, **Time**, **Type**, **Status**, and **Branch / Location**. Status values are Scheduled, Completed, and Cancelled; Scheduled is the normal default.
-- Appointment clinical details are stored in structured notes: **Clinical Focus**, **Target Teeth**, and **Extra Notes**. When the AI creates appointments, it should populate `clinical_focus`, `target_teeth`, and `n` / `extra_notes` so the form can parse them back correctly.
+- Appointment clinical details are stored in structured notes: **Clinical Focus**, **Target Teeth**, and **Extra Notes**. When the AI creates appointments, it should populate `clinical_focus`, `target_teeth`, and `n` / `extra_notes` so the form can parse them back correctly. Baby teeth must be written as `1A-4E`, never `51-85`.
 - Lead appointments stay as appointment-only records until converted. Do not create a patient profile for a New Patient / lead appointment unless the user explicitly asks to register or convert that lead.
 
 **Key Processes:**
@@ -210,7 +210,7 @@ The main component responsible for AI interactions, featuring:
 ### Clinical Record/Treatment Model
 - `id`: Unique identifier
 - `patient_id`: Foreign key to patient
-- `teeth`: Array of affected tooth numbers
+- `teeth`: Array of affected teeth using adult FDI numbers and baby labels `1A-4E`
 - `description`: Treatment details
 - `cost`: Treatment cost in MMK
 - `date`: Date of treatment
