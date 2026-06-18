@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, ReceiptPreferences } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -8,6 +8,7 @@ import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3O
 import { buildSupabasePublicUrl, deleteSupabaseStorageFile, isSupabaseStorageReady, listSupabaseStorageFiles, normalizeSupabaseStorageUrl, uploadSupabaseStorageFile } from '../utils/supabaseStorage';
 import { findInvalidTeeth } from '../utils/toothNumbering';
 import { normalizePaymentMethod } from '../utils/paymentMethods';
+import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../utils/receiptPreferences';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -2896,6 +2897,72 @@ export const api = {
         .upsert(payload);
 
       if (error) {
+        throw new Error(error.message);
+      }
+    },
+
+    getReceiptPreferences: async (): Promise<ReceiptPreferences | null> => {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('receipt_header_title, currency_unit, receipt_size')
+          .eq('id', APP_SETTINGS_SINGLETON_ID)
+          .maybeSingle();
+
+        if (error) {
+          if (
+            isMissingColumnError(error, 'receipt_header_title') ||
+            isMissingColumnError(error, 'currency_unit') ||
+            isMissingColumnError(error, 'receipt_size')
+          ) {
+            console.warn('Shared receipt preferences are not installed yet.');
+            return null;
+          }
+          throw error;
+        }
+
+        if (!data) return DEFAULT_RECEIPT_PREFERENCES;
+        return normalizeReceiptPreferences(data);
+      } catch (error: any) {
+        console.warn('Failed to load shared receipt preferences:', error?.message || error);
+        return null;
+      }
+    },
+
+    saveReceiptPreferences: async (preferences: Partial<ReceiptPreferences>): Promise<void> => {
+      const payload: Record<string, unknown> = {
+        id: APP_SETTINGS_SINGLETON_ID,
+        updated_at: new Date().toISOString()
+      };
+
+      if (preferences.headerTitle !== undefined) {
+        payload.receipt_header_title = preferences.headerTitle.trim() || null;
+      }
+      if (preferences.currency !== undefined) {
+        if (preferences.currency !== 'USD' && preferences.currency !== 'MMK') {
+          throw new Error('Invalid currency unit.');
+        }
+        payload.currency_unit = preferences.currency;
+      }
+      if (preferences.receiptSize !== undefined) {
+        if (preferences.receiptSize !== 'A4' && preferences.receiptSize !== 'THERMAL_55MM') {
+          throw new Error('Invalid receipt format.');
+        }
+        payload.receipt_size = preferences.receiptSize;
+      }
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(payload);
+
+      if (error) {
+        if (
+          isMissingColumnError(error, 'receipt_header_title') ||
+          isMissingColumnError(error, 'currency_unit') ||
+          isMissingColumnError(error, 'receipt_size')
+        ) {
+          throw new Error('Shared receipt settings are not installed. Run database/shared_receipt_preferences_migration.sql in Supabase.');
+        }
         throw new Error(error.message);
       }
     },

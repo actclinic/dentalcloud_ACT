@@ -86,6 +86,9 @@ CREATE TABLE app_settings (
   app_logo_path TEXT,
   receipt_email TEXT,
   receipt_phone TEXT,
+  receipt_header_title TEXT,
+  currency_unit VARCHAR(3) NOT NULL DEFAULT 'USD' CHECK (currency_unit IN ('USD', 'MMK')),
+  receipt_size VARCHAR(20) NOT NULL DEFAULT 'A4' CHECK (receipt_size IN ('A4', 'THERMAL_55MM')),
 
   -- Shared Email Delivery settings (Settings > Email)
   -- Stored centrally so all devices use the same sender/delivery configuration.
@@ -484,6 +487,9 @@ CREATE INDEX IF NOT EXISTS idx_recalls_due_date ON recalls(due_date);
 -- newer app_settings columns exist even if table definitions drift.
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_email TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_phone TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_header_title TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS currency_unit VARCHAR(3) NOT NULL DEFAULT 'USD';
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_size VARCHAR(20) NOT NULL DEFAULT 'A4';
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_delivery_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_sender_name TEXT DEFAULT 'DentalCloud';
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_sender_email TEXT;
@@ -492,6 +498,17 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_settings_updated_at TIME
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_logo_url TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS app_logo_path TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS hover_theme TEXT NOT NULL DEFAULT 'blue';
+
+UPDATE app_settings
+SET
+  currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
+  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END;
+
+ALTER TABLE app_settings
+  ALTER COLUMN currency_unit SET DEFAULT 'USD',
+  ALTER COLUMN currency_unit SET NOT NULL,
+  ALTER COLUMN receipt_size SET DEFAULT 'A4',
+  ALTER COLUMN receipt_size SET NOT NULL;
 
 DO $$
 BEGIN
@@ -503,6 +520,25 @@ BEGIN
     ALTER TABLE app_settings
     ADD CONSTRAINT app_settings_hover_theme_check
     CHECK (hover_theme IN ('blue', 'green', 'yellow', 'brown', 'dark'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'app_settings_currency_unit_check'
+  ) THEN
+    ALTER TABLE app_settings
+    ADD CONSTRAINT app_settings_currency_unit_check
+    CHECK (currency_unit IN ('USD', 'MMK'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'app_settings_receipt_size_check'
+  ) THEN
+    ALTER TABLE app_settings
+    ADD CONSTRAINT app_settings_receipt_size_check
+    CHECK (receipt_size IN ('A4', 'THERMAL_55MM'));
   END IF;
 END $$;
 
@@ -846,7 +882,9 @@ SET
     email_delivery_enabled = COALESCE(email_delivery_enabled, FALSE),
     email_sender_name = COALESCE(NULLIF(email_sender_name, ''), 'DentalCloud'),
     email_message_notifications_enabled = COALESCE(email_message_notifications_enabled, TRUE),
-    email_settings_updated_at = COALESCE(email_settings_updated_at, NOW())
+    email_settings_updated_at = COALESCE(email_settings_updated_at, NOW()),
+    currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
+    receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END
 WHERE id = 1;
 
 -- Public PNG-only clinic logo bucket

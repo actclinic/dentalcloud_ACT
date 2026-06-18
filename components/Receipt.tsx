@@ -3,6 +3,7 @@ import { X, Printer } from 'lucide-react';
 import { Patient, ClinicalRecord, MedicineSale, PaymentMethod, ReceiptSize, TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
+import { resolveReceiptHeaderTitle } from '../utils/receiptPreferences';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 
 interface ReceiptProps {
@@ -15,6 +16,7 @@ interface ReceiptProps {
   treatmentTypes?: TreatmentType[];
   currency: Currency;
   appName?: string;
+  receiptHeaderTitle?: string;
   receiptInfo?: { email: string; phone: string };
   receiptSize?: ReceiptSize;
   onClose: () => void;
@@ -30,12 +32,14 @@ const Receipt: React.FC<ReceiptProps> = ({
   treatmentTypes = [],
   currency,
   appName = 'DentalCloud Pro',
+  receiptHeaderTitle,
   receiptInfo,
   receiptSize = 'A4',
   onClose
 }) => {
   const receiptEmail = receiptInfo?.email || 'info@dentflowpro.com';
   const receiptPhone = receiptInfo?.phone || '(555) 123-4567';
+  const displayHeaderTitle = resolveReceiptHeaderTitle(receiptHeaderTitle, appName);
   const receiptNumber = persistedReceiptNumber || `REC-${Date.now().toString().slice(-8)}`;
   const today = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -305,7 +309,7 @@ const Receipt: React.FC<ReceiptProps> = ({
         }}>
           {/* Clinic Header */}
           <div className="text-center mb-8 border-b-2 border-gray-800 pb-6">
-            <h1 className="text-2xl font-black text-gray-900 mb-2">{appName}</h1>
+            <h1 className="text-2xl font-black text-gray-900 mb-2">{displayHeaderTitle}</h1>
             <p className="text-sm text-gray-600">Professional Dental Care Services</p>
             <p className="text-xs text-gray-500 mt-2">Email: {receiptEmail} | Phone: {receiptPhone}</p>
           </div>
@@ -452,7 +456,7 @@ const Receipt: React.FC<ReceiptProps> = ({
         }}>
           {/* Clinic Header */}
           <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{appName}</div>
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
             <div style={{ fontSize: '8px', color: '#555' }}>Professional Dental Care Services</div>
             <div style={{ fontSize: '7px', color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
           </div>
@@ -547,7 +551,7 @@ const Receipt: React.FC<ReceiptProps> = ({
       }}>
         {/* Clinic Header */}
         <div className="text-center mb-8 border-b-2 border-gray-800 pb-6">
-          <h1 className="text-2xl font-black text-gray-900 mb-2">{appName}</h1>
+          <h1 className="text-2xl font-black text-gray-900 mb-2">{displayHeaderTitle}</h1>
           <p className="text-sm text-gray-600">Professional Dental Care Services</p>
           <p className="text-xs text-gray-500 mt-2">Email: {receiptEmail} | Phone: {receiptPhone}</p>
         </div>
@@ -672,7 +676,7 @@ const Receipt: React.FC<ReceiptProps> = ({
       }}>
         {/* Clinic Header */}
         <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{appName}</div>
+          <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
           <div style={{ fontSize: '8px', color: '#555' }}>Professional Dental Care Services</div>
           <div style={{ fontSize: '7px', color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
         </div>

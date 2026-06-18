@@ -8,7 +8,7 @@ import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, loadEmailSettings
 
 interface SettingsViewProps {
   currency: 'USD' | 'MMK';
-  onCurrencyChange: (currency: 'USD' | 'MMK') => void;
+  onCurrencyChange: (currency: 'USD' | 'MMK') => Promise<void>;
   locations: Location[];
   currentLocationId: string;
   onLocationChange: (locationId: string) => Promise<void>;
@@ -43,8 +43,10 @@ interface SettingsViewProps {
   onDeleteAppLogo: () => Promise<void>;
   receiptInfo: { email: string; phone: string };
   onSaveReceiptInfo: (info: { email: string; phone: string }) => Promise<void>;
+  receiptHeaderTitle: string;
+  onSaveReceiptHeaderTitle: (title: string) => Promise<void>;
   receiptSize: ReceiptSize;
-  onReceiptSizeChange: (size: ReceiptSize) => void;
+  onReceiptSizeChange: (size: ReceiptSize) => Promise<void>;
   hoverTheme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
   onHoverThemeChange: (theme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark') => void;
 }
@@ -103,6 +105,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onDeleteAppLogo,
   receiptInfo,
   onSaveReceiptInfo,
+  receiptHeaderTitle,
+  onSaveReceiptHeaderTitle,
   receiptSize,
   onReceiptSizeChange,
   hoverTheme,
@@ -133,7 +137,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const [receiptEmailInput, setReceiptEmailInput] = useState<string>(receiptInfo.email);
   const [receiptPhoneInput, setReceiptPhoneInput] = useState<string>(receiptInfo.phone);
+  const [receiptHeaderTitleInput, setReceiptHeaderTitleInput] = useState<string>(receiptHeaderTitle);
   const [receiptInfoMessage, setReceiptInfoMessage] = useState<string | null>(null);
+  const [currencyMessage, setCurrencyMessage] = useState<string | null>(null);
+  const [receiptFormatMessage, setReceiptFormatMessage] = useState<string | null>(null);
+  const [isSavingCurrency, setIsSavingCurrency] = useState(false);
+  const [isSavingReceiptFormat, setIsSavingReceiptFormat] = useState(false);
+  const [isSavingReceiptHeader, setIsSavingReceiptHeader] = useState(false);
   const MANAGER_EMAILS_KEY = 'loli_manager_emails';
 
   const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -154,6 +164,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingLoc, setEditingLoc] = useState<Location | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string>(currentLocationId);
   const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
+
+  useEffect(() => {
+    setReceiptEmailInput(receiptInfo.email);
+    setReceiptPhoneInput(receiptInfo.phone);
+  }, [receiptInfo.email, receiptInfo.phone]);
+
+  useEffect(() => {
+    setReceiptHeaderTitleInput(receiptHeaderTitle);
+  }, [receiptHeaderTitle]);
 
   useEffect(() => {
     setSelectedBranchId(currentLocationId);
@@ -759,6 +778,32 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     MMK: 'Myanmar Kyat'
   };
 
+  const handleSharedCurrencyChange = async (nextCurrency: 'USD' | 'MMK') => {
+    setCurrencyMessage(null);
+    setIsSavingCurrency(true);
+    try {
+      await onCurrencyChange(nextCurrency);
+      setCurrencyMessage('Currency saved for all devices.');
+    } catch (error: any) {
+      setCurrencyMessage(`Failed to save currency: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsSavingCurrency(false);
+    }
+  };
+
+  const handleSharedReceiptSizeChange = async (nextSize: ReceiptSize) => {
+    setReceiptFormatMessage(null);
+    setIsSavingReceiptFormat(true);
+    try {
+      await onReceiptSizeChange(nextSize);
+      setReceiptFormatMessage('Receipt format saved for all devices.');
+    } catch (error: any) {
+      setReceiptFormatMessage(`Failed to save receipt format: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsSavingReceiptFormat(false);
+    }
+  };
+
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin);
 
   useEffect(() => {
@@ -787,7 +832,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               name="currency"
               value="USD"
               checked={currency === 'USD'}
-              onChange={() => onCurrencyChange('USD')}
+              onChange={() => void handleSharedCurrencyChange('USD')}
+              disabled={isSavingCurrency}
               className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
             />
             <div className="flex-1">
@@ -806,7 +852,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               name="currency"
               value="MMK"
               checked={currency === 'MMK'}
-              onChange={() => onCurrencyChange('MMK')}
+              onChange={() => void handleSharedCurrencyChange('MMK')}
+              disabled={isSavingCurrency}
               className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
             />
             <div className="flex-1">
@@ -821,8 +868,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
         <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
           <p className="text-xs text-indigo-700">
-            <strong>Note:</strong> Currency changes will be applied immediately across all views including receipts, invoices, and financial reports.
+            <strong>Note:</strong> Currency changes are saved centrally and applied across all devices, receipts, invoices, and financial reports.
           </p>
+          {currencyMessage && (
+            <p className={`mt-2 text-xs ${currencyMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-700'}`}>
+              {currencyMessage}
+            </p>
+          )}
         </div>
       </div>
 
@@ -1731,12 +1783,28 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="border border-gray-200 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <Info className="w-5 h-5 text-indigo-600" />
-          <h3 className="text-lg font-semibold text-gray-800">Receipt Contact Info</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Receipt Header and Contact Info</h3>
         </div>
         
         <p className="text-sm text-gray-600 mb-4">
-          Customize the contact information displayed on printed receipts and invoices.
+          Customize the title and contact information displayed on both A4 and thermal receipts.
         </p>
+
+        <div className="mb-4">
+          <Input
+            label="Receipt Header Title"
+            value={receiptHeaderTitleInput}
+            onChange={(e: any) => {
+              setReceiptHeaderTitleInput(e.target.value);
+              setReceiptInfoMessage(null);
+            }}
+            placeholder={appName || 'Dental Clinic'}
+            maxLength={120}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Leave blank to use the application name.
+          </p>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
@@ -1764,19 +1832,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           <button
             type="button"
             onClick={async () => {
+              setIsSavingReceiptHeader(true);
               try {
-                await onSaveReceiptInfo({
-                  email: receiptEmailInput,
-                  phone: receiptPhoneInput
-                });
-                setReceiptInfoMessage('Receipt contact info saved successfully!');
+                await Promise.all([
+                  onSaveReceiptHeaderTitle(receiptHeaderTitleInput),
+                  onSaveReceiptInfo({
+                    email: receiptEmailInput,
+                    phone: receiptPhoneInput
+                  })
+                ]);
+                setReceiptInfoMessage('Receipt header and contact info saved for all devices.');
               } catch (err: any) {
-                setReceiptInfoMessage('Failed to save receipt info: ' + (err?.message || 'Unknown error'));
+                setReceiptInfoMessage('Failed to save receipt settings: ' + (err?.message || 'Unknown error'));
+              } finally {
+                setIsSavingReceiptHeader(false);
               }
             }}
+            disabled={isSavingReceiptHeader}
             className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
           >
-            Save Receipt Info
+            {isSavingReceiptHeader ? 'Saving...' : 'Save Receipt Header'}
           </button>
           {receiptInfoMessage && (
             <p className={`text-xs ${receiptInfoMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
@@ -1787,7 +1862,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
         <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
           <p className="text-xs text-indigo-700">
-            <strong>Note:</strong> Changes will be applied to all new receipts and invoices generated after saving.
+            <strong>Note:</strong> Changes are stored centrally and applied to new A4 and thermal receipts on every device.
           </p>
         </div>
       </div>
@@ -1810,7 +1885,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               name="receiptSize"
               value="A4"
               checked={receiptSize === 'A4'}
-              onChange={() => onReceiptSizeChange('A4')}
+              onChange={() => void handleSharedReceiptSizeChange('A4')}
+              disabled={isSavingReceiptFormat}
               className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
             />
             <div className="flex-1">
@@ -1829,7 +1905,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               name="receiptSize"
               value="THERMAL_55MM"
               checked={receiptSize === 'THERMAL_55MM'}
-              onChange={() => onReceiptSizeChange('THERMAL_55MM')}
+              onChange={() => void handleSharedReceiptSizeChange('THERMAL_55MM')}
+              disabled={isSavingReceiptFormat}
               className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
             />
             <div className="flex-1">
@@ -1844,8 +1921,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
         <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
           <p className="text-xs text-indigo-700">
-            <strong>Note:</strong> The selected format will be used when generating receipts. Thermal format uses condensed layout, smaller fonts, and monospace styling suitable for thermal roll paper.
+            <strong>Note:</strong> The selected format is saved centrally for all devices. Thermal format uses condensed layout, smaller fonts, and monospace styling suitable for thermal roll paper.
           </p>
+          {receiptFormatMessage && (
+            <p className={`mt-2 text-xs ${receiptFormatMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-700'}`}>
+              {receiptFormatMessage}
+            </p>
+          )}
         </div>
       </div>
     </div>

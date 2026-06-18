@@ -357,6 +357,12 @@ export interface ScheduledTask {
 
 export type ReceiptSize = 'A4' | 'THERMAL_55MM';
 
+export interface ReceiptPreferences {
+  headerTitle: string;
+  currency: 'USD' | 'MMK';
+  receiptSize: ReceiptSize;
+}
+
 
 
 

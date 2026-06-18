@@ -421,10 +421,7 @@ const App: React.FC = () => {
   const [lastPaymentRecord, setLastPaymentRecord] = useState<PaymentRecord | null>(null);
   const [selectedTreatmentsForReceipt, setSelectedTreatmentsForReceipt] = useState<ClinicalRecord[]>([]);
   const [selectedMedicineSalesForReceipt, setSelectedMedicineSalesForReceipt] = useState<MedicineSale[]>([]);
-  const [currency, setCurrency] = useState<'USD' | 'MMK'>(() => {
-    const savedCurrency = localStorage.getItem('currency');
-    return (savedCurrency === 'USD' || savedCurrency === 'MMK') ? savedCurrency : 'USD';
-  });
+  const [currency, setCurrency] = useState<'USD' | 'MMK'>('USD');
   const [loyaltyEnabled, setLoyaltyEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('loyalty_enabled');
     return saved === null ? true : saved === 'true';
@@ -440,10 +437,8 @@ const App: React.FC = () => {
     email: 'info@dentflowpro.com',
     phone: '(555) 123-4567'
   });
-  const [receiptSize, setReceiptSize] = useState<ReceiptSize>(() => {
-    const saved = localStorage.getItem('receiptSize');
-    return (saved === 'A4' || saved === 'THERMAL_55MM') ? saved : 'A4';
-  });
+  const [receiptHeaderTitle, setReceiptHeaderTitle] = useState<string>('');
+  const [receiptSize, setReceiptSize] = useState<ReceiptSize>('A4');
 
   // Sync browser tab title with app name in real-time
   useEffect(() => {
@@ -480,9 +475,15 @@ const App: React.FC = () => {
     });
   }, [appLogoUrl, appName]);
   
-  const handleCurrencyChange = (newCurrency: 'USD' | 'MMK') => {
+  const handleCurrencyChange = async (newCurrency: 'USD' | 'MMK') => {
+    const previousCurrency = currency;
     setCurrency(newCurrency);
-    localStorage.setItem('currency', newCurrency);
+    try {
+      await api.appSettings.saveReceiptPreferences({ currency: newCurrency });
+    } catch (error) {
+      setCurrency(previousCurrency);
+      throw error;
+    }
   };
 
   const handleToggleLoyalty = (enabled: boolean) => {
@@ -522,6 +523,12 @@ const App: React.FC = () => {
     setReceiptInfo(info);
   };
 
+  const handleSaveReceiptHeaderTitle = async (title: string) => {
+    const normalizedTitle = title.trim();
+    await api.appSettings.saveReceiptPreferences({ headerTitle: normalizedTitle });
+    setReceiptHeaderTitle(normalizedTitle);
+  };
+
   const handleHoverThemeChange = async (theme: HoverTheme) => {
     setHoverTheme(theme);
     try {
@@ -531,9 +538,15 @@ const App: React.FC = () => {
     }
   };
 
-  const handleReceiptSizeChange = (size: ReceiptSize) => {
+  const handleReceiptSizeChange = async (size: ReceiptSize) => {
+    const previousSize = receiptSize;
     setReceiptSize(size);
-    localStorage.setItem('receiptSize', size);
+    try {
+      await api.appSettings.saveReceiptPreferences({ receiptSize: size });
+    } catch (error) {
+      setReceiptSize(previousSize);
+      throw error;
+    }
   };
   
   const handleRemoveAllMessages = async () => {
@@ -952,6 +965,17 @@ const App: React.FC = () => {
         console.warn('Failed to load receipt info:', err);
       });
 
+    api.appSettings.getReceiptPreferences()
+      .then((preferences) => {
+        if (!mounted || !preferences) return;
+        setReceiptHeaderTitle(preferences.headerTitle);
+        setCurrency(preferences.currency);
+        setReceiptSize(preferences.receiptSize);
+      })
+      .catch((err) => {
+        console.warn('Failed to load shared receipt preferences:', err);
+      });
+
     api.appSettings.getAppLogo()
       .then((logo) => {
         if (!mounted) return;
@@ -971,37 +995,60 @@ const App: React.FC = () => {
 
     let mounted = true;
 
-    const loadTheme = async () => {
+    const refreshSharedAppearanceSettings = async () => {
       try {
-        const theme = await api.appSettings.getHoverTheme();
+        const [theme, preferences] = await Promise.all([
+          api.appSettings.getHoverTheme(),
+          api.appSettings.getReceiptPreferences()
+        ]);
         if (mounted && theme) setHoverTheme(theme);
+        if (mounted && preferences) {
+          setReceiptHeaderTitle(preferences.headerTitle);
+          setCurrency(preferences.currency);
+          setReceiptSize(preferences.receiptSize);
+        }
       } catch (error) {
-        console.warn('Failed to refresh hover theme:', error);
+        console.warn('Failed to refresh shared appearance settings:', error);
       }
     };
 
-    loadTheme();
+    refreshSharedAppearanceSettings();
 
-    const themeChannel = supabase
-      .channel(`app-settings-theme-${Date.now()}`)
+    const settingsChannel = supabase
+      .channel(`app-settings-shared-preferences-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'app_settings' },
         (payload) => {
-          const nextTheme = (payload.new as { hover_theme?: unknown } | null)?.hover_theme;
+          const row = payload.new as {
+            hover_theme?: unknown;
+            receipt_header_title?: unknown;
+            currency_unit?: unknown;
+            receipt_size?: unknown;
+          } | null;
+          const nextTheme = row?.hover_theme;
           if (isHoverTheme(nextTheme)) {
             setHoverTheme(nextTheme);
+          }
+          if (typeof row?.receipt_header_title === 'string' || row?.receipt_header_title === null) {
+            setReceiptHeaderTitle(typeof row.receipt_header_title === 'string' ? row.receipt_header_title.trim() : '');
+          }
+          if (row?.currency_unit === 'USD' || row?.currency_unit === 'MMK') {
+            setCurrency(row.currency_unit);
+          }
+          if (row?.receipt_size === 'A4' || row?.receipt_size === 'THERMAL_55MM') {
+            setReceiptSize(row.receipt_size);
           }
         }
       )
       .subscribe();
 
-    const fallbackPoll = window.setInterval(loadTheme, 10000);
+    const fallbackPoll = window.setInterval(refreshSharedAppearanceSettings, 10000);
 
     return () => {
       mounted = false;
       window.clearInterval(fallbackPoll);
-      supabase.removeChannel(themeChannel);
+      supabase.removeChannel(settingsChannel);
     };
   }, [isAuthenticated]);
 
@@ -3331,6 +3378,8 @@ const App: React.FC = () => {
                     onDeleteAppLogo={handleDeleteAppLogo}
                     receiptInfo={receiptInfo}
                     onSaveReceiptInfo={handleSaveReceiptInfo}
+                    receiptHeaderTitle={receiptHeaderTitle}
+                    onSaveReceiptHeaderTitle={handleSaveReceiptHeaderTitle}
                     receiptSize={receiptSize}
                     onReceiptSizeChange={handleReceiptSizeChange}
                     hoverTheme={hoverTheme}
@@ -4635,6 +4684,7 @@ const App: React.FC = () => {
             treatmentTypes={treatmentTypes}
             currency={currency}
             appName={appName}
+            receiptHeaderTitle={receiptHeaderTitle}
             receiptInfo={receiptInfo}
             receiptSize={receiptSize}
             onClose={() => {
