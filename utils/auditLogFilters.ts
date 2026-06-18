@@ -1,8 +1,9 @@
-import type { Appointment, ClinicalRecord } from '../types';
+import type { Appointment, ClinicalRecord, PaymentRecord } from '../types';
 
 export type AuditLogFilterRow =
   | { kind: 'treatment'; sortDate: string; record: Pick<ClinicalRecord, 'date'> }
-  | { kind: 'appointment'; sortDate: string; appointment: Pick<Appointment, 'date' | 'created_at'> };
+  | { kind: 'appointment'; sortDate: string; appointment: Pick<Appointment, 'date' | 'created_at'> }
+  | { kind: 'payment'; sortDate: string; payment: Pick<PaymentRecord, 'date' | 'createdAt'> };
 
 export const toLocalISODate = (date: Date): string => {
   const year = date.getFullYear();
@@ -13,7 +14,8 @@ export const toLocalISODate = (date: Date): string => {
 
 export const getAuditLogEventDate = (row: AuditLogFilterRow): string => {
   if (row.kind === 'treatment') return row.record.date || '';
-  return row.appointment.date || row.appointment.created_at?.slice(0, 10) || '';
+  if (row.kind === 'appointment') return row.appointment.date || row.appointment.created_at?.slice(0, 10) || '';
+  return row.payment.date || row.payment.createdAt?.slice(0, 10) || '';
 };
 
 export const isDateInRange = (dateStr: string | undefined, dateFrom: string, dateTo: string): boolean => {

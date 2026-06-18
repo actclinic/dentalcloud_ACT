@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw } from 'lucide-react';
-import { Appointment, ClinicalRecord } from '../types';
+import { Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards } from 'lucide-react';
+import { Appointment, ClinicalRecord, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportClinicalRecordsToPDF } from '../utils/pdfExport';
 import { exportClinicalRecordsToExcel } from '../utils/excelExport';
@@ -10,10 +10,12 @@ import ExportMenu from './ExportMenu';
 import { toLocalISODate } from '../utils/auditLogFilters';
 import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow, type AuditFilter } from '../utils/auditLogExport';
 import { buildRecordsViewFilterOptions } from '../utils/recordsViewFilterOptions';
+import { formatPaymentMethod } from '../utils/paymentMethods';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
   appointments?: Appointment[];
+  payments?: PaymentRecord[];
   loading: boolean;
   onRefresh: () => void;
   onDeleteAll: () => void;
@@ -22,7 +24,7 @@ interface RecordsViewProps {
   initialFilter?: AuditFilter;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all' }) => {
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], payments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all' }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,7 +96,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
     );
   };
 
-  const auditRows = useMemo<AuditExportRow[]>(() => buildAuditLogRows(records, appointments, !isDoctor), [records, appointments, isDoctor]);
+  const auditRows = useMemo<AuditExportRow[]>(
+    () => buildAuditLogRows(records, appointments, !isDoctor, payments),
+    [records, appointments, payments, isDoctor]
+  );
 
   const filteredRows = useMemo(() => {
     return filterAuditLogRowsForExport(auditRows, buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm }));
@@ -111,15 +116,16 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
       (summary, row) => {
         if (row.kind === 'appointment') summary.appointments += 1;
         if (row.kind === 'treatment') summary.treatments += 1;
+        if (row.kind === 'payment') summary.payments += 1;
         return summary;
       },
-      { appointments: 0, treatments: 0 }
+      { appointments: 0, treatments: 0, payments: 0 }
     );
   }, [filteredRows]);
 
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [records, appointments, auditFilter, dateFrom, dateTo]);
+  }, [records, appointments, payments, auditFilter, dateFrom, dateTo]);
 
   React.useEffect(() => {
     setAuditFilter(initialFilter);
@@ -129,6 +135,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   const handleDownloadPDF = () => {
     exportClinicalRecordsToPDF(records, currency, {
       appointments,
+      payments,
       includeAppointments: !isDoctor,
       ...buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm })
     });
@@ -137,13 +144,14 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
   const handleDownloadExcel = async () => {
     await exportClinicalRecordsToExcel(records, currency, {
       appointments,
+      payments,
       includeAppointments: !isDoctor,
       ...buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm })
     });
   };
 
   const handleDownloadJSON = () => {
-    const dataStr = JSON.stringify(records, null, 2);
+    const dataStr = JSON.stringify(filteredRows, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
@@ -155,7 +163,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
     URL.revokeObjectURL(url);
 
     setTimeout(() => {
-      if (confirm(`Download complete! Do you want to delete all ${records.length} ${isDoctor ? 'record' : 'audit log record'} entries from the database? This will free up space but cannot be undone.`)) {
+      if (confirm(`Download complete. Delete all ${records.length} clinical treatment records for this branch? Appointments and payment audit records will be kept. This cannot be undone.`)) {
         onDeleteAll();
       }
     }, 500);
@@ -180,6 +188,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-center font-semibold text-slate-700 sm:text-left">{filteredRows.length} visible</span>
                 <span className="rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 text-center font-semibold theme-accent-text sm:text-left">{filteredSummary.appointments} appts</span>
                 <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-center font-semibold text-emerald-700 sm:text-left">{filteredSummary.treatments} treatments</span>
+                <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-center font-semibold text-violet-700 sm:text-left">{filteredSummary.payments} payments</span>
               </div>
             )}
           </div>
@@ -222,11 +231,12 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                 {isTodayRange ? 'Today' : 'Custom'}
               </button>
             </div>
-                <div className="grid w-full grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:inline-grid sm:w-auto">
+                <div className="grid w-full grid-cols-4 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:inline-grid sm:w-auto">
               {[
                 { value: 'all', label: 'All' },
                 { value: 'appointments', label: 'Appointments' },
-                { value: 'treatments', label: 'Treatments' }
+                { value: 'treatments', label: 'Treatments' },
+                { value: 'payments', label: 'Payments' }
               ].map((item) => (
                 <button
                   key={item.value}
@@ -261,7 +271,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
             </div>
             <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-3 lg:w-auto lg:flex lg:flex-row">
             <ExportMenu
-              disabled={records.length === 0}
+              disabled={auditRows.length === 0}
               onExportPDF={handleDownloadPDF}
               onExportExcel={handleDownloadExcel}
               className="!w-full !rounded-xl !bg-slate-800 !font-semibold !shadow-sm hover:!bg-slate-900 lg:!w-auto"
@@ -269,7 +279,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
             />
             <button
               onClick={handleDownloadJSON}
-              disabled={records.length === 0}
+              disabled={auditRows.length === 0}
               className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
             >
               <Download size={16} /> <span className="whitespace-nowrap">JSON Backup</span>
@@ -306,13 +316,14 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                   <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Recorded By</th>
                   <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Patient Balance</th>
                   <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Amount</th>
+                  <th className="px-6 py-4 text-left text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Payment Type</th>
                   <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Doctor Earned</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center">
+                    <td colSpan={10} className="px-6 py-12 text-center">
                       <div className="mx-auto max-w-sm rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
                         <p className="text-sm font-semibold text-slate-600">{isDoctor ? 'No patient treatment records found' : 'No audit records found'}</p>
                         <p className="text-xs text-slate-400 mt-1">{isDoctor ? 'Completed treatments assigned to you will appear here.' : 'Try another date range or clear the search field.'}</p>
@@ -321,6 +332,30 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                   </tr>
                 ) : (
                   paginatedRows.map((row) => {
+                    if (row.kind === 'payment') {
+                      const payment = row.payment;
+                      return (
+                        <tr key={`payment-${payment.id}`} className="transition-colors hover:bg-violet-50/40">
+                          <td className="px-6 py-4 text-sm font-semibold text-violet-700">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-bold">
+                              <WalletCards size={14} /> Payment
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">{formatCreatedAt(payment.createdAt || payment.date)}</td>
+                          <td className="px-6 py-4 font-bold text-slate-900">{payment.patient_name || 'Unknown'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-400">-</td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            Payment received{payment.receiptNumber ? ` · ${payment.receiptNumber}` : ''}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">{payment.createdByUserName || 'Unknown'}</td>
+                          <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(payment.remainingBalance)}</td>
+                          <td className="px-6 py-4 text-right text-sm font-black text-violet-700">{formatCurrency(payment.amount, currency)}</td>
+                          <td className="px-6 py-4 text-sm font-bold text-slate-800">{formatPaymentMethod(payment.paymentMethod)}</td>
+                          <td className="px-6 py-4 text-right text-sm text-slate-400">-</td>
+                        </tr>
+                      );
+                    }
+
                     if (row.kind === 'appointment') {
                       const appointment = row.appointment;
                       return (
@@ -342,6 +377,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                           </td>
                           <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(appointment.patient_balance)}</td>
                           <td className="px-6 py-4 text-right text-sm font-black text-slate-900">-</td>
+                          <td className="px-6 py-4 text-sm text-slate-400">-</td>
                           <td className="px-6 py-4 text-right text-sm text-slate-400">-</td>
                         </tr>
                       );
@@ -372,6 +408,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
                         <td className="px-6 py-4 text-sm text-slate-700">Clinical record</td>
                         <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(rec.patient_balance)}</td>
                         <td className="px-6 py-4 text-right text-sm font-black text-slate-900">{formatCurrency(rec.cost || 0, currency)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-400">-</td>
                         <td className="px-6 py-4 text-right text-sm font-bold text-emerald-700">{rec.doctorEarnings ? formatCurrency(rec.doctorEarnings, currency) : '-'}</td>
                       </tr>
                     );
@@ -389,6 +426,35 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], l
               </div>
             ) : (
               paginatedRows.map((row) => {
+                if (row.kind === 'payment') {
+                  const payment = row.payment;
+                  return (
+                    <div key={`payment-${payment.id}`} className="my-2 min-w-0 rounded-2xl border border-violet-100 bg-white p-3 shadow-sm min-[380px]:p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-black uppercase tracking-wider text-violet-600">Payment</p>
+                          <p className="mt-0.5 break-words text-sm font-bold text-slate-900">{payment.patient_name || 'Unknown'}</p>
+                          <p className="mt-1 text-xs text-slate-500">{formatCreatedAt(payment.createdAt || payment.date)}</p>
+                        </div>
+                        <p className="shrink-0 text-right text-sm font-black text-violet-700">{formatCurrency(payment.amount, currency)}</p>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-xl bg-violet-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase text-violet-600">Payment Type</p>
+                          <p className="mt-1 text-sm font-bold text-violet-900">{formatPaymentMethod(payment.paymentMethod)}</p>
+                        </div>
+                        <div className="rounded-xl bg-rose-50 p-3 text-right">
+                          <p className="text-[11px] font-semibold uppercase text-rose-600">Balance</p>
+                          <div className="mt-1 text-sm">{renderPatientBalance(payment.remainingBalance)}</div>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-500">
+                        {payment.receiptNumber || 'No receipt number'} · Recorded by {payment.createdByUserName || 'Unknown'}
+                      </p>
+                    </div>
+                  );
+                }
+
                 if (row.kind === 'appointment') {
                   const appointment = row.appointment;
                   return (

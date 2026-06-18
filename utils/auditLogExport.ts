@@ -1,13 +1,15 @@
-import type { Appointment, ClinicalRecord } from '../types';
+import type { Appointment, ClinicalRecord, PaymentRecord } from '../types';
 import { Currency, formatCurrency } from './currency';
 import { filterAuditRowsByDateRange } from './auditLogFilters';
 import { formatTeethArray, formatTeethWithPosition } from './toothNumbering';
+import { formatPaymentMethod } from './paymentMethods';
 
-export type AuditFilter = 'all' | 'appointments' | 'treatments';
+export type AuditFilter = 'all' | 'appointments' | 'treatments' | 'payments';
 
 export type AuditExportRow =
   | { kind: 'treatment'; sortDate: string; record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] } }
-  | { kind: 'appointment'; sortDate: string; appointment: Appointment };
+  | { kind: 'appointment'; sortDate: string; appointment: Appointment }
+  | { kind: 'payment'; sortDate: string; payment: PaymentRecord };
 
 export interface AuditLogFilterOptions {
   auditFilter?: AuditFilter;
@@ -17,7 +19,7 @@ export interface AuditLogFilterOptions {
 }
 
 export interface AuditLogExportTableRow {
-  type: 'Appointment' | 'Treatment';
+  type: 'Appointment' | 'Treatment' | 'Payment';
   dateTime: string;
   patient: string;
   clinician: string;
@@ -26,10 +28,12 @@ export interface AuditLogExportTableRow {
   patientBalance: string;
   amount: number | null;
   doctorEarned: number | null;
+  paymentMethod: string;
 }
 
 export const formatAuditCreatedAt = (value?: string | null): string => {
   if (!value) return 'Unknown';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString(undefined, {
@@ -50,7 +54,8 @@ export const formatAuditPatientBalance = (balance: number | null | undefined, cu
 export const buildAuditLogRows = (
   records: ClinicalRecord[],
   appointments: Appointment[] = [],
-  includeAppointments = true
+  includeAppointments = true,
+  payments: PaymentRecord[] = []
 ): AuditExportRow[] => {
   const groupedTreatmentMap = new Map<string, ClinicalRecord[]>();
 
@@ -95,13 +100,22 @@ export const buildAuditLogRows = (
       }))
     : [];
 
-  return [...treatmentRows, ...appointmentRows].sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+  const paymentRows: AuditExportRow[] = includeAppointments
+    ? payments.map((payment) => ({
+        kind: 'payment',
+        sortDate: payment.createdAt || `${payment.date || ''}T23:59:58`,
+        payment
+      }))
+    : [];
+
+  return [...treatmentRows, ...appointmentRows, ...paymentRows].sort((a, b) => b.sortDate.localeCompare(a.sortDate));
 };
 
 export const filterAuditLogRowsForExport = <T extends AuditExportRow>(rows: T[], options: AuditLogFilterOptions): T[] => {
   const scopedRows = rows.filter((row) => {
     if (options.auditFilter === 'appointments') return row.kind === 'appointment';
     if (options.auditFilter === 'treatments') return row.kind === 'treatment';
+    if (options.auditFilter === 'payments') return row.kind === 'payment';
     return true;
   });
 
@@ -122,6 +136,17 @@ export const filterAuditLogRowsForExport = <T extends AuditExportRow>(rows: T[],
         (record.date || '').toLowerCase().includes(term) ||
         formatTeethArray(record.teeth || []).toLowerCase().includes(term) ||
         (record.teeth || []).some((tooth) => tooth.toString().includes(term))
+      );
+    }
+
+    if (row.kind === 'payment') {
+      const payment = row.payment;
+      return (
+        (payment.patient_name || '').toLowerCase().includes(term) ||
+        (payment.createdByUserName || '').toLowerCase().includes(term) ||
+        formatPaymentMethod(payment.paymentMethod).toLowerCase().includes(term) ||
+        (payment.receiptNumber || '').toLowerCase().includes(term) ||
+        (payment.date || '').toLowerCase().includes(term)
       );
     }
 
@@ -152,7 +177,24 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         recordedBy: `${appointment.created_by_user_name || 'Unknown'}\n${formatAuditCreatedAt(appointment.created_at)}`,
         patientBalance: formatAuditPatientBalance(appointment.patient_balance, currency),
         amount: null,
-        doctorEarned: null
+        doctorEarned: null,
+        paymentMethod: '-'
+      };
+    }
+
+    if (row.kind === 'payment') {
+      const payment = row.payment;
+      return {
+        type: 'Payment',
+        dateTime: formatAuditCreatedAt(payment.createdAt || payment.date),
+        patient: payment.patient_name || 'Unknown',
+        clinician: '-',
+        activity: `Payment received${payment.receiptNumber ? ` (${payment.receiptNumber})` : ''}`,
+        recordedBy: payment.createdByUserName || 'Unknown',
+        patientBalance: formatAuditPatientBalance(payment.remainingBalance, currency),
+        amount: payment.amount,
+        doctorEarned: null,
+        paymentMethod: formatPaymentMethod(payment.paymentMethod)
       };
     }
 
@@ -170,7 +212,8 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
       recordedBy: 'Clinical record',
       patientBalance: formatAuditPatientBalance(record.patient_balance, currency),
       amount: record.cost || 0,
-      doctorEarned: record.doctorEarnings || null
+      doctorEarned: record.doctorEarnings || null,
+      paymentMethod: '-'
     };
   });
 };

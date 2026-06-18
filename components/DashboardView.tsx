@@ -3,6 +3,7 @@ import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieI
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
+import { formatPaymentMethod } from '../utils/paymentMethods';
 
 interface DashboardViewProps {
   patients: Patient[];
@@ -267,6 +268,29 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   }, [filteredExpenses]);
 
   const expenseCategoryColors = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#14B8A6', '#8B5CF6', '#0EA5E9', '#F97316'];
+  const paymentMethodColors = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#4F46E5', '#DC2626', '#64748B'];
+
+  const paymentMethodData = useMemo(() => {
+    const totals = new Map<string, { value: number; count: number }>();
+    filteredPaymentRecords.forEach((payment) => {
+      const name = formatPaymentMethod(payment.paymentMethod);
+      const current = totals.get(name) || { value: 0, count: 0 };
+      current.value += Number(payment.amount || 0);
+      current.count += 1;
+      totals.set(name, current);
+    });
+
+    return Array.from(totals.entries())
+      .map(([name, totalsForMethod]) => ({ name, ...totalsForMethod }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredPaymentRecords]);
+
+  const recentPayments = useMemo(
+    () => [...filteredPaymentRecords]
+      .sort((a, b) => (b.createdAt || b.date).localeCompare(a.createdAt || a.date))
+      .slice(0, 10),
+    [filteredPaymentRecords]
+  );
 
   const topExpenses = useMemo(() => {
     return [...filteredExpenses]
@@ -467,6 +491,63 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               {loading && <p className="mt-2 text-xs text-[var(--hover-600)]">Refreshing dashboard data...</p>}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-800">Collections by Payment Type</h3>
+          <p className="mb-4 mt-1 text-xs text-gray-500">
+            {formatCurrency(rangeCollectedPayments, currency)} collected across {filteredPaymentRecords.length} payments
+          </p>
+          <div className="h-[280px] min-h-[280px] w-full">
+            {paymentMethodData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm italic text-gray-400">No payments in this range.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={paymentMethodData} dataKey="value" nameKey="name" innerRadius={58} outerRadius={92} paddingAngle={3}>
+                    {paymentMethodData.map((entry, index) => (
+                      <Cell key={entry.name} fill={paymentMethodColors[index % paymentMethodColors.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number | undefined, name?: string) => [formatCurrency(value ?? 0, currency), name || 'Payment']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-800">Recent Payment Collections</h3>
+          <p className="mb-4 mt-1 text-xs text-gray-500">Latest collections within the selected range</p>
+          {recentPayments.length === 0 ? (
+            <p className="text-sm italic text-gray-400">No payments in this range.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-gray-100 text-xs uppercase text-gray-400">
+                  <tr>
+                    <th className="py-2 pr-4 text-left">Date</th>
+                    <th className="py-2 pr-4 text-left">Patient</th>
+                    <th className="py-2 pr-4 text-left">Payment Type</th>
+                    <th className="py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {recentPayments.map((payment) => (
+                    <tr key={payment.id}>
+                      <td className="whitespace-nowrap py-2 pr-4 text-gray-500">{payment.date}</td>
+                      <td className="py-2 pr-4 font-medium text-gray-900">{payment.patient_name || 'Unknown'}</td>
+                      <td className="py-2 pr-4 font-semibold text-gray-700">{formatPaymentMethod(payment.paymentMethod)}</td>
+                      <td className="py-2 text-right font-bold text-violet-700">{formatCurrency(payment.amount, currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

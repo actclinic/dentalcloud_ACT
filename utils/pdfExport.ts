@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Patient, Appointment, ClinicalRecord, Doctor, Medicine, Expense } from '../types';
+import { Patient, Appointment, ClinicalRecord, Doctor, Medicine, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from './currency';
 import { formatTeethWithPosition } from './toothNumbering';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
@@ -197,12 +197,13 @@ export const exportAppointmentsToPDF = (appointments: Appointment[]) => {
 
 interface ClinicalRecordsExportOptions extends AuditLogFilterOptions {
   appointments?: Appointment[];
+  payments?: PaymentRecord[];
   includeAppointments?: boolean;
 }
 
 export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: Currency, options: ClinicalRecordsExportOptions = {}) => {
   const exportRows = filterAuditLogRowsForExport(
-    buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false),
+    buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false, options.payments || []),
     options
   );
   const tableRows = buildAuditLogExportTableRows(exportRows, currency);
@@ -227,7 +228,7 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
   // Table
   autoTable(doc, {
     startY: options.dateFrom && options.dateTo ? 52 : 46,
-    head: [['Type', 'Date / Time', 'Patient', 'Clinician', 'Clinical Activity', 'Recorded By', 'Patient Balance', 'Amount', 'Doctor Earned']],
+    head: [['Type', 'Date / Time', 'Patient', 'Clinician', 'Clinical Activity', 'Recorded By', 'Patient Balance', 'Amount', 'Payment Type', 'Doctor Earned']],
     body: tableRows.map((row) => [
       row.type,
       row.dateTime,
@@ -237,6 +238,7 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
       row.recordedBy,
       row.patientBalance,
       row.amount === null ? '-' : formatCurrency(row.amount, currency),
+      row.paymentMethod,
       row.doctorEarned === null ? '-' : formatCurrency(row.doctorEarned, currency)
     ]),
     theme: 'grid',

@@ -1,7 +1,8 @@
 import React from 'react';
 import { X, Printer } from 'lucide-react';
-import { Patient, ClinicalRecord, MedicineSale, ReceiptSize, TreatmentType } from '../types';
+import { Patient, ClinicalRecord, MedicineSale, PaymentMethod, ReceiptSize, TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
+import { formatPaymentMethod } from '../utils/paymentMethods';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 
 interface ReceiptProps {
@@ -9,6 +10,8 @@ interface ReceiptProps {
   treatments: ClinicalRecord[];
   medicines?: MedicineSale[];
   paymentAmount?: number;
+  paymentMethod?: PaymentMethod;
+  receiptNumber?: string;
   treatmentTypes?: TreatmentType[];
   currency: Currency;
   appName?: string;
@@ -22,6 +25,8 @@ const Receipt: React.FC<ReceiptProps> = ({
   treatments,
   medicines = [],
   paymentAmount,
+  paymentMethod,
+  receiptNumber: persistedReceiptNumber,
   treatmentTypes = [],
   currency,
   appName = 'DentalCloud Pro',
@@ -31,7 +36,7 @@ const Receipt: React.FC<ReceiptProps> = ({
 }) => {
   const receiptEmail = receiptInfo?.email || 'info@dentflowpro.com';
   const receiptPhone = receiptInfo?.phone || '(555) 123-4567';
-  const receiptNumber = `REC-${Date.now().toString().slice(-8)}`;
+  const receiptNumber = persistedReceiptNumber || `REC-${Date.now().toString().slice(-8)}`;
   const today = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'long', 
@@ -383,6 +388,10 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <span className="font-semibold text-gray-900">{today}</span>
               </div>
               <div className="flex justify-between text-sm mt-1">
+                <span className="text-gray-600">Payment Type:</span>
+                <span className="font-semibold text-gray-900">{formatPaymentMethod(paymentMethod)}</span>
+              </div>
+              <div className="flex justify-between text-sm mt-1">
                 <span className="text-gray-600">Payment Status:</span>
                 <span className="font-semibold text-green-600">Paid</span>
               </div>
@@ -502,6 +511,7 @@ const Receipt: React.FC<ReceiptProps> = ({
               <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
               {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
               {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
+              {thermalLine('Payment Type:', formatPaymentMethod(paymentMethod))}
               {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
             </div>
           )}
@@ -620,6 +630,10 @@ const Receipt: React.FC<ReceiptProps> = ({
               <span className="font-semibold text-gray-900">{today}</span>
             </div>
             <div className="flex justify-between text-sm mt-1">
+              <span className="text-gray-600">Payment Type:</span>
+              <span className="font-semibold text-gray-900">{formatPaymentMethod(paymentMethod)}</span>
+            </div>
+            <div className="flex justify-between text-sm mt-1">
               <span className="text-gray-600">Payment Status:</span>
               <span className="font-semibold text-green-600">Paid</span>
             </div>
@@ -717,6 +731,7 @@ const Receipt: React.FC<ReceiptProps> = ({
             <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
             {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
             {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
+            {thermalLine('Payment Type:', formatPaymentMethod(paymentMethod))}
             {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
           </div>
         )}

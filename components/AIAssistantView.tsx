@@ -10,6 +10,7 @@ import { DEFAULT_PATIENT_TYPE_NAME } from '../constants';
 import { formatTeethArray, formatTeethWithPosition, parseTeethInput } from '../utils/toothNumbering';
 import { buildAppointmentClinicalFocusNotes } from '../utils/appointmentClinicalFocus';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, resolveFinancialReportAnchorDate, AIReportPayload } from '../utils/aiReport';
+import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod } from '../utils/paymentMethods';
 import {
   ExpectedAppointmentState,
   renderVerificationResult,
@@ -2470,7 +2471,7 @@ TREATMENT RECORDS:
 - treatment_type_delete(id): Delete treatment type.
 
 FINANCIAL OPERATIONS:
-- fin_pay(pid, amt): Process payment. pid=patient id (or use "name"), amt=amount.
+- fin_pay(pid, amt, method): Process payment. method must be KPay, WavePay, Cash, MMQR, Debit Card, Credit Card, AYA Pay, or UAB Pay.
 - fin_report(period): Get financial report. period='daily'|'weekly'|'monthly'.
 - financial_analysis(start_date, end_date): Detailed financial insights.
 - patient_followup(patient_name, days, reason): Schedule follow-up appointment.
@@ -2528,7 +2529,7 @@ Response:
 2. I will process his payment of 150.
 3. I will schedule his follow-up appointment.
 { "action": "tr_create", "params": { "name": "John Doe", "teeth": [18], "desc": "Filling", "cost": 150 } }
-{ "action": "fin_pay", "params": { "name": "John Doe", "amt": 150 } }
+{ "action": "fin_pay", "params": { "name": "John Doe", "amt": 150, "method": "Cash" } }
 { "action": "patient_followup", "params": { "patient_name": "John Doe", "days": 180, "reason": "Follow-up" } }
 
 To perform an action, include a JSON block at the END of your message. 
@@ -2550,7 +2551,7 @@ Examples:
 { "action": "dr_schedule_add", "params": { "dr_id": "doctor123", "day": 1, "start": "09:00", "end": "17:00" } }
 { "action": "apt_c", "params": { "name": "Sarah Johnson", "dr_id": "doctor456", "dt": "2026-06-15", "t": "10:00", "ty": "Checkup", "clinical_focus": "Routine checkup", "target_teeth": [], "n": "Routine checkup" } }
 { "action": "tr_create", "params": { "name": "John Doe", "teeth": [18, 19], "desc": "Composite filling", "cost": 150 } }
-{ "action": "fin_pay", "params": { "name": "Sarah Johnson", "amt": 175 } }
+{ "action": "fin_pay", "params": { "name": "Sarah Johnson", "amt": 175, "method": "KPay" } }
 { "action": "pat_hist", "params": { "name": "John Smith" } }
 { "action": "p_u", "params": { "name": "John Doe", "data": { "phone": "0912345678", "medicalHistory": "Allergic to Penicillin" } } }
 { "action": "mgr_email_send", "params": { "to": "manager", "subject": "Daily update", "body": "Today we completed 18 treatments and scheduled 6 recalls." } }
@@ -4962,9 +4963,20 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 }
                 if (!patientId) throw new Error("Patient ID or Name is required for payment processing.");
 
-                result = await api.finance.processPayment(patientId, params.amt);
+                const paymentMethod = normalizePaymentMethod(params.method || params.payment_type || params.type);
+                if (!isSelectablePaymentMethod(paymentMethod)) {
+                  throw new Error('Payment type is required: KPay, WavePay, Cash, MMQR, Debit Card, Credit Card, AYA Pay, or UAB Pay.');
+                }
+                result = await api.finance.processPayment({
+                  patientId,
+                  amount: params.amt,
+                  paymentMethod,
+                  paymentDate: new Date().toISOString().slice(0, 10),
+                  createdByUserId: currentAdminId || null,
+                  createdByUserName: 'AI Assistant'
+                });
                 const pName = getScopedPatientById(patientId)?.name || patientId;
-                currentActionResult = `✅ Payment of ${params.amt} MMK processed for ${pName}. New balance: ${result.new_balance} MMK.`;
+                currentActionResult = `✅ ${formatPaymentMethod(paymentMethod)} payment of ${params.amt} MMK processed for ${pName}. New balance: ${result.new_balance} MMK.`;
               } catch (err: any) {
                 console.error('Payment processing error:', err);
                 currentActionResult = `❌ Failed to process payment: ${err.message}`;

@@ -83,6 +83,7 @@ export interface PaymentRecord {
   id: string;
   location_id?: string;
   patientId: string;
+  patient_name?: string;
   amount: number;
   originalAmount?: number;
   clearedAmount?: number;
@@ -90,7 +91,23 @@ export interface PaymentRecord {
   date: string;
   type: 'FULL' | 'PARTIAL';
   remainingBalance: number;
+  paymentMethod?: PaymentMethod;
+  receiptNumber?: string;
+  createdAt?: string;
+  createdByUserId?: string | null;
+  createdByUserName?: string | null;
 }
+
+export type PaymentMethod =
+  | 'KPAY'
+  | 'WAVEPAY'
+  | 'CASH'
+  | 'MMQR'
+  | 'DEBIT_CARD'
+  | 'CREDIT_CARD'
+  | 'AYA_PAY'
+  | 'UAB_PAY'
+  | 'UNKNOWN';
 
 export interface DoctorSchedule {
   id: string;

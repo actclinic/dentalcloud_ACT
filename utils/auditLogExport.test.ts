@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Appointment, ClinicalRecord } from '../types';
+import type { Appointment, ClinicalRecord, PaymentRecord } from '../types';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, formatAuditPatientBalance } from './auditLogExport';
 
 describe('audit log export rows', () => {
@@ -70,6 +70,23 @@ describe('audit log export rows', () => {
       status: 'Completed',
       created_at: '2026-05-28T02:00:00Z',
       created_by_user_name: 'Reception Two'
+    }
+  ];
+
+  const payments: PaymentRecord[] = [
+    {
+      id: 'pay-1',
+      location_id: 'loc-1',
+      patientId: 'pat-1',
+      patient_name: 'Aung Min',
+      amount: 10000,
+      date: '2026-05-30',
+      type: 'PARTIAL',
+      remainingBalance: 5000,
+      paymentMethod: 'KPAY',
+      receiptNumber: 'REC-20260530-000001',
+      createdAt: '2026-05-30T10:00:00Z',
+      createdByUserName: 'Reception One'
     }
   ];
 
@@ -147,6 +164,28 @@ describe('audit log export rows', () => {
     expect(formatAuditPatientBalance(undefined, 'USD')).toBe('-');
     expect(formatAuditPatientBalance(0, 'USD')).toBe('Clear');
     expect(formatAuditPatientBalance(12.5, 'USD')).toBe('12.50$');
+  });
+
+  it('includes payment type, receipt, collector, and remaining balance in payment audit rows', () => {
+    const rows = buildAuditLogRows(records, appointments, true, payments);
+    const paymentRows = filterAuditLogRowsForExport(rows, {
+      auditFilter: 'payments',
+      dateFrom: '2026-05-30',
+      dateTo: '2026-05-30',
+      searchTerm: 'KPay'
+    });
+
+    expect(paymentRows).toHaveLength(1);
+    const [tableRow] = buildAuditLogExportTableRows(paymentRows, 'MMK');
+    expect(tableRow).toMatchObject({
+      type: 'Payment',
+      patient: 'Aung Min',
+      recordedBy: 'Reception One',
+      patientBalance: '5,000Ks',
+      amount: 10000,
+      paymentMethod: 'KPay'
+    });
+    expect(tableRow.activity).toContain('REC-20260530-000001');
   });
 
   it('searches primary teeth using the staff-facing labels', () => {

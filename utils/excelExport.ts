@@ -1,4 +1,4 @@
-import { Appointment, ClinicalRecord, Doctor, Expense, Medicine, Patient } from '../types';
+import { Appointment, ClinicalRecord, Doctor, Expense, Medicine, Patient, PaymentRecord } from '../types';
 import { Currency } from './currency';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 import { formatAppointmentNotesForDisplay } from './appointmentClinicalFocus';
@@ -191,6 +191,7 @@ export const exportAppointmentsToExcel = async (appointments: Appointment[]) => 
 
 interface ClinicalRecordsExcelExportOptions extends AuditLogFilterOptions {
   appointments?: Appointment[];
+  payments?: PaymentRecord[];
   includeAppointments?: boolean;
 }
 
@@ -204,10 +205,11 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     { header: 'Recorded By', width: 28 },
     { header: 'Patient Balance', width: 16 },
     { header: 'Amount', width: 14, format: 'currency' },
+    { header: 'Payment Type', width: 16 },
     { header: 'Doctor Earned', width: 14, format: 'currency' }
   ];
   const exportRows = filterAuditLogRowsForExport(
-    buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false),
+    buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false, options.payments || []),
     options
   );
   const rows = buildAuditLogExportTableRows(exportRows, currency).map((row) => ({
@@ -219,6 +221,7 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     'Recorded By': row.recordedBy,
     'Patient Balance': row.patientBalance,
     Amount: row.amount ?? 0,
+    'Payment Type': row.paymentMethod,
     'Doctor Earned': row.doctorEarned ?? 0
   }));
 

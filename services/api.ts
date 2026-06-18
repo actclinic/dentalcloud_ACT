@@ -1,12 +1,13 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission } from '../types';
+import { Patient, Appointment, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
 import { buildSupabasePublicUrl, deleteSupabaseStorageFile, isSupabaseStorageReady, listSupabaseStorageFiles, normalizeSupabaseStorageUrl, uploadSupabaseStorageFile } from '../utils/supabaseStorage';
 import { findInvalidTeeth } from '../utils/toothNumbering';
+import { normalizePaymentMethod } from '../utils/paymentMethods';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -15,6 +16,36 @@ let storageConfigVersion = 0;
 
 const isMissingColumnError = (error: any, columnName: string): boolean => {
   return typeof error?.message === 'string' && error.message.toLowerCase().includes(columnName.toLowerCase());
+};
+
+const isMissingRelationError = (error: any, relationName: string): boolean => {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  const normalizedRelation = relationName.toLowerCase();
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    (message.includes(normalizedRelation) && (
+      message.includes('does not exist') ||
+      message.includes('schema cache') ||
+      message.includes('could not find the table')
+    ))
+  );
+};
+
+const isMissingFunctionError = (error: any, functionName: string): boolean => {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  const normalizedFunction = functionName.toLowerCase();
+  return (
+    code === '42883' ||
+    code === 'PGRST202' ||
+    (message.includes(normalizedFunction) && (
+      message.includes('does not exist') ||
+      message.includes('schema cache') ||
+      message.includes('could not find the function')
+    ))
+  );
 };
 
 const detectUsersAllowedTabsSupport = async (): Promise<boolean> => {
@@ -2487,33 +2518,104 @@ export const api = {
   },
 
   finance: {
-    processPayment: async (patientId: string, amount: number) => {
-      // Fetch current balance
-      const { data: patient, error: fetchError } = await supabase
-        .from('patients')
-        .select('balance')
-        .eq('id', patientId)
-        .single();
+    getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
+      let query = supabase
+        .from('payments')
+        .select('*, patients(name)')
+        .order('created_at', { ascending: false });
 
-      if (fetchError) throw new Error(fetchError.message);
+      if (locationId) query = query.eq('location_id', locationId);
 
-      const normalizedAmount = Math.max(0, Number(amount || 0));
+      const { data, error } = await query;
+      if (error) {
+        if (isMissingRelationError(error, 'payments')) {
+          console.warn('Payment storage is not installed yet. Payment history will remain unavailable until the migration is applied.');
+          return [];
+        }
+        throw new Error(error.message);
+      }
 
-      const currentBal = patient?.balance || 0;
-      const newBal = Math.max(0, currentBal - normalizedAmount);
+      return (data || []).map((row: any): PaymentRecord => ({
+        id: row.id,
+        location_id: row.location_id,
+        patientId: row.patient_id,
+        patient_name: row.patients?.name,
+        amount: Number(row.amount || 0),
+        originalAmount: Number(row.original_amount ?? row.amount ?? 0),
+        clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
+        treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
+        date: row.payment_date || row.created_at?.slice(0, 10) || '',
+        type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
+        remainingBalance: Number(row.remaining_balance || 0),
+        paymentMethod: normalizePaymentMethod(row.payment_method),
+        receiptNumber: row.receipt_number,
+        createdAt: row.created_at,
+        createdByUserId: row.created_by_user_id,
+        createdByUserName: row.created_by_user_name
+      }));
+    },
+    processPayment: async (input: {
+      patientId: string;
+      amount: number;
+      paymentMethod: PaymentMethod;
+      treatmentIds?: string[];
+      paymentDate?: string;
+      createdByUserId?: string | null;
+      createdByUserName?: string | null;
+    }) => {
+      const normalizedAmount = Number(input.amount || 0);
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+        throw new Error('Payment amount must be greater than 0.');
+      }
+      if (normalizePaymentMethod(input.paymentMethod) === 'UNKNOWN') {
+        throw new Error('Select a valid payment method.');
+      }
 
-      const { error: updateError } = await supabase
-        .from('patients')
-        .update({ balance: newBal })
-        .eq('id', patientId);
+      const { data, error } = await supabase.rpc('process_patient_payment', {
+        p_patient_id: input.patientId,
+        p_amount: normalizedAmount,
+        p_payment_method: input.paymentMethod,
+        p_treatment_ids: input.treatmentIds || [],
+        p_payment_date: input.paymentDate || new Date().toISOString().slice(0, 10),
+        p_created_by_user_id: input.createdByUserId || null,
+        p_created_by_user_name: input.createdByUserName || null
+      });
 
-      if (updateError) throw new Error(updateError.message);
-      
+      if (error) {
+        if (isMissingFunctionError(error, 'process_patient_payment')) {
+          throw new Error('Payment storage is not installed. Run database/payment_methods_migration.sql in Supabase.');
+        }
+        throw new Error(error.message);
+      }
+
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) throw new Error('Payment was not recorded.');
+
+      const payment: PaymentRecord = {
+        id: row.id,
+        location_id: row.location_id,
+        patientId: row.patient_id,
+        patient_name: row.patient_name,
+        amount: Number(row.amount || 0),
+        originalAmount: Number(row.original_amount ?? row.amount ?? 0),
+        clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
+        treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
+        date: row.payment_date || row.created_at?.slice(0, 10) || '',
+        type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
+        remainingBalance: Number(row.remaining_balance || 0),
+        paymentMethod: normalizePaymentMethod(row.payment_method),
+        receiptNumber: row.receipt_number,
+        createdAt: row.created_at,
+        createdByUserId: row.created_by_user_id,
+        createdByUserName: row.created_by_user_name
+      };
+
       return {
-        status: "success",
-        new_balance: newBal,
-        amount_collected: normalizedAmount,
-        cleared_amount: normalizedAmount
+        status: 'success',
+        new_balance: payment.remainingBalance,
+        amount_collected: payment.amount,
+        cleared_amount: payment.clearedAmount ?? payment.amount,
+        payment
       };
     }
   },

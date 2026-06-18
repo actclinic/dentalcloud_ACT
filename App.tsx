@@ -34,6 +34,7 @@ import {
   TreatmentType, 
   ClinicalRecord,
   PaymentRecord,
+  PaymentMethod,
   PatientFile,
   Doctor,
   DoctorInput,
@@ -75,6 +76,7 @@ import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
 import { formatTeethArray, parseTeethInput } from './utils/toothNumbering';
+import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS } from './utils/paymentMethods';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -110,6 +112,7 @@ type PaymentDraft = {
   amountTendered: number;
   previousBalance: number;
   currentTreatmentTotal: number;
+  paymentMethod: PaymentMethod;
 };
 
 type HoverTheme = 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
@@ -211,15 +214,26 @@ const readPaymentRecords = (): PaymentRecord[] => {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item: any) => item && typeof item.amount === 'number' && typeof item.date === 'string');
+    return parsed
+      .filter((item: any) => item && typeof item.amount === 'number' && typeof item.date === 'string')
+      .map((item: any) => ({
+        ...item,
+        paymentMethod: normalizePaymentMethod(item.paymentMethod || item.payment_method)
+      }));
   } catch (error) {
     console.warn('Failed to parse local payment records:', error);
     return [];
   }
 };
 
-const writePaymentRecords = (records: PaymentRecord[]) => {
-  localStorage.setItem(PAYMENT_RECORDS_STORAGE_KEY, JSON.stringify(records));
+const mergeLegacyPaymentRecords = (records: PaymentRecord[], locationId?: string): PaymentRecord[] => {
+  const knownIds = new Set(records.map((record) => record.id));
+  const legacyRecords = readPaymentRecords().filter(
+    (record) => !knownIds.has(record.id) && (!locationId || record.location_id === locationId)
+  );
+  return [...records, ...legacyRecords].sort((a, b) =>
+    (b.createdAt || b.date).localeCompare(a.createdAt || a.date)
+  );
 };
 
 const getActiveBranchStorageKey = (userId?: string | null): string => {
@@ -338,6 +352,7 @@ const App: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [treatmentHistory, setTreatmentHistory] = useState<ClinicalRecord[]>([]); 
   const [globalRecords, setGlobalRecords] = useState<ClinicalRecord[]>([]); 
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
   const [dashboardPatients, setDashboardPatients] = useState<Patient[]>([]);
   const [dashboardAppointments, setDashboardAppointments] = useState<Appointment[]>([]);
   const [dashboardRecords, setDashboardRecords] = useState<ClinicalRecord[]>([]);
@@ -403,6 +418,7 @@ const App: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; show: boolean }>({ message: '', type: 'success', show: false });
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
+  const [lastPaymentRecord, setLastPaymentRecord] = useState<PaymentRecord | null>(null);
   const [selectedTreatmentsForReceipt, setSelectedTreatmentsForReceipt] = useState<ClinicalRecord[]>([]);
   const [selectedMedicineSalesForReceipt, setSelectedMedicineSalesForReceipt] = useState<MedicineSale[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'MMK'>(() => {
@@ -545,7 +561,8 @@ const App: React.FC = () => {
     treatments: [],
     amountTendered: 0,
     previousBalance: 0,
-    currentTreatmentTotal: 0
+    currentTreatmentTotal: 0,
+    paymentMethod: 'UNKNOWN'
   });
   const [latestTreatmentBatch, setLatestTreatmentBatch] = useState<ClinicalRecord[]>([]);
   const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({
@@ -1026,6 +1043,7 @@ const App: React.FC = () => {
     setDoctors([]);
     setTreatmentHistory([]);
     setGlobalRecords([]);
+    setPaymentRecords([]);
     setTreatmentTypes([]);
     setPatientFiles([]);
     setUsers([]);
@@ -1105,17 +1123,13 @@ const App: React.FC = () => {
     const hasMatchingLocation = availableLocations.some(loc => loc.id === requestedScope);
     const sanitizedScope = restrictedLocationId || (hasMatchingLocation ? requestedScope : (availableLocations[0]?.id || requestedScope));
     const queryLocationId = sanitizedScope || undefined;
-    const storedPayments = readPaymentRecords();
-    const scopedPayments = queryLocationId
-      ? storedPayments.filter((record) => record.location_id === queryLocationId)
-      : storedPayments;
-
     // Use preloaded data when available; fetch missing dashboard datasets in parallel.
-    const [patData, aptData, recordsData, expenseData] = await Promise.all([
+    const [patData, aptData, recordsData, expenseData, scopedPayments] = await Promise.all([
       preloaded?.patients ? Promise.resolve(preloaded.patients) : api.patients.getAll(queryLocationId),
       preloaded?.appointments ? Promise.resolve(preloaded.appointments) : api.appointments.getAll(queryLocationId),
       preloaded?.records ? Promise.resolve(preloaded.records) : api.treatments.getAllRecords(queryLocationId),
-      preloaded?.expenses ? Promise.resolve(preloaded.expenses) : api.expenses.getAll(queryLocationId)
+      preloaded?.expenses ? Promise.resolve(preloaded.expenses) : api.expenses.getAll(queryLocationId),
+      api.finance.getPayments(queryLocationId)
     ]);
 
     if (requestId !== dashboardFetchRequestRef.current) {
@@ -1126,7 +1140,7 @@ const App: React.FC = () => {
     setDashboardAppointments(aptData);
     setDashboardRecords(recordsData);
     setDashboardExpenses(expenseData);
-    setDashboardPayments(scopedPayments);
+    setDashboardPayments(mergeLegacyPaymentRecords(scopedPayments, queryLocationId));
     setDashboardLocationId(sanitizedScope);
     localStorage.setItem('dashboardLocationId', sanitizedScope);
   };
@@ -1137,7 +1151,7 @@ const App: React.FC = () => {
     const queryLocationId = restrictedLocationId || currentLocationId || undefined;
     const assistantLocationId = queryLocationId;
 
-    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, recallData, salesData] = await Promise.all([
+    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, recallData, salesData, paymentData] = await Promise.all([
       api.patients.getAll(assistantLocationId),
       api.appointments.getAll(assistantLocationId),
       api.doctors.getAll(assistantLocationId),
@@ -1146,9 +1160,9 @@ const App: React.FC = () => {
       api.medicines.getAll(assistantLocationId),
       api.expenses.getAll(assistantLocationId),
       api.recalls.getAll(assistantLocationId),
-      api.medicines.getSales(assistantLocationId)
+      api.medicines.getSales(assistantLocationId),
+      api.finance.getPayments(assistantLocationId)
     ]);
-    const paymentData = readPaymentRecords().filter((record) => !assistantLocationId || record.location_id === assistantLocationId);
 
     setAssistantPatients(patData);
     setAssistantAppointments(aptData);
@@ -1158,7 +1172,7 @@ const App: React.FC = () => {
     setAssistantMedicines(medData);
     setAssistantExpenses(expenseData);
     setAssistantMedicineSales(salesData);
-    setAssistantPaymentRecords(paymentData);
+    setAssistantPaymentRecords(mergeLegacyPaymentRecords(paymentData, assistantLocationId));
     setAssistantRecalls(recallData);
   };
 
@@ -1231,13 +1245,14 @@ const App: React.FC = () => {
       // Only fetch data if we have a valid location
       if (locId) {
         // � Critical data: what the main views need immediately �
-        const [patData, aptData, docData, typeData, recordsData, medData] = await Promise.all([
+        const [patData, aptData, docData, typeData, recordsData, medData, paymentsData] = await Promise.all([
           api.patients.getAll(locId),
           api.appointments.getAll(locId),
           api.doctors.getAll(locId),
           api.treatments.getTypes(locId),
           api.treatments.getAllRecords(locId),
           api.medicines.getAll(locId),
+          api.finance.getPayments(locId)
         ]);
         if (requestId !== initialDataFetchRequestRef.current) return;
 
@@ -1265,6 +1280,7 @@ const App: React.FC = () => {
         setDoctors(scopedDoctors);
         setTreatmentTypes(typeData);
         setGlobalRecords(doctorRecords);
+        setPaymentRecords(isDoctorSession ? [] : mergeLegacyPaymentRecords(paymentsData, locId));
         setMedicines(medData);
         setLoyaltyRules([]);
         setExpenses([]);
@@ -1375,19 +1391,27 @@ const App: React.FC = () => {
 
   const buildDailyReportEmailBody = async (task: ScheduledTask) => {
     const locationId = task.location_id || currentLocationId || undefined;
-    const scopedPayments = readPaymentRecords().filter((record) => !locationId || record.location_id === locationId);
-    const [reportTreatments, reportExpenses, reportMedicines, reportMedicineSales] = await Promise.all([
+    const [reportTreatments, reportExpenses, reportMedicines, reportMedicineSales, scopedPayments] = await Promise.all([
       api.treatments.getAllRecords(locationId),
       api.expenses.getAll(locationId),
       api.medicines.getAll(locationId),
-      api.medicines.getSales(locationId)
+      api.medicines.getSales(locationId),
+      api.finance.getPayments(locationId)
     ]);
 
     const taskCurrency = (task.payload?.currency === 'MMK' || task.payload?.currency === 'USD')
       ? task.payload.currency
       : currency;
 
-    const report = buildFinancialReport(reportTreatments, reportExpenses, reportMedicines, taskCurrency, undefined, reportMedicineSales, scopedPayments);
+    const report = buildFinancialReport(
+      reportTreatments,
+      reportExpenses,
+      reportMedicines,
+      taskCurrency,
+      undefined,
+      reportMedicineSales,
+      mergeLegacyPaymentRecords(scopedPayments, locationId)
+    );
     const reportMarkdown = renderFinancialReportMarkdown(report, taskCurrency);
     const clinicLabel = locations.find(loc => loc.id === locationId)?.name || 'Dental Clinic';
 
@@ -1549,12 +1573,17 @@ const App: React.FC = () => {
   const fetchGlobalRecords = async () => {
     setLoading(true);
     try {
-      const records = await api.treatments.getAllRecords(currentLocationId || undefined);
+      const [records, payments] = await Promise.all([
+        api.treatments.getAllRecords(currentLocationId || undefined),
+        api.finance.getPayments(currentLocationId || undefined)
+      ]);
       const session = auth.getSession();
       if (session?.role === 'doctor' && session.doctor_id) {
         setGlobalRecords(records.filter((record) => record.doctor_id === session.doctor_id));
+        setPaymentRecords([]);
       } else {
         setGlobalRecords(records);
+        setPaymentRecords(mergeLegacyPaymentRecords(payments, currentLocationId || undefined));
       }
     } catch (err: any) {
       console.error(err);
@@ -1662,7 +1691,8 @@ const App: React.FC = () => {
       treatments,
       amountTendered: Math.max(0, Number(selectedPatient?.balance || 0)),
       previousBalance,
-      currentTreatmentTotal
+      currentTreatmentTotal,
+      paymentMethod: 'UNKNOWN'
     });
     setShowPaymentModal(true);
   };
@@ -2599,35 +2629,41 @@ const App: React.FC = () => {
       alert('Amount tendered must be greater than 0.');
       return;
     }
+    if (!isSelectablePaymentMethod(paymentDraft.paymentMethod)) {
+      alert('Please select a payment type.');
+      return;
+    }
     try {
-      const res = await api.finance.processPayment(selectedPatient.id, paymentAmountTendered);
-      const paymentRecord: PaymentRecord = {
-        id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        location_id: selectedPatient.location_id,
+      const session = auth.getSession();
+      const res = await api.finance.processPayment({
         patientId: selectedPatient.id,
         amount: paymentAmountTendered,
-        originalAmount: paymentAmountTendered,
-        clearedAmount: paymentClearedAmount,
+        paymentMethod: paymentDraft.paymentMethod,
         treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
-        date: toLocalISODate(new Date()),
-        type: paymentClearedAmount >= (selectedPatient.balance || 0) ? 'FULL' : 'PARTIAL',
-        remainingBalance: res.new_balance
+        paymentDate: toLocalISODate(new Date()),
+        createdByUserId: session?.userId || null,
+        createdByUserName: currentUser || session?.username || null
+      });
+      const paymentRecord: PaymentRecord = {
+        ...res.payment,
+        patient_name: res.payment.patient_name || selectedPatient.name
       };
-      const allPaymentRecords = [paymentRecord, ...readPaymentRecords()];
-      writePaymentRecords(allPaymentRecords);
       const shouldIncludeInCurrentScope =
         dashboardLocationId === ALL_BRANCHES_VALUE || dashboardLocationId === selectedPatient.location_id;
       if (shouldIncludeInCurrentScope) {
         setDashboardPayments((prev) => [paymentRecord, ...prev]);
       }
+      setPaymentRecords((prev) => [paymentRecord, ...prev]);
+      setAssistantPaymentRecords((prev) => [paymentRecord, ...prev]);
 
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
       setLatestTreatmentBatch([]);
       setLastPaymentAmount(paymentAmountTendered);
+      setLastPaymentRecord(paymentRecord);
       setSelectedTreatmentsForReceipt(selectedPaymentTreatments);
       setSelectedMedicineSalesForReceipt([]);
       setShowPaymentModal(false);
-      setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0 });
+      setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, paymentMethod: 'UNKNOWN' });
       // Ask whether to generate a receipt after posting payment.
       setShowReceiptPrompt(true);
       fetchInitialData(); 
@@ -2647,10 +2683,12 @@ const App: React.FC = () => {
     setSelectedTreatmentsForReceipt([]);
     setSelectedMedicineSalesForReceipt([]);
     setLastPaymentAmount(0);
+    setLastPaymentRecord(null);
   };
 
   const handleGenerateReceipt = () => {
     setLastPaymentAmount(0);
+    setLastPaymentRecord(null);
     setSelectedTreatmentsForReceipt([]);
     setSelectedMedicineSalesForReceipt([]);
     setShowTreatmentSelection(true);
@@ -3213,7 +3251,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
@@ -4438,7 +4476,7 @@ const App: React.FC = () => {
           maxWidthClassName="max-w-4xl"
           onClose={() => {
             setShowPaymentModal(false);
-            setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0 });
+            setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, paymentMethod: 'UNKNOWN' });
           }}
         >
           <form onSubmit={handlePaymentSubmit} className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
@@ -4516,6 +4554,30 @@ const App: React.FC = () => {
                 />
               </label>
 
+              <fieldset>
+                <legend className="mb-2 block text-sm font-bold text-slate-700">Payment type</legend>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {PAYMENT_METHOD_OPTIONS.map((method) => {
+                    const isSelected = paymentDraft.paymentMethod === method.value;
+                    return (
+                      <button
+                        key={method.value}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => setPaymentDraft((prev) => ({ ...prev, paymentMethod: method.value }))}
+                        className={`min-h-12 rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-100'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        {method.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
               <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -4525,6 +4587,9 @@ const App: React.FC = () => {
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-emerald-700">
+                    {isSelectablePaymentMethod(paymentDraft.paymentMethod)
+                      ? `${formatPaymentMethod(paymentDraft.paymentMethod)} · `
+                      : 'Select a payment type · '}
                     Balance reduces by {formatCurrency(paymentClearedAmount, currency)}
                   </p>
                 </div>
@@ -4532,7 +4597,7 @@ const App: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={paymentAmountTendered <= 0 || paymentClearedAmount <= 0}
+                disabled={paymentAmountTendered <= 0 || paymentClearedAmount <= 0 || !isSelectablePaymentMethod(paymentDraft.paymentMethod)}
                 className="w-full rounded-2xl py-5 text-lg font-black shadow-lg transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
                   backgroundColor: paymentThemeColors.primary,
@@ -4565,6 +4630,8 @@ const App: React.FC = () => {
             treatments={selectedTreatmentsForReceipt.length > 0 ? selectedTreatmentsForReceipt : treatmentHistory}
             medicines={selectedMedicineSalesForReceipt}
             paymentAmount={lastPaymentAmount}
+            paymentMethod={lastPaymentRecord?.paymentMethod}
+            receiptNumber={lastPaymentRecord?.receiptNumber}
             treatmentTypes={treatmentTypes}
             currency={currency}
             appName={appName}
@@ -4605,7 +4672,7 @@ const App: React.FC = () => {
 
               <h3 className="text-2xl font-black text-gray-900 mb-2">Payment Collected!</h3>
               <p className="text-sm text-emerald-700 font-semibold bg-emerald-50 rounded-full px-4 py-1.5 inline-block">
-                {formatCurrency(lastPaymentAmount, currency)} received
+                {formatCurrency(lastPaymentAmount, currency)} received via {formatPaymentMethod(lastPaymentRecord?.paymentMethod)}
               </p>
             </div>
 
