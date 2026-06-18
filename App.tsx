@@ -505,7 +505,15 @@ const App: React.FC = () => {
     });
     setClinicalFeeEnabled(enabled);
     setClinicalFeeAmount(normalizedAmount);
-    setApplyClinicalFeeOnRegistration(enabled);
+  };
+
+  const handleRegistrationClinicalFeePreferenceChange = async (apply: boolean) => {
+    setApplyClinicalFeeOnRegistration(apply);
+    try {
+      await api.appSettings.saveClinicalFeeRegistrationPreference(apply);
+    } catch (error) {
+      console.warn('Failed to persist patient registration clinical fee preference:', error);
+    }
   };
 
   const handleUploadAppLogo = async (file: File) => {
@@ -941,7 +949,7 @@ const App: React.FC = () => {
         if (!mounted) return;
         setClinicalFeeEnabled(settings.enabled);
         setClinicalFeeAmount(settings.amount);
-        setApplyClinicalFeeOnRegistration(settings.enabled);
+        setApplyClinicalFeeOnRegistration(settings.defaultApplyOnRegistration);
       })
       .catch((err) => {
         console.warn('Failed to load clinical fee settings:', err);
@@ -995,11 +1003,12 @@ const App: React.FC = () => {
 
     let mounted = true;
 
-    const refreshSharedAppearanceSettings = async () => {
+    const refreshSharedAppSettings = async () => {
       try {
-        const [theme, preferences] = await Promise.all([
+        const [theme, preferences, clinicalFeeSettings] = await Promise.all([
           api.appSettings.getHoverTheme(),
-          api.appSettings.getReceiptPreferences()
+          api.appSettings.getReceiptPreferences(),
+          api.appSettings.getClinicalFeeSettings()
         ]);
         if (mounted && theme) setHoverTheme(theme);
         if (mounted && preferences) {
@@ -1007,12 +1016,17 @@ const App: React.FC = () => {
           setCurrency(preferences.currency);
           setReceiptSize(preferences.receiptSize);
         }
+        if (mounted) {
+          setClinicalFeeEnabled(clinicalFeeSettings.enabled);
+          setClinicalFeeAmount(clinicalFeeSettings.amount);
+          setApplyClinicalFeeOnRegistration(clinicalFeeSettings.defaultApplyOnRegistration);
+        }
       } catch (error) {
-        console.warn('Failed to refresh shared appearance settings:', error);
+        console.warn('Failed to refresh shared app settings:', error);
       }
     };
 
-    refreshSharedAppearanceSettings();
+    refreshSharedAppSettings();
 
     const settingsChannel = supabase
       .channel(`app-settings-shared-preferences-${Date.now()}`)
@@ -1025,6 +1039,9 @@ const App: React.FC = () => {
             receipt_header_title?: unknown;
             currency_unit?: unknown;
             receipt_size?: unknown;
+            clinical_fee_enabled?: unknown;
+            clinical_fee_amount?: unknown;
+            clinical_fee_default_apply_on_registration?: unknown;
           } | null;
           const nextTheme = row?.hover_theme;
           if (isHoverTheme(nextTheme)) {
@@ -1039,11 +1056,21 @@ const App: React.FC = () => {
           if (row?.receipt_size === 'A4' || row?.receipt_size === 'THERMAL_55MM') {
             setReceiptSize(row.receipt_size);
           }
+          if (typeof row?.clinical_fee_enabled === 'boolean') {
+            setClinicalFeeEnabled(row.clinical_fee_enabled);
+          }
+          const nextClinicalFeeAmount = Number(row?.clinical_fee_amount);
+          if (Number.isFinite(nextClinicalFeeAmount)) {
+            setClinicalFeeAmount(Math.max(0, nextClinicalFeeAmount));
+          }
+          if (typeof row?.clinical_fee_default_apply_on_registration === 'boolean') {
+            setApplyClinicalFeeOnRegistration(row.clinical_fee_default_apply_on_registration);
+          }
         }
       )
       .subscribe();
 
-    const fallbackPoll = window.setInterval(refreshSharedAppearanceSettings, 10000);
+    const fallbackPoll = window.setInterval(refreshSharedAppSettings, 10000);
 
     return () => {
       mounted = false;
@@ -1684,7 +1711,6 @@ const App: React.FC = () => {
         patient_type: activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME,
         location_id: ''
       });
-      setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
       setConvertingLeadAppointment(null);
       const createdBranch = locations.find((loc) => loc.id === createdPatient.location_id);
       const viewingDifferentBranch = !!createdPatient.location_id && !!currentLocationId && createdPatient.location_id !== currentLocationId;
@@ -2770,7 +2796,6 @@ const App: React.FC = () => {
       patient_type: mapLeadSourceToPatientType(appointment.guest_source, activePatientTypeOptions),
       location_id: currentLocationId || ''
     });
-    setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
     setShowAppointmentModal(false);
     setEditingAppointment(null);
     setShowPatientModal(true);
@@ -3194,7 +3219,6 @@ const App: React.FC = () => {
                     patient_type: activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME,
                     location_id: currentLocationId || ''
                   });
-                  setApplyClinicalFeeOnRegistration(clinicalFeeEnabled);
                   setShowPatientModal(true);
                 }}
                 onExportPDF={async () => {
@@ -3585,7 +3609,7 @@ const App: React.FC = () => {
                     type="radio"
                     name="applyClinicalFee"
                     checked={applyClinicalFeeOnRegistration}
-                    onChange={() => setApplyClinicalFeeOnRegistration(true)}
+                    onChange={() => { void handleRegistrationClinicalFeePreferenceChange(true); }}
                     className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                   />
                   Apply
@@ -3595,7 +3619,7 @@ const App: React.FC = () => {
                     type="radio"
                     name="applyClinicalFee"
                     checked={!applyClinicalFeeOnRegistration}
-                    onChange={() => setApplyClinicalFeeOnRegistration(false)}
+                    onChange={() => { void handleRegistrationClinicalFeePreferenceChange(false); }}
                     className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                   />
                   Skip

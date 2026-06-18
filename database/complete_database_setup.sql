@@ -79,6 +79,7 @@ CREATE TABLE app_settings (
   storage_bucket TEXT,
   clinical_fee_enabled BOOLEAN DEFAULT FALSE,
   clinical_fee_amount DECIMAL(12,2) DEFAULT 0 CHECK (clinical_fee_amount >= 0),
+  clinical_fee_default_apply_on_registration BOOLEAN DEFAULT FALSE,
   
   -- Custom app name (defaults to "DentalCloud Pro")
   app_name VARCHAR(255) DEFAULT 'DentalCloud Pro',
@@ -490,6 +491,7 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_phone TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_header_title TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS currency_unit VARCHAR(3) NOT NULL DEFAULT 'USD';
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS receipt_size VARCHAR(20) NOT NULL DEFAULT 'A4';
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS clinical_fee_default_apply_on_registration BOOLEAN DEFAULT FALSE;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_delivery_enabled BOOLEAN DEFAULT FALSE;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_sender_name TEXT DEFAULT 'DentalCloud';
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS email_sender_email TEXT;
@@ -502,7 +504,8 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS hover_theme TEXT NOT NULL DEFA
 UPDATE app_settings
 SET
   currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
-  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END;
+  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END,
+  clinical_fee_default_apply_on_registration = COALESCE(clinical_fee_default_apply_on_registration, clinical_fee_enabled, FALSE);
 
 ALTER TABLE app_settings
   ALTER COLUMN currency_unit SET DEFAULT 'USD',
@@ -884,7 +887,8 @@ SET
     email_message_notifications_enabled = COALESCE(email_message_notifications_enabled, TRUE),
     email_settings_updated_at = COALESCE(email_settings_updated_at, NOW()),
     currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
-    receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END
+    receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END,
+    clinical_fee_default_apply_on_registration = COALESCE(clinical_fee_default_apply_on_registration, clinical_fee_enabled, FALSE)
 WHERE id = 1;
 
 -- Public PNG-only clinic logo bucket

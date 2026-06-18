@@ -2708,25 +2708,39 @@ export const api = {
     saveEmailSettings: async (settings: EmailSettings): Promise<EmailSettings> => {
       return saveEmailSettingsAsync(settings);
     },
-    getClinicalFeeSettings: async (): Promise<{ enabled: boolean; amount: number }> => {
+    getClinicalFeeSettings: async (): Promise<{ enabled: boolean; amount: number; defaultApplyOnRegistration: boolean }> => {
       try {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('app_settings')
-          .select('clinical_fee_enabled, clinical_fee_amount')
+          .select('clinical_fee_enabled, clinical_fee_amount, clinical_fee_default_apply_on_registration')
           .eq('id', APP_SETTINGS_SINGLETON_ID)
           .maybeSingle();
 
-        if (error || !data) {
-          return { enabled: false, amount: 0 };
+        if (error && isMissingColumnError(error, 'clinical_fee_default_apply_on_registration')) {
+          const fallbackResult = await supabase
+            .from('app_settings')
+            .select('clinical_fee_enabled, clinical_fee_amount')
+            .eq('id', APP_SETTINGS_SINGLETON_ID)
+            .maybeSingle();
+          data = fallbackResult.data;
+          error = fallbackResult.error;
         }
 
+        if (error || !data) {
+          return { enabled: false, amount: 0, defaultApplyOnRegistration: false };
+        }
+
+        const enabled = Boolean(data.clinical_fee_enabled);
         return {
-          enabled: Boolean(data.clinical_fee_enabled),
-          amount: Number(data.clinical_fee_amount || 0)
+          enabled,
+          amount: Number(data.clinical_fee_amount || 0),
+          defaultApplyOnRegistration: typeof data.clinical_fee_default_apply_on_registration === 'boolean'
+            ? data.clinical_fee_default_apply_on_registration
+            : enabled
         };
       } catch (error: any) {
         console.warn('Failed to load clinical fee settings:', error?.message || error);
-        return { enabled: false, amount: 0 };
+        return { enabled: false, amount: 0, defaultApplyOnRegistration: false };
       }
     },
     saveClinicalFeeSettings: async (settings: { enabled: boolean; amount: number }): Promise<void> => {
@@ -2742,6 +2756,24 @@ export const api = {
         .upsert(payload);
 
       if (error) {
+        throw new Error(error.message);
+      }
+    },
+    saveClinicalFeeRegistrationPreference: async (apply: boolean): Promise<void> => {
+      const payload = {
+        id: APP_SETTINGS_SINGLETON_ID,
+        clinical_fee_default_apply_on_registration: apply,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(payload);
+
+      if (error) {
+        if (isMissingColumnError(error, 'clinical_fee_default_apply_on_registration')) {
+          throw new Error('Clinical fee registration preference is not installed. Run the latest clinical fee preference migration in Supabase.');
+        }
         throw new Error(error.message);
       }
     },

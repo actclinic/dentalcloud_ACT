@@ -68,6 +68,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'today' | 'custom' | 'new'>('all');
   const [dateFilter, setDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
   const [doctorFilter, setDoctorFilter] = useState('');
   const [treatmentFilter, setTreatmentFilter] = useState('');
   const [authModal, setAuthModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
@@ -210,11 +211,15 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     // Apply date quick filter
     if (dateQuickFilter === 'new') {
       scopedPatients = scopedPatients.filter((patient) => isNewPatientToday(patient));
-    } else if (dateQuickFilter === 'custom' && dateFilter) {
+    } else if (dateQuickFilter === 'custom' && (dateFilter || endDateFilter)) {
+      const rangeStart = dateFilter && endDateFilter && dateFilter > endDateFilter ? endDateFilter : dateFilter;
+      const rangeEnd = dateFilter && endDateFilter && dateFilter > endDateFilter ? dateFilter : endDateFilter;
       scopedPatients = scopedPatients.filter((patient) => {
         if (!patient.created_at) return false;
         const dateStr = patient.created_at.substring(0, 10);
-        return dateStr === dateFilter;
+        if (rangeStart && dateStr < rangeStart) return false;
+        if (rangeEnd && dateStr > rangeEnd) return false;
+        return true;
       });
     }
 
@@ -270,7 +275,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         searchableRawCreatedDate.includes(term)
       );
     });
-  }, [patients, searchTerm, dateQuickFilter, dateFilter, doctorFilter, treatmentFilter, todayISO, treatmentRecords, doctorNameById]);
+  }, [patients, searchTerm, dateQuickFilter, dateFilter, endDateFilter, doctorFilter, treatmentFilter, todayISO, treatmentRecords, doctorNameById]);
 
   const cityOptions = useMemo(
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
@@ -330,7 +335,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   // Reset to first page when patients change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [patients, dateQuickFilter, doctorFilter, treatmentFilter]);
+  }, [patients, dateQuickFilter, dateFilter, endDateFilter, doctorFilter, treatmentFilter]);
 
   const [exporting, setExporting] = useState(false);
 
@@ -480,9 +485,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         {/* Period quick-select */}
         <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
           <button
-            onClick={() => { setDateQuickFilter('all'); setDateFilter(''); setCurrentPage(1); }}
+            onClick={() => { setDateQuickFilter('all'); setDateFilter(''); setEndDateFilter(''); setCurrentPage(1); }}
             className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-              dateQuickFilter === 'all' && !dateFilter
+              dateQuickFilter === 'all' && !dateFilter && !endDateFilter
                 ? 'bg-white text-indigo-700 shadow-sm border border-gray-200'
                 : 'text-gray-500 hover:text-gray-800'
             }`}
@@ -490,9 +495,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             All
           </button>
           <button
-            onClick={() => { setDateQuickFilter('new'); setDateFilter(''); setCurrentPage(1); }}
+            onClick={() => { setDateQuickFilter('new'); setDateFilter(''); setEndDateFilter(''); setCurrentPage(1); }}
             className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-              dateQuickFilter === 'new' && !dateFilter
+              dateQuickFilter === 'new' && !dateFilter && !endDateFilter
                 ? 'bg-white text-indigo-700 shadow-sm border border-gray-200'
                 : 'text-gray-500 hover:text-gray-800'
             }`}
@@ -500,19 +505,35 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             New
           </button>
         </div>
-        {/* Date picker */}
-        <div className="relative">
-          <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        {/* Date range */}
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white pl-2 pr-1">
+          <Calendar size={14} className="text-gray-400" />
+          <span className="text-[11px] font-semibold text-gray-500">From</span>
           <input
             type="date"
             value={dateFilter}
             onChange={(e) => {
               const v = e.target.value;
-              if (v) { setDateQuickFilter(v === todayISO ? 'new' : 'custom'); setDateFilter(v); }
-              else { setDateQuickFilter('all'); setDateFilter(''); }
+              setDateFilter(v);
+              setDateQuickFilter(v || endDateFilter ? 'custom' : 'all');
               setCurrentPage(1);
             }}
-            className="h-7 w-[140px] rounded-lg border border-gray-200 pl-7 pr-2 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            className="h-7 w-[132px] border-0 px-1 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-0 bg-transparent"
+          />
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white pl-2 pr-1">
+          <span className="text-[11px] font-semibold text-gray-500">To</span>
+          <input
+            type="date"
+            value={endDateFilter}
+            min={dateFilter || undefined}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEndDateFilter(v);
+              setDateQuickFilter(dateFilter || v ? 'custom' : 'all');
+              setCurrentPage(1);
+            }}
+            className="h-7 w-[132px] border-0 px-1 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-0 bg-transparent"
           />
         </div>
         {/* Doctor */}
@@ -538,9 +559,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           ))}
         </select>
         {/* Reset */}
-        {(dateQuickFilter !== 'all' || dateFilter || doctorFilter || treatmentFilter) && (
+        {(dateQuickFilter !== 'all' || dateFilter || endDateFilter || doctorFilter || treatmentFilter) && (
           <button
-            onClick={() => { setDateQuickFilter('all' as const); setDateFilter(''); setDoctorFilter(''); setTreatmentFilter(''); setCurrentPage(1); }}
+            onClick={() => { setDateQuickFilter('all' as const); setDateFilter(''); setEndDateFilter(''); setDoctorFilter(''); setTreatmentFilter(''); setCurrentPage(1); }}
             className="h-7 px-2.5 rounded-lg border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 transition-colors bg-white"
           >
             Reset
