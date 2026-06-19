@@ -3,6 +3,7 @@ import { X, Check, Sparkles } from 'lucide-react';
 import { ClinicalRecord, MedicineSale } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { isReceiptItemRecent } from '../utils/receiptItemRecency';
 
 interface TreatmentSelectionModalProps {
   treatments: ClinicalRecord[];
@@ -11,8 +12,6 @@ interface TreatmentSelectionModalProps {
   onConfirm: (selectedTreatments: ClinicalRecord[], selectedMedicines: MedicineSale[]) => void;
   onClose: () => void;
 }
-
-const RECENT_THRESHOLD_DAYS = 7;
 
 const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
   treatments,
@@ -29,12 +28,6 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
     setSelectedMedicineIds(new Set());
   }, [treatments, medicines]);
 
-  const today = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-
   const sortedTreatments = useMemo(
     () => [...treatments].sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime()),
     [treatments]
@@ -44,14 +37,6 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
     () => [...medicines].sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime()),
     [medicines]
   );
-
-  const isRecent = (dateStr: string): boolean => {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
-    d.setHours(0, 0, 0, 0);
-    const diffDays = (today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= RECENT_THRESHOLD_DAYS;
-  };
 
   const toggleSelection = (setState: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) => {
     setState((prev) => {
@@ -127,7 +112,8 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                 ) : (
                   sortedTreatments.map((treatment) => {
                     const isSelected = selectedTreatmentIds.has(treatment.id);
-                    const recent = isRecent(treatment.date || '');
+                    const recent = isReceiptItemRecent(treatment.date || '');
+                    const stale = !recent;
                     return (
                       <div
                         key={treatment.id}
@@ -137,7 +123,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                             ? 'border-indigo-500 bg-indigo-50'
                             : recent
                               ? 'border-amber-300 bg-amber-50/40 hover:border-amber-400'
-                              : 'border-gray-200 bg-white hover:border-gray-300'
+                              : 'border-slate-200 bg-slate-100 hover:border-slate-300'
                         }`}
                       >
                         {recent ? (
@@ -153,7 +139,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                           <div className="flex-1">
                             <div className="flex justify-between items-start mb-1">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-semibold text-gray-900">{treatment.description}</h4>
+                                <h4 className={`font-semibold ${stale && !isSelected ? 'text-slate-600' : 'text-gray-900'}`}>{treatment.description}</h4>
                                 {recent ? (
                                   <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                                     <Sparkles className="w-2.5 h-2.5" />
@@ -161,11 +147,11 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                                   </span>
                                 ) : null}
                               </div>
-                              <span className="text-base font-bold text-gray-900">
+                              <span className={`text-base font-bold ${stale && !isSelected ? 'text-slate-500' : 'text-gray-900'}`}>
                                 {formatCurrency(treatment.cost || 0, currency)}
                               </span>
                             </div>
-                            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                            <div className={`flex flex-wrap gap-4 text-sm ${stale && !isSelected ? 'text-slate-500' : 'text-gray-600'}`}>
                               <span>
                                 Date: {new Date(treatment.date).toLocaleDateString('en-US', {
                                   year: 'numeric',
@@ -194,7 +180,8 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                 ) : (
                   sortedMedicines.map((medicine) => {
                     const isSelected = selectedMedicineIds.has(medicine.id);
-                    const recent = isRecent(medicine.date || '');
+                    const recent = isReceiptItemRecent(medicine.date || '');
+                    const stale = !recent;
                     return (
                       <div
                         key={medicine.id}
@@ -204,7 +191,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                             ? 'border-emerald-500 bg-emerald-50'
                             : recent
                               ? 'border-amber-300 bg-amber-50/40 hover:border-amber-400'
-                              : 'border-gray-200 bg-white hover:border-gray-300'
+                              : 'border-slate-200 bg-slate-100 hover:border-slate-300'
                         }`}
                       >
                         <div className="flex items-start gap-4">
@@ -214,7 +201,7 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                           <div className="flex-1">
                             <div className="flex justify-between items-start mb-1">
                               <div className="flex items-center gap-2">
-                                <h4 className="font-semibold text-gray-900">{medicine.medicine_name || 'Medicine'}</h4>
+                                <h4 className={`font-semibold ${stale && !isSelected ? 'text-slate-600' : 'text-gray-900'}`}>{medicine.medicine_name || 'Medicine'}</h4>
                                 {recent ? (
                                   <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                                     <Sparkles className="w-2.5 h-2.5" />
@@ -222,11 +209,11 @@ const TreatmentSelectionModal: React.FC<TreatmentSelectionModalProps> = ({
                                   </span>
                                 ) : null}
                               </div>
-                              <span className="text-base font-bold text-gray-900">
+                              <span className={`text-base font-bold ${stale && !isSelected ? 'text-slate-500' : 'text-gray-900'}`}>
                                 {formatCurrency(medicine.total_price || 0, currency)}
                               </span>
                             </div>
-                            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                            <div className={`flex flex-wrap gap-4 text-sm ${stale && !isSelected ? 'text-slate-500' : 'text-gray-600'}`}>
                               <span>
                                 Date: {new Date(medicine.date).toLocaleDateString('en-US', {
                                   year: 'numeric',
