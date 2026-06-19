@@ -76,7 +76,6 @@ import { resolveAllowedTabs } from './utils/permissions';
 import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
-import { formatTeethArray, parseTeethInput } from './utils/toothNumbering';
 import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
 
@@ -612,7 +611,6 @@ const App: React.FC = () => {
   const [appointmentPatientMode, setAppointmentPatientMode] = useState<'registered' | 'lead'>('registered');
   const [convertingLeadAppointment, setConvertingLeadAppointment] = useState<Appointment | null>(null);
   const [appointmentClinicalFocus, setAppointmentClinicalFocus] = useState('');
-  const [appointmentTargetTeethInput, setAppointmentTargetTeethInput] = useState('');
   const [appointmentGeneralNotes, setAppointmentGeneralNotes] = useState('');
   const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
@@ -1840,7 +1838,6 @@ const App: React.FC = () => {
     setDoctorSearchQuery('');
     setShowDoctorDropdown(false);
     setAppointmentClinicalFocus('');
-    setAppointmentTargetTeethInput('');
     setAppointmentGeneralNotes('');
   };
 
@@ -1903,16 +1900,10 @@ const App: React.FC = () => {
       alert('Please select a branch/location for this appointment.');
       return;
     }
-    const parsedTargetTeeth = parseTeethInput(appointmentTargetTeethInput);
-    if (parsedTargetTeeth.invalidLabels.length > 0) {
-      alert(`Invalid tooth labels: ${parsedTargetTeeth.invalidLabels.join(', ')}. Use adult FDI numbers or baby labels 1A-4E.`);
-      return;
-    }
     setIsSubmitting(true);
     try {
       const compiledNotes = buildAppointmentClinicalFocusNotes({
         clinicalFocus: appointmentClinicalFocus,
-        targetTeeth: parsedTargetTeeth.teeth,
         notes: appointmentGeneralNotes
       });
       const payload: Partial<Appointment> = {
@@ -1924,7 +1915,7 @@ const App: React.FC = () => {
         guest_notes: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_notes || '').trim() : null,
         doctor_id: (newAppointmentData.doctor_id || '').trim() || undefined,
         location_id: targetLocationId,
-        notes: compiledNotes || undefined
+        notes: compiledNotes
       };
       if (editingAppointment) {
         await api.appointments.update(editingAppointment.id, payload);
@@ -3408,7 +3399,6 @@ const App: React.FC = () => {
                   setDoctorSearchQuery(apt.doctor_name || '');
                   setShowDoctorDropdown(false);
                   setAppointmentClinicalFocus(clinicalPlan.clinicalFocus || apt.type || '');
-                  setAppointmentTargetTeethInput(formatTeethArray(clinicalPlan.targetTeeth));
                   setAppointmentGeneralNotes(clinicalPlan.notes || '');
                   setShowAppointmentModal(true);
                 }} 
@@ -4044,26 +4034,14 @@ const App: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Clinical Focus</label>
-                <input
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  value={appointmentClinicalFocus}
-                  onChange={(e) => setAppointmentClinicalFocus(e.target.value)}
-                  placeholder="e.g., Filling, extraction, consultation"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Target Teeth</label>
-                <input
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm uppercase focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  value={appointmentTargetTeethInput}
-                  onChange={(e) => setAppointmentTargetTeethInput(e.target.value.toUpperCase())}
-                  placeholder="Adult: 11, 12 | Baby: 1A, 1B"
-                />
-                <p className="mt-1 text-xs text-gray-400">Separate multiple teeth with commas. Baby teeth use 1A-4E.</p>
-              </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Clinical Focus</label>
+              <input
+                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                value={appointmentClinicalFocus}
+                onChange={(e) => setAppointmentClinicalFocus(e.target.value)}
+                placeholder="e.g., Filling, extraction, consultation"
+              />
             </div>
             <div className="grid grid-cols-1 gap-4">
               <div>

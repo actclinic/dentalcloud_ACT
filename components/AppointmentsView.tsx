@@ -4,7 +4,6 @@ import { Appointment, Doctor, Patient, TreatmentType } from '../types';
 import { exportAppointmentsToPDF } from '../utils/pdfExport';
 import { exportAppointmentsToExcel } from '../utils/excelExport';
 import { parseAppointmentClinicalFocus } from '../utils/appointmentClinicalFocus';
-import { formatTeethArray } from '../utils/toothNumbering';
 import Pagination from './Pagination';
 import { ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
@@ -231,12 +230,6 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     const term = searchTerm.toLowerCase();
     return appointments.filter(apt => {
       const clinicalPlan = parseAppointmentClinicalFocus(apt.notes);
-      const focusTeethText = clinicalPlan.targetTeeth.length > 0
-        ? [
-            clinicalPlan.targetTeeth.join(', '),
-            formatTeethArray(clinicalPlan.targetTeeth)
-          ].join(' ').toLowerCase()
-        : '';
       const matchesSearch = !searchTerm || (
         apt.patient_name?.toLowerCase().includes(term) ||
         apt.guest_phone?.toLowerCase().includes(term) ||
@@ -247,9 +240,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         apt.date.toLowerCase().includes(term) ||
         apt.time.toLowerCase().includes(term) ||
         apt.status.toLowerCase().includes(term) ||
-        apt.notes?.toLowerCase().includes(term) ||
         clinicalPlan.clinicalFocus.toLowerCase().includes(term) ||
-        focusTeethText.includes(term)
+        clinicalPlan.notes.toLowerCase().includes(term)
       );
 
       if (!matchesSearch) return false;
@@ -973,11 +965,9 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                 {appointment.guest_phone || 'No phone'}{appointment.guest_source ? ` • ${appointment.guest_source}` : ''}
                               </div>
                             )}
-                            {(clinicalPlan.clinicalFocus || clinicalPlan.targetTeeth.length > 0) && (
+                            {clinicalPlan.clinicalFocus && (
                               <div className="mt-0.5 text-[11px] md:text-xs text-indigo-700 truncate">
-                                {clinicalPlan.clinicalFocus ? `Focus: ${clinicalPlan.clinicalFocus}` : ''}
-                                {clinicalPlan.clinicalFocus && clinicalPlan.targetTeeth.length > 0 ? ' • ' : ''}
-                                {clinicalPlan.targetTeeth.length > 0 ? `Teeth: ${formatTeethArray(clinicalPlan.targetTeeth)}` : ''}
+                                Focus: {clinicalPlan.clinicalFocus}
                               </div>
                             )}
                           </div>

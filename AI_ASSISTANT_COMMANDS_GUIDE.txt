@@ -84,7 +84,6 @@ CREATE REGISTERED PATIENT APPOINTMENT:
   "status": "Scheduled",
   "branch_name": "Main Clinic",
   "clinical_focus": "Routine dental examination",
-  "target_teeth": [],
   "n": "Patient prefers morning reminders" 
 } }
 
@@ -101,11 +100,10 @@ CREATE NEW PATIENT / UNREGISTERED MARKETING LEAD APPOINTMENT:
   "status": "Scheduled",
   "branch_name": "Main Clinic",
   "clinical_focus": "Orthodontic consultation",
-  "target_teeth": [],
   "n": "Lead is not registered yet"
 } }
 
-Appointment form mapping: choose Registered Patient for existing patients or New Patient for unregistered leads. Required scheduling basics are date (dt), time (t), and appointment type (ty). Doctor is optional. Branch/location should be included when known, especially in All Branches scope. Status is Scheduled, Completed, or Cancelled and defaults to Scheduled. clinical_focus, target_teeth, and n/extra_notes are stored together in the appointment notes as Clinical Focus, Target Teeth, and Notes. Use adult FDI numbers and baby labels 1A-4E for target_teeth; never present baby teeth as 51-85. Use guest_name and guest_phone when the person should not become a patient record yet. Do not create a patient first unless the user asks to register or convert the lead. guest_source maps to New Patient Source and guest_notes maps to New Patient Follow-up Notes.
+Appointment form mapping: choose Registered Patient for existing patients or New Patient for unregistered leads. Required scheduling basics are date (dt), time (t), and appointment type (ty). Doctor is optional. Branch/location should be included when known, especially in All Branches scope. Status is Scheduled, Completed, or Cancelled and defaults to Scheduled. clinical_focus and n/extra_notes are stored together in the appointment notes as Clinical Focus and Notes. Use guest_name and guest_phone when the person should not become a patient record yet. Do not create a patient first unless the user asks to register or convert the lead. guest_source maps to New Patient Source and guest_notes maps to New Patient Follow-up Notes.
 
 UPDATE APPOINTMENT:
 { "action": "apt_u", "params": { 

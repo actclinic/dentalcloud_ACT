@@ -5,22 +5,35 @@ import {
   parseAppointmentClinicalFocus
 } from './appointmentClinicalFocus';
 
-describe('appointment clinical tooth notation', () => {
-  it('writes baby teeth using staff-facing labels', () => {
+describe('appointment clinical notes', () => {
+  it('writes only clinical focus and extra notes', () => {
     expect(buildAppointmentClinicalFocusNotes({
       clinicalFocus: 'Filling',
-      targetTeeth: [11, 51, 65, 85],
       notes: 'Review'
-    })).toContain('Target Teeth: 11, 1A, 2E, 4E');
+    })).toBe('Clinical Focus: Filling\nNotes: Review');
   });
 
-  it('reads both new labels and legacy numeric appointment notes', () => {
-    expect(parseAppointmentClinicalFocus('Target Teeth: 1A, 2E').targetTeeth).toEqual([51, 65]);
-    expect(parseAppointmentClinicalFocus('Target Teeth: 51, 65').targetTeeth).toEqual([51, 65]);
+  it('ignores legacy target teeth while preserving appointment details', () => {
+    expect(parseAppointmentClinicalFocus(
+      'Clinical Focus: Filling\nTarget Teeth: 1A, 2E\nNotes: Review'
+    )).toEqual({
+      clinicalFocus: 'Filling',
+      notes: 'Review'
+    });
   });
 
-  it('converts legacy tooth numbers in exported appointment notes', () => {
-    expect(formatAppointmentNotesForDisplay('Clinical Focus: Filling\nTarget Teeth: 51, 65'))
-      .toContain('Target Teeth: 1A, 2E');
+  it('removes legacy target teeth from exported appointment notes', () => {
+    expect(formatAppointmentNotesForDisplay(
+      'Clinical Focus: Filling\nTarget Teeth: 51, 65\nNotes: Review'
+    )).toBe('Clinical Focus: Filling\nNotes: Review');
+  });
+
+  it('does not leak a misplaced legacy target teeth line into extra notes', () => {
+    expect(parseAppointmentClinicalFocus(
+      'Clinical Focus: Filling\nNotes: Review\nTarget Teeth: 51, 65'
+    )).toEqual({
+      clinicalFocus: 'Filling',
+      notes: 'Review'
+    });
   });
 });
