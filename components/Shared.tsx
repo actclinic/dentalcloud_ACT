@@ -352,7 +352,7 @@ interface ToastProps {
   duration?: number;
 }
 
-export const Toast: React.FC<ToastProps> = ({ message, type = 'success', onClose, duration = 4500 }) => {
+export const Toast: React.FC<ToastProps> = ({ message, type = 'success', onClose, duration = 400 }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
@@ -387,7 +387,7 @@ export const Toast: React.FC<ToastProps> = ({ message, type = 'success', onClose
   };
 
   return createPortal(
-    <div className="pointer-events-none fixed inset-0 z-[9999] flex items-center justify-center px-4 py-6">
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-[9999] flex justify-center px-4 pt-6">
       <div className={`pointer-events-auto w-full max-w-2xl rounded-[2rem] border-2 shadow-2xl backdrop-blur-md animate-scale-up ${bgColors[type]}`}>
         <div className="flex items-start gap-4 px-5 py-5 sm:px-7 sm:py-6">
           <div className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl ${iconShellColors[type]}`}>
