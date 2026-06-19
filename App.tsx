@@ -1770,6 +1770,23 @@ const App: React.FC = () => {
     })
   );
 
+  const getMatchedMedicineSalesForReceipt = (
+    patientId: string,
+    selectedTreatments: ClinicalRecord[],
+    referenceDate?: string
+  ): MedicineSale[] => {
+    const selectedTreatmentIds = new Set(selectedTreatments.map((treatment) => treatment.id));
+    const selectedDates = new Set(selectedTreatments.map((treatment) => treatment.date).filter(Boolean));
+
+    return medicineSales.filter((sale) => {
+      if (sale.patient_id !== patientId) return false;
+      if (sale.treatment_id && selectedTreatmentIds.has(sale.treatment_id)) return true;
+      if (sale.date && selectedDates.has(sale.date)) return true;
+      if (!sale.treatment_id && referenceDate && sale.date === referenceDate) return true;
+      return false;
+    });
+  };
+
   const handleOpenStoredPaymentReceipt = (payment: PaymentRecord) => {
     const snapshot = resolvePaymentReceiptSnapshotForViewer(payment);
     const matchedPatient = patients.find((patient) => patient.id === payment.patientId);
@@ -2725,7 +2742,7 @@ const App: React.FC = () => {
       }
       
       // Refresh medicines to update stock
-      await fetchMedicines();
+      await Promise.all([fetchMedicines(), fetchMedicineSales()]);
       
       // Show success message
       setToast({
@@ -2756,6 +2773,11 @@ const App: React.FC = () => {
     try {
       const session = auth.getSession();
       const paymentDate = toLocalISODate(new Date());
+      const matchedMedicineSales = getMatchedMedicineSalesForReceipt(
+        selectedPatient.id,
+        selectedPaymentTreatments,
+        paymentDate
+      );
       const res = await api.finance.processPayment({
         patientId: selectedPatient.id,
         amount: paymentAmountTendered,
@@ -2780,6 +2802,8 @@ const App: React.FC = () => {
         paymentStatus: paymentRecord.type,
         createdAt: paymentRecord.createdAt || null,
         recordedByUserName: paymentRecord.createdByUserName || currentUser || session?.username || null,
+        treatments: selectedPaymentTreatments,
+        medicines: matchedMedicineSales,
         clinic: {
           appName,
           receiptHeaderTitle,
@@ -2904,20 +2928,9 @@ const App: React.FC = () => {
     setShowPatientModal(true);
   };
 
-  const handleTreatmentSelectionConfirm = (selectedTreatments: ClinicalRecord[]) => {
-    const selectedTreatmentIds = new Set(selectedTreatments.map((treatment) => treatment.id));
-    const selectedDates = new Set(selectedTreatments.map((treatment) => treatment.date));
-    const matchedMedicineSales = medicineSales.filter((sale) => {
-      if (!selectedPatient || sale.patient_id !== selectedPatient.id) {
-        return false;
-      }
-
-      // Prefer direct treatment linkage; fall back to same-date patient sales.
-      return (sale.treatment_id && selectedTreatmentIds.has(sale.treatment_id)) || selectedDates.has(sale.date);
-    });
-
+  const handleTreatmentSelectionConfirm = (selectedTreatments: ClinicalRecord[], selectedMedicines: MedicineSale[]) => {
     setSelectedTreatmentsForReceipt(selectedTreatments);
-    setSelectedMedicineSalesForReceipt(matchedMedicineSales);
+    setSelectedMedicineSalesForReceipt(selectedMedicines);
     setReceiptViewerPatient(selectedPatient);
     setActivePaymentReceiptSnapshot(null);
     setShowTreatmentSelection(false);
@@ -4794,6 +4807,7 @@ const App: React.FC = () => {
         <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><Loader2 className="animate-spin text-white w-10 h-10" /></div>}>
           <TreatmentSelectionModal
             treatments={treatmentHistory}
+            medicines={selectedPatient ? medicineSales.filter((sale) => sale.patient_id === selectedPatient.id) : []}
             currency={currency}
             onConfirm={handleTreatmentSelectionConfirm}
             onClose={() => setShowTreatmentSelection(false)}

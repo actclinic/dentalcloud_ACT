@@ -101,6 +101,26 @@ export interface PaymentRecord {
   createdByUserName?: string | null;
 }
 
+export interface PaymentReceiptTreatmentLine {
+  id: string;
+  date: string;
+  description: string;
+  teeth: number[];
+  finalCost: number;
+  standardCost: number;
+  discountAmount: number;
+  pricingNote?: 'FOC' | 'DISCOUNT' | null;
+}
+
+export interface PaymentReceiptMedicineLine {
+  id: string;
+  date: string;
+  medicineName: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
 export interface PaymentReceiptSnapshot {
   version: 1;
   receiptType: 'PAYMENT';
@@ -129,6 +149,8 @@ export interface PaymentReceiptSnapshot {
     balanceAfter: number;
     recordedByUserName?: string | null;
   };
+  treatments?: PaymentReceiptTreatmentLine[];
+  medicines?: PaymentReceiptMedicineLine[];
 }
 
 export type PaymentMethod =

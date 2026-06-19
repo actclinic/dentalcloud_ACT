@@ -41,6 +41,33 @@ describe('paymentReceipt', () => {
         paymentStatus: 'PARTIAL',
         createdAt: '2026-06-19T08:30:00Z',
         recordedByUserName: 'Nurse May',
+        treatments: [
+          {
+            id: 'tr-1',
+            location_id: 'branch-1',
+            patient_id: 'patient-1',
+            teeth: [11],
+            description: 'Composite Filling',
+            cost: 12000,
+            standardCost: 15000,
+            discountAmount: 3000,
+            pricingNote: 'DISCOUNT',
+            date: '2026-06-19'
+          }
+        ],
+        medicines: [
+          {
+            id: 'med-sale-1',
+            location_id: 'branch-1',
+            patient_id: 'patient-1',
+            medicine_id: 'med-1',
+            medicine_name: 'Pain Killer',
+            quantity: 2,
+            unit_price: 1500,
+            total_price: 3000,
+            date: '2026-06-19'
+          }
+        ],
         clinic
       })
     ).toEqual({
@@ -70,7 +97,29 @@ describe('paymentReceipt', () => {
         balanceBefore: 20000,
         balanceAfter: 15000,
         recordedByUserName: 'Nurse May'
-      }
+      },
+      treatments: [
+        {
+          id: 'tr-1',
+          date: '2026-06-19',
+          description: 'Composite Filling',
+          teeth: [11],
+          finalCost: 12000,
+          standardCost: 15000,
+          discountAmount: 3000,
+          pricingNote: 'DISCOUNT'
+        }
+      ],
+      medicines: [
+        {
+          id: 'med-sale-1',
+          date: '2026-06-19',
+          medicineName: 'Pain Killer',
+          quantity: 2,
+          unitPrice: 1500,
+          totalPrice: 3000
+        }
+      ]
     });
   });
 
@@ -123,7 +172,28 @@ describe('paymentReceipt', () => {
           status: 'PARTIAL',
           balanceBefore: '20000',
           balanceAfter: 8000
-        }
+        },
+        treatments: [
+          {
+            id: 'tr-2',
+            date: '2026-06-19',
+            description: 'Extraction',
+            teeth: [21],
+            finalCost: 10000,
+            standardCost: 10000,
+            discountAmount: 0
+          }
+        ],
+        medicines: [
+          {
+            id: 'med-sale-2',
+            date: '2026-06-19',
+            medicineName: 'Antibiotic',
+            quantity: '3',
+            unitPrice: 2000,
+            totalPrice: '6000'
+          }
+        ]
       })
     ).toEqual({
       version: 1,
@@ -152,7 +222,29 @@ describe('paymentReceipt', () => {
         balanceBefore: 20000,
         balanceAfter: 8000,
         recordedByUserName: null
-      }
+      },
+      treatments: [
+        {
+          id: 'tr-2',
+          date: '2026-06-19',
+          description: 'Extraction',
+          teeth: [21],
+          finalCost: 10000,
+          standardCost: 10000,
+          discountAmount: 0,
+          pricingNote: null
+        }
+      ],
+      medicines: [
+        {
+          id: 'med-sale-2',
+          date: '2026-06-19',
+          medicineName: 'Antibiotic',
+          quantity: 3,
+          unitPrice: 2000,
+          totalPrice: 6000
+        }
+      ]
     });
   });
 });

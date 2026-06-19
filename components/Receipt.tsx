@@ -81,6 +81,31 @@ const Receipt: React.FC<ReceiptProps> = ({
         patientUniqueId: patient.patient_unique_id || ''
       };
   const today = displayDate;
+  const receiptTreatments = paymentSnapshot
+    ? (paymentSnapshot.treatments || []).map((treatment) => ({
+        id: treatment.id,
+        date: treatment.date,
+        description: treatment.description,
+        teeth: treatment.teeth,
+        cost: treatment.finalCost,
+        standardCost: treatment.standardCost,
+        discountAmount: treatment.discountAmount,
+        pricingNote: treatment.pricingNote || null
+      }))
+    : treatments;
+  const receiptMedicines = paymentSnapshot
+    ? (paymentSnapshot.medicines || []).map((medicine) => ({
+        id: medicine.id,
+        location_id: patient.location_id,
+        patient_id: patient.id,
+        medicine_id: medicine.id,
+        medicine_name: medicine.medicineName,
+        quantity: medicine.quantity,
+        unit_price: medicine.unitPrice,
+        total_price: medicine.totalPrice,
+        date: medicine.date
+      }))
+    : medicines;
 
   const getTreatmentPricing = (treatment: ClinicalRecord) => {
     const finalCost = Number(treatment.cost || 0);
@@ -113,18 +138,18 @@ const Receipt: React.FC<ReceiptProps> = ({
     };
   };
 
-  const totalTreatmentCost = treatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0);
-  const totalTreatmentDiscount = treatments.reduce((sum, treatment) => {
+  const totalTreatmentCost = receiptTreatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0);
+  const totalTreatmentDiscount = receiptTreatments.reduce((sum, treatment) => {
     return sum + getTreatmentPricing(treatment).discountAmount;
   }, 0);
-  const totalMedicineCost = medicines.reduce((sum, medicine) => sum + (medicine.total_price || 0), 0);
+  const totalMedicineCost = receiptMedicines.reduce((sum, medicine) => sum + (medicine.total_price || 0), 0);
   const grandTotal = totalTreatmentCost + totalMedicineCost;
-  const totalPaid = paymentAmount || 0;
+  const totalPaid = paymentSnapshot?.payment.amountPaid || paymentAmount || 0;
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
   // Otherwise, calculate balance based on selected treatments
   const remainingBalance = totalPaid > 0 
-    ? patient.balance  // After payment, show patient's current balance
+    ? (paymentSnapshot?.payment.balanceAfter ?? patient.balance)
     : Math.max(0, grandTotal - totalPaid); // For invoice, calculate from selected services and medicines
 
   const handlePrint = () => {
@@ -148,14 +173,14 @@ const Receipt: React.FC<ReceiptProps> = ({
           </tr>
         </thead>
         <tbody>
-          {treatments.length === 0 ? (
+          {receiptTreatments.length === 0 ? (
             <tr>
               <td colSpan={6} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
                 No treatment services recorded
               </td>
             </tr>
           ) : (
-            treatments.map((treatment, index) => {
+            receiptTreatments.map((treatment, index) => {
               const pricing = getTreatmentPricing(treatment);
               return (
                 <tr key={index} className="border-b border-gray-200" style={isPrint ? { borderBottom: '1px solid #e5e7eb' } : undefined}>
@@ -173,19 +198,19 @@ const Receipt: React.FC<ReceiptProps> = ({
                       : 'General'}
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-700 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                    {formatCurrency(pricing.standardCost, currency)}
+                    {formatCurrency(pricing.standardCost, effectiveCurrency)}
                   </td>
                   <td className="py-3 px-4 text-sm text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
                     {pricing.discountAmount > 0 ? (
                       <span className={pricing.note === 'FOC' ? 'text-amber-700' : 'text-emerald-700'}>
-                        {pricing.note}: -{formatCurrency(pricing.discountAmount, currency)}
+                        {pricing.note}: -{formatCurrency(pricing.discountAmount, effectiveCurrency)}
                       </span>
                     ) : (
                       <span className="text-gray-400">-</span>
                     )}
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                    {formatCurrency(pricing.finalCost, currency)}
+                    {formatCurrency(pricing.finalCost, effectiveCurrency)}
                   </td>
                 </tr>
               );
@@ -210,14 +235,14 @@ const Receipt: React.FC<ReceiptProps> = ({
           </tr>
         </thead>
         <tbody>
-          {medicines.length === 0 ? (
+          {receiptMedicines.length === 0 ? (
             <tr>
               <td colSpan={5} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
                 No medicines or items recorded
               </td>
             </tr>
           ) : (
-            medicines.map((medicine, index) => (
+            receiptMedicines.map((medicine, index) => (
               <tr key={index} className="border-b border-gray-200" style={isPrint ? { borderBottom: '1px solid #e5e7eb' } : undefined}>
                 <td className="py-3 px-4 text-sm text-gray-700" style={isPrint ? { padding: '12px 16px' } : undefined}>
                   {new Date(medicine.date).toLocaleDateString('en-US', {
@@ -229,10 +254,10 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <td className="py-3 px-4 text-sm text-gray-900 font-medium" style={isPrint ? { padding: '12px 16px' } : undefined}>{medicine.medicine_name || 'Medicine'}</td>
                 <td className="py-3 px-4 text-sm text-gray-600 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>{medicine.quantity}</td>
                 <td className="py-3 px-4 text-sm text-gray-600 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                  {formatCurrency(medicine.unit_price || 0, currency)}
+                  {formatCurrency(medicine.unit_price || 0, effectiveCurrency)}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
-                  {formatCurrency(medicine.total_price || 0, currency)}
+                  {formatCurrency(medicine.total_price || 0, effectiveCurrency)}
                 </td>
               </tr>
             ))
@@ -262,16 +287,16 @@ const Receipt: React.FC<ReceiptProps> = ({
   const renderThermalServices = () => (
     <div style={{ marginBottom: '6px' }}>
       <div style={{ fontSize: '9px', fontWeight: 700, marginBottom: '2px' }}>-- TREATMENT SERVICES --</div>
-      {treatments.length === 0 ? (
+      {receiptTreatments.length === 0 ? (
         <div style={{ fontSize: '8px', fontStyle: 'italic', color: '#666' }}>No treatment services recorded</div>
       ) : (
-        treatments.map((treatment, idx) => {
+        receiptTreatments.map((treatment, idx) => {
           const pricing = getTreatmentPricing(treatment);
           return (
             <div key={idx} style={{ marginBottom: '3px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
                 <span style={{ flex: 1 }}>{treatment.description}</span>
-                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(pricing.finalCost, currency)}</span>
+                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(pricing.finalCost, effectiveCurrency)}</span>
               </div>
               <div style={{ fontSize: '7px', color: '#555' }}>
                 {new Date(treatment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -279,8 +304,8 @@ const Receipt: React.FC<ReceiptProps> = ({
               </div>
               {pricing.discountAmount > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: pricing.note === 'FOC' ? '#b45309' : '#15803d' }}>
-                  <span>Std {formatCurrency(pricing.standardCost, currency)}</span>
-                  <span>{pricing.note}: -{formatCurrency(pricing.discountAmount, currency)}</span>
+                  <span>Std {formatCurrency(pricing.standardCost, effectiveCurrency)}</span>
+                  <span>{pricing.note}: -{formatCurrency(pricing.discountAmount, effectiveCurrency)}</span>
                 </div>
               )}
             </div>
@@ -293,17 +318,17 @@ const Receipt: React.FC<ReceiptProps> = ({
   const renderThermalMedicines = () => (
     <div style={{ marginBottom: '6px' }}>
       <div style={{ fontSize: '9px', fontWeight: 700, marginBottom: '2px' }}>-- MEDICINES & ITEMS --</div>
-      {medicines.length === 0 ? (
+      {receiptMedicines.length === 0 ? (
         <div style={{ fontSize: '8px', fontStyle: 'italic', color: '#666' }}>No medicines or items recorded</div>
       ) : (
-        medicines.map((med, idx) => (
+        receiptMedicines.map((med, idx) => (
           <div key={idx} style={{ marginBottom: '2px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
               <span style={{ flex: 1 }}>{med.medicine_name || 'Medicine'} x{med.quantity}</span>
-              <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(med.total_price || 0, currency)}</span>
+              <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(med.total_price || 0, effectiveCurrency)}</span>
             </div>
             <div style={{ fontSize: '7px', color: '#555' }}>
-              @ {formatCurrency(med.unit_price || 0, currency)}/ea
+              @ {formatCurrency(med.unit_price || 0, effectiveCurrency)}/ea
             </div>
           </div>
         ))
@@ -833,6 +858,44 @@ const Receipt: React.FC<ReceiptProps> = ({
           </p>
         </div>
 
+        {renderServicesTable(isPrint)}
+        {renderMedicinesTable(isPrint)}
+
+        <div className="mb-8">
+          <div className="flex justify-end">
+            <div className="w-72">
+              <div className="flex justify-between py-2 border-b border-gray-300">
+                <span className="text-sm font-semibold text-gray-700">Treatment Services:</span>
+                <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalTreatmentCost, effectiveCurrency)}</span>
+              </div>
+              {totalTreatmentDiscount > 0 ? (
+                <div className="flex justify-between py-2 border-b border-gray-300">
+                  <span className="text-sm font-semibold text-gray-700">Treatment Adjustments:</span>
+                  <span className="text-sm font-semibold text-amber-700">-{formatCurrency(totalTreatmentDiscount, effectiveCurrency)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-between py-2 border-b border-gray-300">
+                <span className="text-sm font-semibold text-gray-700">Medicines & Items:</span>
+                <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalMedicineCost, effectiveCurrency)}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-300">
+                <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
+                <span className="text-sm font-semibold text-gray-900">{formatCurrency(grandTotal, effectiveCurrency)}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-300">
+                <span className="text-sm font-semibold text-gray-700">Payment Received:</span>
+                <span className="text-sm font-semibold text-emerald-700">-{formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}</span>
+              </div>
+              <div className="flex justify-between py-3 mt-2 border-t-2 border-gray-800">
+                <span className="text-base font-bold text-gray-900">Remaining Balance:</span>
+                <span className={`text-base font-bold ${paymentSnapshot.payment.balanceAfter > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {paymentSnapshot.payment.balanceAfter > 0 ? formatCurrency(paymentSnapshot.payment.balanceAfter, effectiveCurrency) : 'Clear'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-8 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Payment Details</p>
@@ -880,8 +943,7 @@ const Receipt: React.FC<ReceiptProps> = ({
         </div>
 
         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 text-sm text-blue-900">
-          This payment receipt reflects the amount collected and the updated account balance at the time of payment.
-          Treatment and medicine details are managed separately in the patient invoice workflow.
+          This payment receipt reflects the amount collected, the treatment and medicine lines included at payment time, and the updated account balance at that moment.
         </div>
 
         <div className="mt-12 pt-6 border-t-2 border-gray-800 text-center">
@@ -932,6 +994,20 @@ const Receipt: React.FC<ReceiptProps> = ({
         <div style={{ textAlign: 'center', margin: '6px 0' }}>
           <div style={{ fontSize: '8px', color: '#555' }}>AMOUNT RECEIVED</div>
           <div style={{ fontSize: '14px', fontWeight: 700 }}>{formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}</div>
+        </div>
+
+        {thermalDivider()}
+        {renderThermalServices()}
+        {renderThermalMedicines()}
+
+        {thermalThickDivider()}
+        <div style={{ marginBottom: '6px' }}>
+          {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, effectiveCurrency))}
+          {totalTreatmentDiscount > 0 ? thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, effectiveCurrency)}`, undefined, { color: '#b45309' }) : null}
+          {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, effectiveCurrency))}
+          {thermalDivider()}
+          {thermalLine('Subtotal:', formatCurrency(grandTotal, effectiveCurrency), undefined, { fontWeight: 700 })}
+          {thermalLine('Payment Received:', `-${formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}`, undefined, { color: '#16a34a' })}
         </div>
 
         {thermalThickDivider()}

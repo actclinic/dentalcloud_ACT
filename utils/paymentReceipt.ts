@@ -1,4 +1,13 @@
-import type { Patient, PaymentRecord, PaymentReceiptSnapshot, PaymentMethod } from '../types';
+import type {
+  ClinicalRecord,
+  MedicineSale,
+  Patient,
+  PaymentRecord,
+  PaymentReceiptSnapshot,
+  PaymentMethod,
+  PaymentReceiptMedicineLine,
+  PaymentReceiptTreatmentLine
+} from '../types';
 import type { Currency } from './currency';
 import { normalizePaymentMethod } from './paymentMethods';
 import { resolveReceiptHeaderTitle } from './receiptPreferences';
@@ -18,6 +27,68 @@ const normalizeNumber = (value: unknown): number => {
 };
 
 const normalizePaymentMethodValue = (value: unknown): PaymentMethod => normalizePaymentMethod(value);
+
+const normalizeTreatmentLine = (value: any): PaymentReceiptTreatmentLine | null => {
+  if (!value || typeof value !== 'object') return null;
+  const id = normalizeString(value.id);
+  const description = normalizeString(value.description);
+  const date = normalizeString(value.date);
+  if (!id || !description || !date) return null;
+
+  return {
+    id,
+    date,
+    description,
+    teeth: Array.isArray(value.teeth) ? value.teeth.map((item: any) => normalizeNumber(item)).filter((item) => Number.isFinite(item)) : [],
+    finalCost: normalizeNumber(value.finalCost ?? value.final_cost ?? value.cost),
+    standardCost: normalizeNumber(value.standardCost ?? value.standard_cost ?? value.cost),
+    discountAmount: normalizeNumber(value.discountAmount ?? value.discount_amount),
+    pricingNote: value.pricingNote === 'FOC' || value.pricingNote === 'DISCOUNT'
+      ? value.pricingNote
+      : value.pricing_note === 'FOC' || value.pricing_note === 'DISCOUNT'
+        ? value.pricing_note
+        : null
+  };
+};
+
+const normalizeMedicineLine = (value: any): PaymentReceiptMedicineLine | null => {
+  if (!value || typeof value !== 'object') return null;
+  const id = normalizeString(value.id);
+  const date = normalizeString(value.date);
+  const medicineName = normalizeString(value.medicineName ?? value.medicine_name);
+  if (!id || !date || !medicineName) return null;
+
+  return {
+    id,
+    date,
+    medicineName,
+    quantity: normalizeNumber(value.quantity),
+    unitPrice: normalizeNumber(value.unitPrice ?? value.unit_price),
+    totalPrice: normalizeNumber(value.totalPrice ?? value.total_price)
+  };
+};
+
+const buildTreatmentLines = (treatments: ClinicalRecord[] = []): PaymentReceiptTreatmentLine[] =>
+  treatments.map((treatment) => ({
+    id: treatment.id,
+    date: normalizeString(treatment.date),
+    description: normalizeString(treatment.description) || 'Treatment',
+    teeth: Array.isArray(treatment.teeth) ? treatment.teeth : [],
+    finalCost: normalizeNumber(treatment.cost),
+    standardCost: normalizeNumber(treatment.standardCost ?? treatment.cost),
+    discountAmount: normalizeNumber(treatment.discountAmount),
+    pricingNote: treatment.pricingNote || null
+  }));
+
+const buildMedicineLines = (medicines: MedicineSale[] = []): PaymentReceiptMedicineLine[] =>
+  medicines.map((medicine) => ({
+    id: medicine.id,
+    date: normalizeString(medicine.date),
+    medicineName: normalizeString(medicine.medicine_name) || 'Medicine',
+    quantity: normalizeNumber(medicine.quantity),
+    unitPrice: normalizeNumber(medicine.unit_price),
+    totalPrice: normalizeNumber(medicine.total_price)
+  }));
 
 export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptSnapshot | null => {
   if (!value || typeof value !== 'object') return null;
@@ -58,7 +129,9 @@ export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptS
       balanceBefore: normalizeNumber(raw.payment?.balanceBefore),
       balanceAfter: normalizeNumber(raw.payment?.balanceAfter),
       recordedByUserName: normalizeString(raw.payment?.recordedByUserName) || null
-    }
+    },
+    treatments: Array.isArray(raw.treatments) ? raw.treatments.map(normalizeTreatmentLine).filter(Boolean) as PaymentReceiptTreatmentLine[] : [],
+    medicines: Array.isArray(raw.medicines) ? raw.medicines.map(normalizeMedicineLine).filter(Boolean) as PaymentReceiptMedicineLine[] : []
   };
 };
 
@@ -73,6 +146,8 @@ export const buildPaymentReceiptSnapshot = (params: {
   paymentStatus: 'FULL' | 'PARTIAL';
   createdAt?: string | null;
   recordedByUserName?: string | null;
+  treatments?: ClinicalRecord[];
+  medicines?: MedicineSale[];
   clinic: ReceiptClinicContext;
 }): PaymentReceiptSnapshot => {
   const clinicEmail = normalizeString(params.clinic.receiptInfo?.email);
@@ -106,7 +181,9 @@ export const buildPaymentReceiptSnapshot = (params: {
       balanceBefore: Math.max(0, normalizeNumber(params.balanceBefore)),
       balanceAfter: Math.max(0, normalizeNumber(params.balanceAfter)),
       recordedByUserName: normalizeString(params.recordedByUserName) || null
-    }
+    },
+    treatments: buildTreatmentLines(params.treatments),
+    medicines: buildMedicineLines(params.medicines)
   };
 };
 
