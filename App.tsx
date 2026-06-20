@@ -391,6 +391,7 @@ const App: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const dashboardFetchRequestRef = React.useRef(0);
   const initialDataFetchRequestRef = React.useRef(0);
+  const treatmentHistoryRequestRef = React.useRef(0);
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -1116,6 +1117,7 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     auth.logout();
+    treatmentHistoryRequestRef.current += 1;
     resetStaffSession();
     setCurrentView('dashboard');
     localStorage.removeItem('currentView');
@@ -1417,6 +1419,7 @@ const App: React.FC = () => {
 
   const handleLocationChange = async (locId: string) => {
     const session = auth.getSession();
+    treatmentHistoryRequestRef.current += 1;
     setCurrentLocationId(locId);
     persistActiveBranchId(locId, session?.userId);
     setDashboardLocationId(locId);
@@ -1562,6 +1565,12 @@ const App: React.FC = () => {
   }, [currentView, currentLocationId, allowedViews]);
 
   useEffect(() => {
+    if (currentView !== 'finance') {
+      treatmentHistoryRequestRef.current += 1;
+    }
+  }, [currentView]);
+
+  useEffect(() => {
     if (!isAuthenticated || auth.isPatient() || allowedViews.length === 0) {
       return;
     }
@@ -1635,21 +1644,48 @@ const App: React.FC = () => {
   };
 
   const handlePatientSelect = async (patient: Patient) => {
+    const requestId = ++treatmentHistoryRequestRef.current;
     setSelectedPatient(patient);
     setSelectedDoctorId('');
     setSelectedTeeth([]);
     setCurrentView('finance');
+    setTreatmentHistory([]);
+    setLoyaltyTransactions([]);
+    setPatientFiles([]);
 
     const locationId = currentLocationId || patient.location_id;
-    const [historyResult, loyaltyResult, filesResult] = await Promise.allSettled([
-      api.treatments.getHistory(patient.id),
-      api.loyalty.getTransactions(patient.id, locationId),
-      api.files.list(patient.id)
-    ]);
+    void api.treatments.getHistory(patient.id)
+      .then((history) => {
+        if (requestId !== treatmentHistoryRequestRef.current) return;
+        setTreatmentHistory(history);
+      })
+      .catch((err: any) => {
+        if (requestId !== treatmentHistoryRequestRef.current) return;
+        console.warn('Error fetching treatment history:', err);
+        setTreatmentHistory([]);
+      });
 
-    setTreatmentHistory(historyResult.status === 'fulfilled' ? historyResult.value : []);
-    setLoyaltyTransactions(loyaltyResult.status === 'fulfilled' ? loyaltyResult.value : []);
-    setPatientFiles(filesResult.status === 'fulfilled' ? filesResult.value : []);
+    void api.loyalty.getTransactions(patient.id, locationId)
+      .then((transactions) => {
+        if (requestId !== treatmentHistoryRequestRef.current) return;
+        setLoyaltyTransactions(transactions);
+      })
+      .catch((err: any) => {
+        if (requestId !== treatmentHistoryRequestRef.current) return;
+        console.warn('Error fetching loyalty transactions:', err);
+        setLoyaltyTransactions([]);
+      });
+
+    void api.files.list(patient.id)
+      .then((files) => {
+        if (requestId !== treatmentHistoryRequestRef.current) return;
+        setPatientFiles(files);
+      })
+      .catch((err: any) => {
+        if (requestId !== treatmentHistoryRequestRef.current) return;
+        console.warn('Error fetching patient files:', err);
+        setPatientFiles([]);
+      });
   };
 
   const fetchGlobalRecords = async () => {
@@ -2649,10 +2685,11 @@ const App: React.FC = () => {
       const latestResponse = recordedResponses[recordedResponses.length - 1];
       const newRecords = recordedResponses.map((response) => response.record);
       setLatestTreatmentBatch(newRecords);
+      treatmentHistoryRequestRef.current += 1;
       
       setSelectedPatient({ ...selectedPatient, balance: latestResponse?.new_balance ?? selectedPatient.balance });
-      
-      setTreatmentHistory([...newRecords, ...treatmentHistory]);
+      setTreatmentHistory((prev) => [...newRecords, ...prev]);
+
       const completedAppointmentIds = new Set(
         recordedResponses.flatMap((response) => response.completed_appointment_ids || [])
       );
@@ -2689,6 +2726,7 @@ const App: React.FC = () => {
       setUseFlatRate(false); // Reset flat rate after treatment
     } catch (err: any) {
       alert(err.message);
+      throw err;
     }
   };
 
@@ -3022,6 +3060,7 @@ const App: React.FC = () => {
   };
 
   const handleClosePatient = () => {
+    treatmentHistoryRequestRef.current += 1;
     setSelectedPatient(null);
     setSelectedDoctorId('');
     setSelectedTeeth([]);

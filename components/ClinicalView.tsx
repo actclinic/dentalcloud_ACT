@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2 } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
@@ -31,7 +31,7 @@ interface ClinicalViewProps {
   onToggleTooth: (id: number) => void;
   onDoctorChange: (doctorId: string) => void;
   onDeselectAll: () => void;
-  onTreatmentSubmit: (t: TreatmentType, chargeLines?: TreatmentChargeLine[]) => void;
+  onTreatmentSubmit: (t: TreatmentType, chargeLines?: TreatmentChargeLine[]) => Promise<void>;
   onPaymentRequest: (treatments: ClinicalRecord[]) => void;
   onClosePatient: () => void;
   onSelectPatient: (patient: Patient) => void;
@@ -137,6 +137,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
   const [selectedTreatmentForCharge, setSelectedTreatmentForCharge] = React.useState<TreatmentType | null>(null);
   const [treatmentChargeInputs, setTreatmentChargeInputs] = React.useState<string[]>([]);
+  const [isRecordingTreatment, setIsRecordingTreatment] = React.useState(false);
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
   const [nextAppointmentFeedback, setNextAppointmentFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [nextAppointmentForm, setNextAppointmentForm] = React.useState<Partial<Appointment>>({
@@ -350,16 +351,18 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   };
 
   const handleChargeModalClose = () => {
+    if (isRecordingTreatment) return;
     setSelectedTreatmentForCharge(null);
     setTreatmentChargeInputs([]);
   };
 
-  const handleConfirmTreatmentCharge = () => {
+  const handleConfirmTreatmentCharge = async () => {
     if (!selectedTreatmentForCharge) return;
 
+    let chargeLines: TreatmentChargeLine[];
     try {
       const baseChargeLines = getTreatmentChargeLines(selectedTreatmentForCharge);
-      const chargeLines = baseChargeLines.map((line, index) => {
+      chargeLines = baseChargeLines.map((line, index) => {
         const parsedCost = Number.parseFloat(treatmentChargeInputs[index] || '');
         if (!Number.isFinite(parsedCost) || parsedCost < 0) {
           throw new Error('Please enter a valid treatment charge of 0 or more for every treatment line.');
@@ -370,11 +373,19 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           cost: Math.max(0, parsedCost)
         };
       });
-
-      onTreatmentSubmit(selectedTreatmentForCharge, chargeLines);
-      handleChargeModalClose();
     } catch (error: any) {
       alert(error?.message || 'Please enter valid treatment charges.');
+      return;
+    }
+
+    setIsRecordingTreatment(true);
+    try {
+      await onTreatmentSubmit(selectedTreatmentForCharge, chargeLines);
+      handleChargeModalClose();
+    } catch {
+      // App-level error handling already surfaced the failure.
+    } finally {
+      setIsRecordingTreatment(false);
     }
   };
 
@@ -1158,6 +1169,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        <button
                          type="button"
                          onClick={handleChargeModalClose}
+                         disabled={isRecordingTreatment}
                          className="flex-1 rounded-xl border border-gray-200 px-6 py-3 font-bold text-gray-500 hover:bg-gray-50"
                        >
                          Cancel
@@ -1165,13 +1177,31 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        <button
                          type="button"
                          onClick={handleConfirmTreatmentCharge}
-                         className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700"
+                         disabled={isRecordingTreatment}
+                         className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
                        >
-                         Record Treatment
+                         {isRecordingTreatment ? 'Please Wait...' : 'Record Treatment'}
                        </button>
                      </div>
                    </div>
                  </Modal>
+               )}
+
+               {isRecordingTreatment && (
+                 <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm px-4">
+                   <div className="w-full max-w-sm rounded-[2rem] border border-white/70 bg-white/95 p-7 text-center shadow-2xl shadow-slate-900/20 animate-fade-in">
+                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                       <Loader2 className="h-8 w-8 animate-spin" />
+                     </div>
+                     <h3 className="mt-5 text-2xl font-black text-slate-900">Please wait</h3>
+                     <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                       Recording treatment and updating the patient's clinical history.
+                     </p>
+                     <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
+                       <div className="h-full w-1/2 animate-pulse rounded-full bg-emerald-500" />
+                     </div>
+                   </div>
+                 </div>
                )}
 
                {redeemModal && selectedPatient && (
