@@ -11,6 +11,7 @@ import { formatTeethArray, formatTeethWithPosition, parseTeethInput } from '../u
 import { buildAppointmentClinicalFocusNotes } from '../utils/appointmentClinicalFocus';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, resolveFinancialReportAnchorDate, AIReportPayload } from '../utils/aiReport';
 import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod } from '../utils/paymentMethods';
+import { ASSISTANT_PRODUCT_KNOWLEDGE } from '../utils/assistantProductKnowledge';
 import {
   ExpectedAppointmentState,
   renderVerificationResult,
@@ -2467,6 +2468,8 @@ TREATMENT RECORDS:
 
 FINANCIAL OPERATIONS:
 - fin_pay(pid, amt, method): Process payment. method must be KPay, WavePay, Cash, MMQR, Debit Card, Credit Card, AYA Pay, or UAB Pay.
+- A payment type is mandatory. If it is missing, ask the user which supported type to use instead of guessing.
+- Payment receipts have stable receipt numbers and may contain immutable snapshots for accurate historical reprints. Treatment and medicine receipt lines are selected/captured by the payment workflow; do not claim unspecified items were included.
 - fin_report(period): Get financial report. period='daily'|'weekly'|'monthly'.
 - financial_analysis(start_date, end_date): Detailed financial insights.
 - patient_followup(patient_name, days, reason): Schedule follow-up appointment.
@@ -2778,6 +2781,7 @@ Persistent Memory: ${memorySummary}
 Full Current Chat Timeline:
 ${conversationTimeline}
 Practice Data: ${JSON.stringify(contextData)}
+${ASSISTANT_PRODUCT_KNOWLEDGE}
 ${isAgentMode ? API_DOCS : 'Limited to analysis mode - switch to Agent for actions'}
 
 CLINICAL DENTAL EXPERTISE:

@@ -19,6 +19,7 @@ The Dental Cloud application is a comprehensive dental clinic management system 
 - Treatment recording and tracking
 - Inventory management for medicines and supplies
 - Financial operations and reporting
+- Immutable payment receipts with treatment and medicine line snapshots
 - Doctor scheduling and management
 - Loyalty program management
 - AI-powered clinical assistance
@@ -38,6 +39,7 @@ The main component responsible for AI interactions, featuring:
 - **Patient**: Personal information, medical history, contact details, balance, loyalty points
 - **Appointment**: Patient-doctor-date-time relationship with status tracking
 - **ClinicalRecord/Treatment**: Treatment descriptions, costs, teeth involved
+- **PaymentRecord**: Payment amount/type, balance movement, receipt number, collector, and optional immutable receipt snapshot
 - **Doctor**: Medical professionals with specializations, schedules, and commission percentage
 - **TreatmentType**: Standardized treatment procedures with costs
 - **Medicine**: Inventory items with stock levels, pricing, categories
@@ -53,6 +55,7 @@ The main component responsible for AI interactions, featuring:
 - Contact information management
 - Balance and payment tracking
 - Loyalty point management
+- Registration-date, doctor, treatment, and text filtering for the patient list
 
 **Key Processes:**
 ```
@@ -73,6 +76,12 @@ The main component responsible for AI interactions, featuring:
 - Loyalty program management
 - Patient communication templates
 
+**Patient List Filtering:**
+- **New** shows patients registered today.
+- **From / To** applies an inclusive registration-date range and also supports a one-sided range.
+- Date filters can be combined with doctor, treatment, and text-search filters.
+- Patient PDF and Excel exports use the currently filtered list.
+
 ### 2. Appointment Scheduling Workflow
 **Primary Operations:**
 - Booking appointments between registered patients and doctors
@@ -87,7 +96,9 @@ The main component responsible for AI interactions, featuring:
 - Doctor selection is optional and uses a searchable doctor field; the appointment can be saved with no specific doctor.
 - Scheduling fields are **Date**, **Time**, **Type**, **Status**, and **Branch / Location**. Status values are Scheduled, Completed, and Cancelled; Scheduled is the normal default.
 - Appointment clinical details are stored in structured notes as **Clinical Focus** and **Extra Notes**. When the AI creates appointments, it should populate `clinical_focus` and `n` / `extra_notes` so the form can parse them back correctly.
+- Appointments do not collect target teeth. Teeth are recorded later on treatment/clinical records.
 - Lead appointments stay as appointment-only records until converted. Do not create a patient profile for a New Patient / lead appointment unless the user explicitly asks to register or convert that lead.
+- Completing a registered-patient appointment considers the per-visit clinical fee. The first completed visit uses the new-patient price and later completed visits use the returning-patient price. Only waive it on an explicit user request.
 
 **Key Processes:**
 ```
@@ -164,6 +175,8 @@ The main component responsible for AI interactions, featuring:
 ### 5. Financial Operations Workflow
 **Primary Operations:**
 - Payment processing
+- Required payment-type capture
+- Immutable payment receipt snapshots and historical reprints
 - Revenue tracking
 - Expense management
 - Financial reporting
@@ -188,6 +201,14 @@ The main component responsible for AI interactions, featuring:
 - Financial trend identification
 - Payment plan recommendations
 
+**Current Payment and Receipt Rules:**
+- Supported payment types are KPay, WavePay, Cash, MMQR, Debit Card, Credit Card, AYA Pay, and UAB Pay. A payment type is required.
+- Saved payment receipts preserve a historical snapshot containing clinic/patient details, amount paid, payment type, full/partial status, balances, collector, and captured treatment and medicine lines.
+- Reprints use the stored snapshot so later profile, settings, treatment, medicine, or balance edits do not alter the original receipt.
+- Receipt selection supports treatments and standalone medicine sales.
+- A receipt item's **Recent / NEW** marker applies only when its item date is today in the clinic's local calendar.
+- Receipt header title, currency, and A4/55 mm thermal format are shared clinic settings across devices. New receipts use the current settings; old saved snapshots retain their original values.
+
 ## Data Models & Relationships
 
 ### Patient Model
@@ -205,7 +226,10 @@ The main component responsible for AI interactions, featuring:
 - `date`, `time`: Scheduled date/time
 - `status`: Scheduled, Completed, Cancelled, No-show
 - `type`: Appointment type (checkup, cleaning, emergency, etc.)
-- `notes`: Additional information
+- `notes`: Structured Clinical Focus and optional Extra Notes
+- `clinical_fee_status`, `clinical_fee_amount`, `clinical_fee_patient_category`, `clinical_fee_applied_at`: Per-visit fee decision and audit fields
+
+Appointments do not have a target-teeth workflow. Tooth numbers belong to treatment/clinical records.
 
 ### Clinical Record/Treatment Model
 - `id`: Unique identifier
@@ -214,6 +238,14 @@ The main component responsible for AI interactions, featuring:
 - `description`: Treatment details
 - `cost`: Treatment cost in MMK
 - `date`: Date of treatment
+
+### Payment Record and Receipt Snapshot
+- `paymentMethod`: Required supported payment type
+- `receiptNumber`: Stable payment receipt identifier
+- `balanceBefore`, `remainingBalance`: Account state around the payment
+- `createdByUserName`: Staff member or assistant identity that recorded the payment
+- `receiptSnapshot`: Immutable JSON snapshot used for accurate historical reprints
+- Snapshot line items can include treatments and standalone medicine sales captured at payment time
 
 ### Doctor Commission (Percentage-Based Earnings)
 - `commission_percentage` on Doctor: 0-100%, set in the Doctor tab
@@ -283,7 +315,7 @@ AI commands follow this JSON format:
 - `apt_u(id, data)`: Update appointment
 - `apt_d(id)`: Delete appointment
 - `apt_reschedule(id, dt, t)`: Reschedule appointment
-- `apt_status(id, status)`: Update appointment status
+- `apt_status(id, status, skip_clinical_fee)`: Update appointment status. Completion applies the configured per-visit fee once; set `skip_clinical_fee=true` only for an explicit waiver request.
 - `apt_find_patient(name)`: Find appointments for patient
 
 #### Treatment Records
@@ -293,7 +325,7 @@ AI commands follow this JSON format:
 - `treatment_type_create(name, cost, category)`: Create treatment type
 
 #### Financial Operations
-- `fin_pay(pid, amt)`: Process payment
+- `fin_pay(pid, amt, method)`: Process payment with a required supported payment type
 - `fin_report(period)`: Get financial report (daily/weekly/monthly)
 
 #### Medicine/Inventory Management

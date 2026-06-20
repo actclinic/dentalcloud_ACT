@@ -130,6 +130,15 @@ UPDATE APPOINTMENT STATUS:
   "status": "Completed" 
 } }
 
+Completing a registered-patient appointment applies the configured per-visit clinical fee at most once. The first completed visit uses the new-patient amount; later completed visits use the returning-patient amount. To waive it only when the user explicitly asks:
+{ "action": "apt_status", "params": {
+  "id": "appointment789",
+  "status": "Completed",
+  "skip_clinical_fee": true
+} }
+
+Appointments use Clinical Focus and Extra Notes. Do not put target teeth on appointments; record teeth on the treatment/clinical record.
+
 FIND PATIENT APPOINTMENTS:
 { "action": "apt_find_patient", "params": { "name": "John Smith" } }
 
@@ -211,8 +220,28 @@ PERFORM INVENTORY AUDIT:
 PROCESS PAYMENT:
 { "action": "fin_pay", "params": { 
   "pid": "patient123", 
-  "amt": 150 
+  "amt": 150,
+  "method": "Cash"
 } }
+
+PAYMENT TYPES (required):
+- KPay
+- WavePay
+- Cash
+- MMQR
+- Debit Card
+- Credit Card
+- AYA Pay
+- UAB Pay
+
+PAYMENT RECEIPT BEHAVIOR:
+- Payments receive a stable receipt number.
+- Saved payment receipts use an immutable snapshot for accurate reprints.
+- The snapshot can preserve the patient/clinic details, payment type and balances, collector, and captured treatment and medicine lines.
+- Receipt header title, currency, and A4/55mm thermal format are shared across devices for new receipts.
+- Old saved receipts keep their original snapshot even when settings or patient data later change.
+- The receipt picker can include treatments and standalone medicine sales.
+- "Recent" / "NEW" means the treatment or medicine date is today, not merely within the last few days.
 
 GET FINANCIAL REPORT:
 { "action": "fin_report", "params": { "period": "weekly" } }
@@ -308,7 +337,8 @@ Step 2 - Process payment:
 "Process her payment of 175 MMK"
 { "action": "fin_pay", "params": { 
   "pid": "patient456", 
-  "amt": 175 
+  "amt": 175,
+  "method": "KPay"
 } }
 
 Step 3 - Schedule follow-up:
