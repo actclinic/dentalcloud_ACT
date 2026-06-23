@@ -2699,6 +2699,7 @@ export const api = {
       paymentMethod: PaymentMethod;
       treatmentIds?: string[];
       paymentDate?: string;
+      receiptSnapshot?: Record<string, unknown> | null;
       createdByUserId?: string | null;
       createdByUserName?: string | null;
     }) => {
@@ -2716,7 +2717,7 @@ export const api = {
         p_payment_method: input.paymentMethod,
         p_treatment_ids: input.treatmentIds || [],
         p_payment_date: input.paymentDate || new Date().toISOString().slice(0, 10),
-        p_receipt_snapshot: null,
+        p_receipt_snapshot: input.receiptSnapshot || null,
         p_created_by_user_id: input.createdByUserId || null,
         p_created_by_user_name: input.createdByUserName || null
       });

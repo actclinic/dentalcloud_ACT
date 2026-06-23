@@ -128,6 +128,12 @@ export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptS
       status,
       balanceBefore: normalizeNumber(raw.payment?.balanceBefore),
       balanceAfter: normalizeNumber(raw.payment?.balanceAfter),
+      serviceFeeAmount: normalizeNumber(raw.payment?.serviceFeeAmount),
+      serviceFeeCategory: raw.payment?.serviceFeeCategory === 'NEW'
+        ? 'NEW'
+        : raw.payment?.serviceFeeCategory === 'RETURNING'
+          ? 'RETURNING'
+          : null,
       recordedByUserName: normalizeString(raw.payment?.recordedByUserName) || null
     },
     treatments: Array.isArray(raw.treatments) ? raw.treatments.map(normalizeTreatmentLine).filter(Boolean) as PaymentReceiptTreatmentLine[] : [],
@@ -146,6 +152,8 @@ export const buildPaymentReceiptSnapshot = (params: {
   paymentStatus: 'FULL' | 'PARTIAL';
   createdAt?: string | null;
   recordedByUserName?: string | null;
+  serviceFeeAmount?: number;
+  serviceFeeCategory?: 'NEW' | 'RETURNING' | null;
   treatments?: ClinicalRecord[];
   medicines?: MedicineSale[];
   clinic: ReceiptClinicContext;
@@ -180,6 +188,10 @@ export const buildPaymentReceiptSnapshot = (params: {
       status: params.paymentStatus,
       balanceBefore: Math.max(0, normalizeNumber(params.balanceBefore)),
       balanceAfter: Math.max(0, normalizeNumber(params.balanceAfter)),
+      serviceFeeAmount: Math.max(0, normalizeNumber(params.serviceFeeAmount)),
+      serviceFeeCategory: params.serviceFeeCategory === 'NEW' || params.serviceFeeCategory === 'RETURNING'
+        ? params.serviceFeeCategory
+        : null,
       recordedByUserName: normalizeString(params.recordedByUserName) || null
     },
     treatments: buildTreatmentLines(params.treatments),
@@ -219,6 +231,8 @@ export const buildLegacyPaymentReceiptSnapshot = (
       status: payment.type === 'FULL' ? 'FULL' : 'PARTIAL',
       balanceBefore,
       balanceAfter,
+      serviceFeeAmount: 0,
+      serviceFeeCategory: null,
       recordedByUserName: normalizeString(payment.createdByUserName) || null
     }
   };

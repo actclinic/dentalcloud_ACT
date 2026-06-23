@@ -4975,7 +4975,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   amount: params.amt,
                   paymentMethod,
                   paymentDate: new Date().toISOString().slice(0, 10),
-                  createdByUserId: currentAdminId || null,
+                  createdByUserId: null,
                   createdByUserName: 'AI Assistant'
                 });
                 const pName = getScopedPatientById(patientId)?.name || patientId;

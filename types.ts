@@ -147,6 +147,8 @@ export interface PaymentReceiptSnapshot {
     status: 'FULL' | 'PARTIAL';
     balanceBefore: number;
     balanceAfter: number;
+    serviceFeeAmount?: number;
+    serviceFeeCategory?: 'NEW' | 'RETURNING' | null;
     recordedByUserName?: string | null;
   };
   treatments?: PaymentReceiptTreatmentLine[];

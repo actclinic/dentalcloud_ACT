@@ -113,8 +113,15 @@ type PaymentDraft = {
   amountTendered: number;
   previousBalance: number;
   currentTreatmentTotal: number;
+  serviceFeeAmount: number;
+  serviceFeeCategory: 'NEW' | 'RETURNING' | null;
   paymentMethod: PaymentMethod;
 };
+
+type PaymentServiceFeePreview = {
+  category: 'NEW' | 'RETURNING';
+  feeAmount: number;
+} | null;
 
 type HoverTheme = 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 
@@ -406,6 +413,8 @@ const App: React.FC = () => {
   
   // -- Modals State --
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentCategoryModal, setShowPaymentCategoryModal] = useState(false);
+  const [paymentServiceFeePreview, setPaymentServiceFeePreview] = useState<PaymentServiceFeePreview>(null);
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [showTreatmentTypeModal, setShowTreatmentTypeModal] = useState(false);
@@ -587,6 +596,8 @@ const App: React.FC = () => {
     amountTendered: 0,
     previousBalance: 0,
     currentTreatmentTotal: 0,
+    serviceFeeAmount: 0,
+    serviceFeeCategory: null,
     paymentMethod: 'UNKNOWN'
   });
   const [latestTreatmentBatch, setLatestTreatmentBatch] = useState<ClinicalRecord[]>([]);
@@ -620,11 +631,22 @@ const App: React.FC = () => {
   const [serviceToDelete, setServiceToDelete] = useState<{id: string, name: string} | null>(null);
 
   const selectedPaymentTreatments = useMemo(() => paymentDraft.treatments, [paymentDraft.treatments]);
-  const paymentOriginalAmount = Math.max(0, Number(selectedPatient?.balance || 0));
+  const paymentServiceFeeAmount = Math.max(0, Number(paymentDraft.serviceFeeAmount || 0));
+  const paymentOriginalAmount = Math.max(0, Number(selectedPatient?.balance || 0)) + paymentServiceFeeAmount;
   const paymentPreviousBalance = Math.max(0, Number(paymentDraft.previousBalance || 0));
   const paymentCurrentTreatmentTotal = Math.max(0, Number(paymentDraft.currentTreatmentTotal || 0));
   const paymentAmountTendered = Math.min(paymentOriginalAmount, Math.max(0, Number(paymentDraft.amountTendered || 0)));
   const paymentClearedAmount = Math.min(paymentOriginalAmount, paymentAmountTendered);
+  const paymentServiceFeeLabel = paymentDraft.serviceFeeCategory === 'NEW'
+    ? 'New patient service fee'
+    : paymentDraft.serviceFeeCategory === 'RETURNING'
+      ? 'Old patient service fee'
+      : 'Service fee';
+  const paymentPreviewServiceFeeLabel = paymentServiceFeePreview?.category === 'NEW'
+    ? 'New patient service fee'
+    : paymentServiceFeePreview?.category === 'RETURNING'
+      ? 'Old patient service fee'
+      : 'Service fee';
   const [paymentThemeColors, setPaymentThemeColors] = useState(() => ({
     primary: '#4f46e5',
     primaryHover: '#4338ca',
@@ -1846,7 +1868,7 @@ const App: React.FC = () => {
     setShowReceipt(true);
   };
 
-  const handleOpenPaymentModal = (_treatments: ClinicalRecord[]) => {
+  const openPaymentModalWithCategory = (category: 'NEW' | 'RETURNING' | null, explicitServiceFeeAmount?: number) => {
     const currentBatchForPatient = latestTreatmentBatch.filter(
       (record) => record.patient_id === selectedPatient?.id
     );
@@ -1854,6 +1876,13 @@ const App: React.FC = () => {
       (sum, record) => sum + Math.max(0, Number(record.cost || 0)),
       0
     );
+    const serviceFeeAmount = explicitServiceFeeAmount !== undefined
+      ? Math.max(0, explicitServiceFeeAmount)
+      : category === 'NEW'
+        ? Math.max(0, clinicalFeeNewPatientAmount)
+        : category === 'RETURNING'
+          ? Math.max(0, clinicalFeeReturningPatientAmount)
+          : 0;
     const previousBalance = Math.max(
       0,
       Math.max(0, Number(selectedPatient?.balance || 0)) - currentTreatmentTotal
@@ -1861,12 +1890,59 @@ const App: React.FC = () => {
 
     setPaymentDraft({
       treatments: currentBatchForPatient,
-      amountTendered: Math.max(0, Number(selectedPatient?.balance || 0)),
+      amountTendered: Math.max(0, Number(selectedPatient?.balance || 0)) + serviceFeeAmount,
       previousBalance,
       currentTreatmentTotal,
+      serviceFeeAmount,
+      serviceFeeCategory: category,
       paymentMethod: 'UNKNOWN'
     });
     setShowPaymentModal(true);
+  };
+
+  const handleOpenPaymentModal = (_treatments: ClinicalRecord[]) => {
+    const shouldAskPatientCategory = clinicalFeeEnabled
+      && (clinicalFeeNewPatientAmount > 0 || clinicalFeeReturningPatientAmount > 0);
+
+    if (shouldAskPatientCategory) {
+      if (!selectedPatient?.id) {
+        openPaymentModalWithCategory(null);
+        return;
+      }
+
+      const today = toLocalISODate(new Date());
+      const hasPreviousCompletedAppointment = appointments.some((appointment) => {
+        const patientId = (appointment.patient_id || '').trim();
+        return (
+          patientId === selectedPatient.id &&
+          appointment.status === 'Completed' &&
+          typeof appointment.date === 'string' &&
+          appointment.date < today
+        );
+      });
+      const hasPreviousTreatment = [...treatmentHistory, ...globalRecords].some((record) => {
+        return (
+          record.patient_id === selectedPatient.id &&
+          typeof record.date === 'string' &&
+          record.date < today
+        );
+      });
+      const category: 'NEW' | 'RETURNING' = hasPreviousCompletedAppointment || hasPreviousTreatment ? 'RETURNING' : 'NEW';
+      const feeAmount = category === 'RETURNING'
+        ? Math.max(0, clinicalFeeReturningPatientAmount)
+        : Math.max(0, clinicalFeeNewPatientAmount);
+
+      if (feeAmount <= 0) {
+        openPaymentModalWithCategory(null);
+        return;
+      }
+
+      setPaymentServiceFeePreview({ category, feeAmount });
+      setShowPaymentCategoryModal(true);
+      return;
+    }
+
+    openPaymentModalWithCategory(null);
   };
 
   const resetAppointmentForm = () => {
@@ -2820,13 +2896,22 @@ const App: React.FC = () => {
         selectedPaymentTreatments,
         paymentDate
       );
+      const provisionalReceiptSnapshot = paymentServiceFeeAmount > 0
+        ? {
+            payment: {
+              serviceFeeAmount: paymentServiceFeeAmount,
+              serviceFeeCategory: paymentDraft.serviceFeeCategory
+            }
+          }
+        : null;
       const res = await api.finance.processPayment({
         patientId: selectedPatient.id,
         amount: paymentAmountTendered,
         paymentMethod: paymentDraft.paymentMethod,
         treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
         paymentDate,
-        createdByUserId: session?.userId || null,
+        receiptSnapshot: provisionalReceiptSnapshot,
+        createdByUserId: null,
         createdByUserName: currentUser || session?.username || null
       });
       let paymentRecord: PaymentRecord = {
@@ -2844,6 +2929,8 @@ const App: React.FC = () => {
         paymentStatus: paymentRecord.type,
         createdAt: paymentRecord.createdAt || null,
         recordedByUserName: paymentRecord.createdByUserName || currentUser || session?.username || null,
+        serviceFeeAmount: paymentServiceFeeAmount,
+        serviceFeeCategory: paymentDraft.serviceFeeCategory,
         treatments: selectedPaymentTreatments,
         medicines: matchedMedicineSales,
         clinic: {
@@ -2885,7 +2972,7 @@ const App: React.FC = () => {
       setSelectedTreatmentsForReceipt([]);
       setSelectedMedicineSalesForReceipt([]);
       setShowPaymentModal(false);
-      setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, paymentMethod: 'UNKNOWN' });
+      setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN' });
       // Ask whether to generate a receipt after posting payment.
       setShowReceiptPrompt(true);
       fetchInitialData(); 
@@ -4678,13 +4765,97 @@ const App: React.FC = () => {
         </Suspense>
       )}
 
+      {showPaymentCategoryModal && (
+        <div className="fixed inset-0 bg-gray-900/70 backdrop-blur-xl z-50 flex items-center justify-center p-6 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full relative animate-scale-up overflow-hidden">
+            <div className="h-2 w-full bg-gradient-to-r from-emerald-400 via-green-500 to-teal-500" />
+            <button
+              type="button"
+              onClick={() => {
+                setShowPaymentCategoryModal(false);
+                setPaymentServiceFeePreview(null);
+              }}
+              className="absolute right-6 top-6 text-gray-300 transition-colors hover:text-gray-900"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="px-8 pt-8 pb-4 text-center">
+              <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-gradient-to-br from-emerald-100 to-green-200 flex items-center justify-center shadow-lg shadow-emerald-200">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                  <UserCheck className="w-8 h-8 text-white" />
+                </div>
+              </div>
+              <div className="absolute top-24 left-11 w-2 h-2 rounded-full bg-emerald-300" />
+              <div className="absolute top-20 right-14 w-1.5 h-1.5 rounded-full bg-emerald-300" />
+              <div className="absolute top-28 right-8 w-1 h-1 rounded-full bg-emerald-400" />
+
+              <h3 className="text-2xl font-black text-gray-900 mb-2">Select Patient Type</h3>
+              <p className="text-sm text-emerald-700 font-semibold bg-emerald-50 rounded-full px-4 py-1.5 inline-block">
+                Patient type detected automatically before payment collection
+              </p>
+            </div>
+
+            <div className="mx-8 border-t border-gray-100" />
+
+            <div className="px-8 py-5 space-y-5">
+              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl p-5 border border-emerald-100">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  The system checked this patient's previous completed visits and treatment history to decide whether this is a new or old patient.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-5 text-left shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                  {paymentServiceFeePreview?.category === 'RETURNING' ? 'Old Patient' : 'New Patient'}
+                </p>
+                <p className="mt-2 text-3xl font-black text-slate-950">
+                  {formatCurrency(paymentServiceFeePreview?.feeAmount || 0, currency)}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {paymentServiceFeePreview?.category === 'RETURNING'
+                    ? 'A previous completed visit or treatment was found, so the old-patient service fee will be added.'
+                    : 'No previous completed visit or treatment was found, so the new-patient service fee will be added.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="px-8 pb-8 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPaymentCategoryModal(false);
+                  setPaymentServiceFeePreview(null);
+                  openPaymentModalWithCategory(null, 0);
+                }}
+                className="flex-1 px-6 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-700 transition-all active:scale-[0.98]"
+              >
+                Continue Without Service Fee
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const preview = paymentServiceFeePreview;
+                  setShowPaymentCategoryModal(false);
+                  setPaymentServiceFeePreview(null);
+                  openPaymentModalWithCategory(preview?.category || null, preview?.feeAmount || 0);
+                }}
+                className="flex-1 px-6 py-3.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.98]"
+              >
+                Continue With Service Fee
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPaymentModal && (
         <Modal
           title="Collect Payment"
           maxWidthClassName="max-w-4xl"
           onClose={() => {
             setShowPaymentModal(false);
-            setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, paymentMethod: 'UNKNOWN' });
+            setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN' });
           }}
         >
           <form onSubmit={handlePaymentSubmit} className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
@@ -4707,6 +4878,11 @@ const App: React.FC = () => {
                 <p className="mt-2 text-4xl font-black tracking-tight text-slate-950">
                   {formatCurrency(paymentOriginalAmount, currency)}
                 </p>
+                {paymentServiceFeeAmount > 0 ? (
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">
+                    Includes {paymentServiceFeeLabel} {formatCurrency(paymentServiceFeeAmount, currency)}
+                  </p>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -4720,6 +4896,12 @@ const App: React.FC = () => {
                   <p className="font-semibold text-slate-500">Current treatment</p>
                   <p className="mt-1 text-base font-black leading-tight text-slate-900 sm:text-lg">
                     {formatCurrency(paymentCurrentTreatmentTotal, currency)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                  <p className="font-semibold text-slate-500">Service fee</p>
+                  <p className="mt-1 text-base font-black leading-tight text-slate-900 sm:text-lg">
+                    {formatCurrency(paymentServiceFeeAmount, currency)}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">

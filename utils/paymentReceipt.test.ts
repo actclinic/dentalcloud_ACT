@@ -96,6 +96,8 @@ describe('paymentReceipt', () => {
         status: 'PARTIAL',
         balanceBefore: 20000,
         balanceAfter: 15000,
+        serviceFeeAmount: 0,
+        serviceFeeCategory: null,
         recordedByUserName: 'Nurse May'
       },
       treatments: [
@@ -144,6 +146,8 @@ describe('paymentReceipt', () => {
       status: 'FULL',
       balanceBefore: 8000,
       balanceAfter: 0,
+      serviceFeeAmount: 0,
+      serviceFeeCategory: null,
       recordedByUserName: 'Nurse Hla'
     });
   });
@@ -221,6 +225,8 @@ describe('paymentReceipt', () => {
         status: 'PARTIAL',
         balanceBefore: 20000,
         balanceAfter: 8000,
+        serviceFeeAmount: 0,
+        serviceFeeCategory: null,
         recordedByUserName: null
       },
       treatments: [

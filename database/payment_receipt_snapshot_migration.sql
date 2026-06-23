@@ -66,9 +66,15 @@ DECLARE
   v_method TEXT := UPPER(BTRIM(COALESCE(p_payment_method, '')));
   v_amount DECIMAL(12,2) := ROUND(COALESCE(p_amount, 0)::NUMERIC, 2);
   v_balance_before DECIMAL(12,2);
+  v_created_by_user_id UUID;
+  v_service_fee_amount DECIMAL(12,2) := ROUND(COALESCE(NULLIF(BTRIM(COALESCE(p_receipt_snapshot #>> '{payment,serviceFeeAmount}', '')), ''), '0')::NUMERIC, 2);
 BEGIN
   IF v_amount <= 0 THEN
     RAISE EXCEPTION 'Payment amount must be greater than 0';
+  END IF;
+
+  IF v_service_fee_amount < 0 THEN
+    RAISE EXCEPTION 'Service fee amount cannot be negative';
   END IF;
 
   IF v_method NOT IN ('KPAY', 'WAVEPAY', 'CASH', 'MMQR', 'DEBIT_CARD', 'CREDIT_CARD', 'AYA_PAY', 'UAB_PAY') THEN
@@ -85,18 +91,23 @@ BEGIN
     RAISE EXCEPTION 'Patient not found';
   END IF;
 
-  IF COALESCE(v_patient.balance, 0) <= 0 THEN
+  IF (COALESCE(v_patient.balance, 0) + v_service_fee_amount) <= 0 THEN
     RAISE EXCEPTION 'Patient has no outstanding balance';
   END IF;
 
-  IF v_amount > COALESCE(v_patient.balance, 0) THEN
+  IF v_amount > (COALESCE(v_patient.balance, 0) + v_service_fee_amount) THEN
     RAISE EXCEPTION 'Payment amount cannot exceed the outstanding balance';
   END IF;
 
-  v_balance_before := ROUND(COALESCE(v_patient.balance, 0)::NUMERIC, 2);
+  v_balance_before := ROUND((COALESCE(v_patient.balance, 0) + v_service_fee_amount)::NUMERIC, 2);
+
+  SELECT users.id
+  INTO v_created_by_user_id
+  FROM users
+  WHERE users.id = p_created_by_user_id;
 
   UPDATE patients
-  SET balance = ROUND((COALESCE(v_patient.balance, 0) - v_amount)::NUMERIC, 2)
+  SET balance = ROUND((v_balance_before - v_amount)::NUMERIC, 2)
   WHERE patients.id = p_patient_id
   RETURNING * INTO v_patient;
 
@@ -129,7 +140,7 @@ BEGIN
     COALESCE(p_treatment_ids, '{}'),
     COALESCE(p_payment_date, CURRENT_DATE),
     p_receipt_snapshot,
-    p_created_by_user_id,
+    v_created_by_user_id,
     NULLIF(BTRIM(COALESCE(p_created_by_user_name, '')), '')
   )
   RETURNING * INTO v_payment;

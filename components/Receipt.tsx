@@ -143,7 +143,13 @@ const Receipt: React.FC<ReceiptProps> = ({
     return sum + getTreatmentPricing(treatment).discountAmount;
   }, 0);
   const totalMedicineCost = receiptMedicines.reduce((sum, medicine) => sum + (medicine.total_price || 0), 0);
-  const grandTotal = totalTreatmentCost + totalMedicineCost;
+  const paymentServiceFeeAmount = Math.max(0, Number(paymentSnapshot?.payment.serviceFeeAmount || 0));
+  const paymentServiceFeeLabel = paymentSnapshot?.payment.serviceFeeCategory === 'NEW'
+    ? 'New Patient Service Fee'
+    : paymentSnapshot?.payment.serviceFeeCategory === 'RETURNING'
+      ? 'Old Patient Service Fee'
+      : 'Service Fee';
+  const grandTotal = totalTreatmentCost + totalMedicineCost + paymentServiceFeeAmount;
   const totalPaid = paymentSnapshot?.payment.amountPaid || paymentAmount || 0;
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
@@ -878,6 +884,12 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <span className="text-sm font-semibold text-gray-700">Medicines & Items:</span>
                 <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalMedicineCost, effectiveCurrency)}</span>
               </div>
+              {paymentServiceFeeAmount > 0 ? (
+                <div className="flex justify-between py-2 border-b border-gray-300">
+                  <span className="text-sm font-semibold text-gray-700">{paymentServiceFeeLabel}:</span>
+                  <span className="text-sm font-semibold text-gray-900">{formatCurrency(paymentServiceFeeAmount, effectiveCurrency)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between py-2 border-b border-gray-300">
                 <span className="text-sm font-semibold text-gray-700">Subtotal:</span>
                 <span className="text-sm font-semibold text-gray-900">{formatCurrency(grandTotal, effectiveCurrency)}</span>
@@ -918,6 +930,12 @@ const Receipt: React.FC<ReceiptProps> = ({
                   <span className="font-semibold text-slate-900">{paymentSnapshot.payment.recordedByUserName}</span>
                 </div>
               ) : null}
+              {paymentServiceFeeAmount > 0 ? (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">{paymentServiceFeeLabel}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(paymentServiceFeeAmount, effectiveCurrency)}</span>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -928,6 +946,12 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <span className="text-slate-500">Balance Before Payment</span>
                 <span className="font-semibold text-slate-900">{formatCurrency(paymentSnapshot.payment.balanceBefore, effectiveCurrency)}</span>
               </div>
+              {paymentServiceFeeAmount > 0 ? (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">{paymentServiceFeeLabel}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(paymentServiceFeeAmount, effectiveCurrency)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between gap-4">
                 <span className="text-slate-500">Payment Received</span>
                 <span className="font-semibold text-emerald-700">-{formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}</span>
@@ -1005,6 +1029,7 @@ const Receipt: React.FC<ReceiptProps> = ({
           {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, effectiveCurrency))}
           {totalTreatmentDiscount > 0 ? thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, effectiveCurrency)}`, undefined, { color: '#b45309' }) : null}
           {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, effectiveCurrency))}
+          {paymentServiceFeeAmount > 0 ? thermalLine(`${paymentServiceFeeLabel}:`, formatCurrency(paymentServiceFeeAmount, effectiveCurrency)) : null}
           {thermalDivider()}
           {thermalLine('Subtotal:', formatCurrency(grandTotal, effectiveCurrency), undefined, { fontWeight: 700 })}
           {thermalLine('Payment Received:', `-${formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}`, undefined, { color: '#16a34a' })}
@@ -1015,6 +1040,7 @@ const Receipt: React.FC<ReceiptProps> = ({
           <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
           {thermalLine('Method:', formatPaymentMethod(paymentSnapshot.payment.method))}
           {thermalLine('Status:', paymentSnapshot.payment.status === 'FULL' ? 'Paid in Full' : 'Partial Payment')}
+          {paymentServiceFeeAmount > 0 ? thermalLine('Fee:', `${paymentServiceFeeLabel} ${formatCurrency(paymentServiceFeeAmount, effectiveCurrency)}`) : null}
           {paymentSnapshot.payment.recordedByUserName ? thermalLine('Recorded By:', paymentSnapshot.payment.recordedByUserName) : null}
         </div>
 
