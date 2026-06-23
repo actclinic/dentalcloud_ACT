@@ -6,7 +6,10 @@
 --
 -- WARNING:
 -- - This is destructive.
--- - It deletes patient files and app logo objects from Supabase Storage.
+-- - It does NOT directly delete Supabase Storage objects, because Supabase
+--   blocks direct SQL deletion from storage.objects in SQL Editor.
+-- - Clear app_logos and patient_files from the Storage UI or Storage API
+--   separately if you need storage contents wiped too.
 -- - It drops app tables, app sequences, and app RPC functions.
 -- - It does NOT drop Supabase system schemas such as auth/storage/realtime.
 --
@@ -17,12 +20,14 @@
 
 BEGIN;
 
--- Clear Supabase Storage objects used by the app.
-DELETE FROM storage.objects
-WHERE bucket_id IN ('app_logos', 'patient_files');
-
-DELETE FROM storage.buckets
-WHERE id IN ('app_logos', 'patient_files');
+-- NOTE:
+-- Do not delete from storage.objects here.
+-- Supabase raises:
+--   Direct deletion from storage tables is not allowed. Use the Storage API.
+--
+-- We intentionally leave storage buckets and objects alone in this SQL reset.
+-- The production setup script already uses UPSERT/ON CONFLICT logic for the
+-- app buckets, so leaving bucket metadata in place will not break rebuilds.
 
 -- Drop app-specific RPC functions first to avoid signature drift.
 DROP FUNCTION IF EXISTS public.process_patient_payment(UUID, DECIMAL, TEXT, UUID[], DATE, JSONB, UUID, TEXT);
