@@ -1910,25 +1910,24 @@ const App: React.FC = () => {
         return;
       }
 
-      const currentBatchTreatmentIds = new Set(
-        latestTreatmentBatch
-          .filter((record) => record.patient_id === selectedPatient.id)
-          .map((record) => record.id)
-      );
+      const today = toLocalISODate(new Date());
       const hasPreviousCompletedAppointment = appointments.some((appointment) => {
         const patientId = (appointment.patient_id || '').trim();
-        return patientId === selectedPatient.id && appointment.status === 'Completed';
+        return (
+          patientId === selectedPatient.id &&
+          appointment.status === 'Completed' &&
+          typeof appointment.date === 'string' &&
+          appointment.date < today
+        );
       });
-      const hasPreviousPayment = paymentRecords.some((payment) => payment.patientId === selectedPatient.id);
       const hasPreviousTreatment = [...treatmentHistory, ...globalRecords].some((record) => {
         return (
           record.patient_id === selectedPatient.id &&
-          !currentBatchTreatmentIds.has(record.id)
+          typeof record.date === 'string' &&
+          record.date < today
         );
       });
-      const category: 'NEW' | 'RETURNING' = hasPreviousCompletedAppointment || hasPreviousPayment || hasPreviousTreatment
-        ? 'RETURNING'
-        : 'NEW';
+      const category: 'NEW' | 'RETURNING' = hasPreviousCompletedAppointment || hasPreviousTreatment ? 'RETURNING' : 'NEW';
       const feeAmount = category === 'RETURNING'
         ? Math.max(0, clinicalFeeReturningPatientAmount)
         : Math.max(0, clinicalFeeNewPatientAmount);
