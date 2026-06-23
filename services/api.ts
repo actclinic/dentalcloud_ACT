@@ -359,7 +359,9 @@ const completeScheduledAppointmentForTreatment = async (params: {
     candidateAppointments.find((appointment: any) => !appointment.doctor_id) ||
     candidateAppointments[0];
 
-  await completeAppointmentWithClinicalFee(appointmentToComplete.id);
+  // Treatment-driven auto-completion should not apply the visit fee here.
+  // The payment collection flow decides whether to include the new/returning fee.
+  await completeAppointmentWithClinicalFee(appointmentToComplete.id, true);
 
   try {
     await syncRecallStatusFromAppointment({
