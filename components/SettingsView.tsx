@@ -40,6 +40,7 @@ interface SettingsViewProps {
   isAdmin: boolean;
   appName: string;
   appLogoUrl: string;
+  onSaveAppName: (name: string) => Promise<void>;
   onUploadAppLogo: (file: File) => Promise<void>;
   onDeleteAppLogo: () => Promise<void>;
   receiptInfo: { email: string; phone: string };
@@ -103,6 +104,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   isAdmin,
   appName,
   appLogoUrl,
+  onSaveAppName,
   onUploadAppLogo,
   onDeleteAppLogo,
   receiptInfo,
@@ -135,6 +137,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     { value: 'dark', label: 'Dark' }
   ];
   const [appLogoMessage, setAppLogoMessage] = useState<string | null>(null);
+  const [appNameInput, setAppNameInput] = useState<string>(appName);
+  const [appNameMessage, setAppNameMessage] = useState<string | null>(null);
+  const [isSavingAppName, setIsSavingAppName] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isDeletingLogo, setIsDeletingLogo] = useState(false);
   const [receiptEmailInput, setReceiptEmailInput] = useState<string>(receiptInfo.email);
@@ -171,6 +176,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     setReceiptEmailInput(receiptInfo.email);
     setReceiptPhoneInput(receiptInfo.phone);
   }, [receiptInfo.email, receiptInfo.phone]);
+
+  useEffect(() => {
+    setAppNameInput(appName);
+  }, [appName]);
 
   useEffect(() => {
     setReceiptHeaderTitleInput(receiptHeaderTitle);
@@ -1760,6 +1769,63 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const renderBrandingTab = () => (
     <div className="space-y-6">
+      <div className="border border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Palette className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Application Name</h3>
+        </div>
+
+        <p className="text-sm text-gray-600 mb-4">
+          Set the clinic name shown in the browser tab, login screen, receipts fallback title, and anywhere the app branding text is used.
+        </p>
+
+        <div className="max-w-xl">
+          <Input
+            label="Name"
+            value={appNameInput}
+            onChange={(e: any) => {
+              setAppNameInput(e.target.value);
+              setAppNameMessage(null);
+            }}
+            placeholder="DentalCloud Pro"
+            maxLength={120}
+          />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <button
+            type="button"
+            onClick={async () => {
+              const normalizedName = appNameInput.trim();
+              if (!normalizedName) {
+                setAppNameMessage('Application name is required.');
+                return;
+              }
+
+              setIsSavingAppName(true);
+              try {
+                await onSaveAppName(normalizedName);
+                setAppNameInput(normalizedName);
+                setAppNameMessage('Application name saved successfully.');
+              } catch (err: any) {
+                setAppNameMessage(err?.message || 'Failed to save application name.');
+              } finally {
+                setIsSavingAppName(false);
+              }
+            }}
+            disabled={isSavingAppName}
+            className="w-full md:w-auto rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70"
+          >
+            {isSavingAppName ? 'Saving...' : 'Save Name'}
+          </button>
+          {appNameMessage && (
+            <p className={`text-xs ${appNameMessage.toLowerCase().includes('failed') || appNameMessage.toLowerCase().includes('required') ? 'text-red-600' : 'text-emerald-600'}`}>
+              {appNameMessage}
+            </p>
+          )}
+        </div>
+      </div>
+
       <div className="border border-gray-200 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <ImageIcon className="w-5 h-5 text-indigo-600" />

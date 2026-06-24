@@ -2952,6 +2952,25 @@ export const api = {
       }
     },
 
+    saveAppName: async (name: string): Promise<void> => {
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        throw new Error('Application name is required.');
+      }
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          id: APP_SETTINGS_SINGLETON_ID,
+          app_name: normalizedName,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+    },
+
     getAppLogo: async (): Promise<{ url: string; path: string } | null> => {
       try {
         const { data, error } = await supabase

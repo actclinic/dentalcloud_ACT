@@ -534,6 +534,11 @@ const App: React.FC = () => {
     setAppLogoUrl(logo.url);
   };
 
+  const handleSaveAppName = async (name: string) => {
+    await api.appSettings.saveAppName(name);
+    setAppName(name.trim());
+  };
+
   const handleDeleteAppLogo = async () => {
     await api.appSettings.deleteAppLogo();
     setAppLogoUrl('');
@@ -3647,6 +3652,7 @@ const App: React.FC = () => {
                     isAdmin={isAdmin}
                     appName={appName}
                     appLogoUrl={appLogoUrl}
+                    onSaveAppName={handleSaveAppName}
                     onUploadAppLogo={handleUploadAppLogo}
                     onDeleteAppLogo={handleDeleteAppLogo}
                     receiptInfo={receiptInfo}
