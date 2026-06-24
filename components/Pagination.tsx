@@ -8,6 +8,7 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
   showAll: boolean;
   onToggleShowAll: () => void;
+  showAllToggle?: boolean;
 }
 
 const Pagination: React.FC<PaginationProps> = ({
@@ -16,7 +17,8 @@ const Pagination: React.FC<PaginationProps> = ({
   currentPage,
   onPageChange,
   showAll,
-  onToggleShowAll
+  onToggleShowAll,
+  showAllToggle = true
 }) => {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const safeCurrentPage = Math.min(Math.max(currentPage, 1), Math.max(totalPages, 1));
@@ -39,7 +41,7 @@ const Pagination: React.FC<PaginationProps> = ({
       </div>
       
       <div className="flex w-full min-w-0 flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-        {totalItems > itemsPerPage && (
+        {showAllToggle && totalItems > itemsPerPage && (
           <button
             onClick={onToggleShowAll}
             type="button"

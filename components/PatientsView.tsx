@@ -46,7 +46,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   patients, 
   patientTypes,
   locations,
-  appointments: _appointments,
+  appointments,
   loading, 
   currency, 
   onSelectPatient, 
@@ -147,6 +147,54 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     const year = String(parsedDate.getFullYear()).slice(-2);
     return `${day}/${month}/${year}`;
   };
+
+  const formatAppointmentDate = (dateString?: string) => {
+    if (!dateString) return '-';
+
+    const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoDateMatch) {
+      const [, year, month, day] = isoDateMatch;
+      return `${day}/${month}/${year}`;
+    }
+
+    const parsedDate = new Date(dateString);
+    if (Number.isNaN(parsedDate.getTime())) return '-';
+
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const year = parsedDate.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const nextAppointmentByPatientId = useMemo(() => {
+    const map = new Map<string, Appointment>();
+    const now = new Date();
+
+    appointments.forEach((appointment) => {
+      const patientId = (appointment.patient_id || '').trim();
+      if (!patientId || appointment.status !== 'Scheduled' || !appointment.date) {
+        return;
+      }
+
+      const appointmentDateTime = new Date(`${appointment.date}T${appointment.time || '00:00'}`);
+      if (Number.isNaN(appointmentDateTime.getTime()) || appointmentDateTime < now) {
+        return;
+      }
+
+      const currentNearest = map.get(patientId);
+      if (!currentNearest) {
+        map.set(patientId, appointment);
+        return;
+      }
+
+      const currentNearestDateTime = new Date(`${currentNearest.date}T${currentNearest.time || '00:00'}`);
+      if (appointmentDateTime < currentNearestDateTime) {
+        map.set(patientId, appointment);
+      }
+    });
+
+    return map;
+  }, [appointments]);
 
   // Build a map of patient_id -> treatment records for quick lookup
   const treatmentRecordsByPatientIdMap = useMemo(() => {
@@ -619,6 +667,12 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   </div>
                 </div>
                 <div className="rounded-xl border border-gray-200 bg-white p-4 lg:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Patient Note</p>
+                  <p className="mt-2 text-sm leading-6 text-gray-900 whitespace-pre-wrap">
+                    {detailPatient.medicalHistory?.trim() || 'No patient note available.'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4 lg:col-span-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Treatment and Diagnosis</p>
                   {isTreatmentRecordsLoading ? (
                     <p className="mt-2 text-sm leading-6 text-gray-900">Loading treatment records...</p>
@@ -695,11 +749,11 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 <thead className="bg-indigo-50 border-b border-indigo-200">
                   <tr className="text-indigo-700">
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No</th>
-                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Name</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[168px] min-w-[168px]">Name</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Age</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Contact</th>
-                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Address</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[190px] min-w-[190px]">Address</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Treatment</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Doctor</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Balance</th>
@@ -709,6 +763,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 <tbody>
                   {paginatedPatients.map((patient, index) => {
                         const patientRecords = treatmentRecordsByPatientIdMap.get(patient.id) || [];
+                        const nextAppointment = nextAppointmentByPatientId.get(patient.id);
                         return (
                     <tr
                       key={patient.id}
@@ -727,19 +782,24 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                           <div className="theme-accent-soft-bg theme-accent-text h-9 w-9 rounded-full flex items-center justify-center font-bold mr-3">
                             {patient.name?.charAt(0) || '?'}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700">{patient.name}</div>
-                            {dateQuickFilter === 'new' && (
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
-                                  isNewPatientToday(patient)
-                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                    : 'bg-amber-100 text-amber-700 border-amber-200'
-                                }`}
-                              >
-                                {isNewPatientToday(patient) ? 'New' : 'Old'}
-                              </span>
-                            )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700">{patient.name}</div>
+                              {dateQuickFilter === 'new' && (
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                                    isNewPatientToday(patient)
+                                      ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                      : 'bg-amber-100 text-amber-700 border-amber-200'
+                                  }`}
+                                >
+                                  {isNewPatientToday(patient) ? 'New' : 'Old'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 inline-flex rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                              Next : {formatAppointmentDate(nextAppointment?.date)}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -866,7 +926,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 
         {/* Mobile Card View */}
         <div className="md:hidden divide-y divide-gray-100 overflow-y-auto flex-1 min-h-0">
-          {paginatedPatients.map((patient) => (
+          {paginatedPatients.map((patient) => {
+            const nextAppointment = nextAppointmentByPatientId.get(patient.id);
+            return (
             <div 
               key={patient.id} 
               className={`p-4 transition-colors ${
@@ -902,6 +964,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       ) : (
                         <ShieldAlert size={12} className="text-gray-300" />
                       )}
+                    </div>
+                    <div className="mt-1 inline-flex rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                      Next : {formatAppointmentDate(nextAppointment?.date)}
                     </div>
                     <div className="text-xs text-gray-500">{patient.phone}</div>
                     <div className="text-[11px] text-gray-400 mt-1">Date: {formatCreatedDate(patient.created_at)}</div>
@@ -990,7 +1055,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 </button>
               )}
             </div>
-          ))}
+          )})}
         </div>
       </>
     )}
@@ -1003,6 +1068,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           onPageChange={setCurrentPage}
           showAll={showAll}
           onToggleShowAll={() => setShowAll(!showAll)}
+          showAllToggle={false}
         />
       </div>
     )}
