@@ -307,6 +307,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isDoctor, setIsDoctor] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [allowedViews, setAllowedViews] = useState<ViewState[]>([]);
   const [currentUser, setCurrentUser] = useState<string>('');
   const [locations, setLocations] = useState<Location[]>([]);
@@ -1146,8 +1147,23 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogout = () => {
-    auth.logout();
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      await auth.logout();
+    } catch (error: any) {
+      setToast({
+        show: true,
+        message: error?.message || 'Failed to log out cleanly.',
+        type: 'error'
+      });
+      setIsLoggingOut(false);
+      return;
+    }
+
     treatmentHistoryRequestRef.current += 1;
     resetStaffSession();
     setCurrentView('dashboard');
@@ -1185,6 +1201,7 @@ const App: React.FC = () => {
     setAssistantPaymentRecords([]);
     setAssistantRecalls([]);
     localStorage.removeItem('dashboardLocationId');
+    setIsLoggingOut(false);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1980,6 +1997,7 @@ const App: React.FC = () => {
     setDoctorCommissionRows([]);
     setDoctorCommissionAdvancedOpen(false);
     setDoctorCommissionLoading(false);
+    setIsLoggingOut(false);
   };
 
   useEffect(() => {
@@ -3342,11 +3360,12 @@ const App: React.FC = () => {
                 </button>
               )}
               <button
-                onClick={handleLogout}
-                className="p-2 rounded-full bg-red-100 hover:bg-red-200 transition-colors"
+                onClick={() => { void handleLogout(); }}
+                disabled={isLoggingOut}
+                className="p-2 rounded-full bg-red-100 hover:bg-red-200 transition-colors disabled:opacity-60"
                 aria-label="Logout"
               >
-                <LogOut className="w-4 h-4 text-red-600" />
+                {isLoggingOut ? <Loader2 className="w-4 h-4 text-red-600 animate-spin" /> : <LogOut className="w-4 h-4 text-red-600" />}
               </button>
             </div>
           </div>
@@ -3435,11 +3454,12 @@ const App: React.FC = () => {
                  )}
               </div>
               <button
-                onClick={handleLogout}
-                className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 theme-nav-bg hover:opacity-90 theme-nav-text rounded-lg text-xs font-medium transition-colors"
+                onClick={() => { void handleLogout(); }}
+                disabled={isLoggingOut}
+                className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 theme-nav-bg hover:opacity-90 theme-nav-text rounded-lg text-xs font-medium transition-colors disabled:opacity-60"
               >
-                <LogOut size={14} />
-                Logout
+                {isLoggingOut ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
+                {isLoggingOut ? 'Logging out...' : 'Logout'}
               </button>
            </div>
         </div>

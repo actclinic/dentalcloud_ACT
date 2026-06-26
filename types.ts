@@ -301,6 +301,20 @@ export interface User {
   updated_at?: string;
 }
 
+export interface ActiveStaffMonitorEntry {
+  session_id: string;
+  user_id: string;
+  username: string;
+  role: 'admin' | 'normal' | 'doctor';
+  location_id: string | null;
+  location_name?: string | null;
+  display_name: string;
+  email?: string | null;
+  phone?: string | null;
+  login_at: string;
+  last_seen: string;
+}
+
 export interface Medicine {
   id: string;
   location_id: string;

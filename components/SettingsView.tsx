@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload, Tags, CalendarRange, Activity, MessageCircle, Mail, HardDrive, Palette, Shield, Info } from 'lucide-react';
-import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize, PatientType, AppointmentType } from '../types';
+import { Settings as SettingsIcon, DollarSign, MapPin, Award, Plus, Trash2, RotateCcw, Printer, Image as ImageIcon, Upload, Tags, CalendarRange, Activity, MessageCircle, Mail, HardDrive, Palette, Shield, Info, Users, RefreshCw, Clock } from 'lucide-react';
+import { Location, LoyaltyRule, S3Settings, SupabaseStorageSettings, ReceiptSize, PatientType, AppointmentType, ActiveStaffMonitorEntry } from '../types';
 import { Modal, Input } from './Shared';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
@@ -124,6 +124,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'email', label: 'Email', icon: <Mail size={18} />, adminOnly: true },
     { id: 'storage', label: 'Storage', icon: <HardDrive size={18} />, adminOnly: true },
     { id: 'branding', label: 'Branding', icon: <Palette size={18} />, adminOnly: false },
+    { id: 'monitoring', label: 'Monitoring', icon: <Users size={18} />, adminOnly: true },
     { id: 'system', label: 'System', icon: <Shield size={18} />, adminOnly: true },
   ];
 
@@ -189,6 +190,54 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     setSelectedBranchId(currentLocationId);
   }, [currentLocationId]);
 
+  useEffect(() => {
+    if (!isAdmin || activeTab !== 'monitoring') {
+      return;
+    }
+
+    let mounted = true;
+
+    const loadActiveStaff = async () => {
+      setActiveStaffLoading(true);
+      setActiveStaffError('');
+      try {
+        const sessions = await api.activeStaffSessions.getActive();
+        if (!mounted) return;
+        setActiveStaffMembers(sessions);
+      } catch (error: any) {
+        if (!mounted) return;
+        setActiveStaffError(error?.message || 'Failed to load active staff sessions.');
+      } finally {
+        if (mounted) {
+          setActiveStaffLoading(false);
+        }
+      }
+    };
+
+    const monitoringChannel = supabase
+      .channel(`active-staff-monitoring-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'active_staff_sessions' },
+        () => {
+          void loadActiveStaff();
+        }
+      )
+      .subscribe();
+
+    void loadActiveStaff();
+
+    const pollTimer = window.setInterval(() => {
+      void loadActiveStaff();
+    }, 30000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollTimer);
+      supabase.removeChannel(monitoringChannel);
+    };
+  }, [activeTab, isAdmin]);
+
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [newLoc, setNewLoc] = useState<Partial<Location>>({ name: '', address: '', phone: '' });
   const [newRule, setNewRule] = useState<Partial<LoyaltyRule>>({ 
@@ -249,7 +298,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   });
   const [editingAppointmentTypeId, setEditingAppointmentTypeId] = useState<string | null>(null);
   const [appointmentTypeMessage, setAppointmentTypeMessage] = useState<string>('');
-
+  const [activeStaffMembers, setActiveStaffMembers] = useState<ActiveStaffMonitorEntry[]>([]);
+  const [activeStaffLoading, setActiveStaffLoading] = useState(false);
+  const [activeStaffError, setActiveStaffError] = useState('');
   const updateEmailSettings = (updates: Partial<EmailSettings>) => {
     setEmailSettingsMessage('');
     setEmailSettings(prev => ({
@@ -2094,6 +2145,108 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     </div>
   );
 
+  const renderMonitoringTab = () => (
+    <div className="space-y-6">
+      <div className="border border-emerald-200 rounded-xl p-6 bg-emerald-50/40">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 rounded-lg bg-emerald-100">
+                <Users className="w-5 h-5 text-emerald-700" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Active Staff Monitoring</h3>
+                <p className="text-sm text-gray-600">Currently active admin, normal, and doctor sessions.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-emerald-700">
+              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>{activeStaffMembers.length} active staff session{activeStaffMembers.length === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveStaffLoading(true);
+              setActiveStaffError('');
+              void api.activeStaffSessions.getActive()
+                .then(setActiveStaffMembers)
+                .catch((error: any) => setActiveStaffError(error?.message || 'Failed to load active staff sessions.'))
+                .finally(() => setActiveStaffLoading(false));
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-60"
+            disabled={activeStaffLoading}
+          >
+            <RefreshCw className={`w-4 h-4 ${activeStaffLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+          <h4 className="text-sm font-bold uppercase tracking-wider text-gray-600">Current Active Users</h4>
+        </div>
+
+        {activeStaffError && (
+          <div className="px-6 py-4 text-sm text-red-600 border-b border-red-100 bg-red-50">
+            {activeStaffError}
+          </div>
+        )}
+
+        {activeStaffLoading ? (
+          <div className="px-6 py-10 text-sm text-gray-500">Loading active staff sessions...</div>
+        ) : activeStaffMembers.length === 0 ? (
+          <div className="px-6 py-10 text-sm text-gray-500">No active staff sessions found right now.</div>
+        ) : (
+          <>
+            <div className="hidden md:grid grid-cols-[minmax(220px,2fr)_minmax(180px,1.2fr)_minmax(170px,1.1fr)_minmax(120px,0.8fr)_minmax(150px,1fr)_minmax(190px,1.2fr)] gap-4 px-6 py-3 text-[11px] font-black uppercase tracking-wider text-gray-500 bg-white border-b border-gray-100">
+              <span>Name / Username</span>
+              <span>Email</span>
+              <span>Phone</span>
+              <span>Role</span>
+              <span>Branch</span>
+              <span>Last Active</span>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+              {activeStaffMembers.map((member) => (
+                <div
+                  key={member.session_id}
+                  className="grid gap-4 px-6 py-4 md:grid-cols-[minmax(220px,2fr)_minmax(180px,1.2fr)_minmax(170px,1.1fr)_minmax(120px,0.8fr)_minmax(150px,1fr)_minmax(190px,1.2fr)]"
+                >
+                  <div>
+                    <p className="font-semibold text-gray-900">{member.display_name}</p>
+                    <p className="text-sm text-gray-500">@{member.username}</p>
+                  </div>
+                  <div className="text-sm text-gray-700 break-all">{member.email || '-'}</div>
+                  <div className="text-sm text-gray-700">{member.phone || '-'}</div>
+                  <div>
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+                      member.role === 'admin'
+                        ? 'bg-red-100 text-red-700'
+                        : member.role === 'doctor'
+                          ? 'bg-sky-100 text-sky-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {member.role}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-700">{member.location_name || 'All branches'}</div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    {new Date(member.last_seen).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
       <div className="p-6 border-b border-gray-100">
@@ -2156,6 +2309,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         {activeTab === 'email' && renderEmailTab()}
         {activeTab === 'storage' && renderStorageTab()}
         {activeTab === 'branding' && renderBrandingTab()}
+        {activeTab === 'monitoring' && renderMonitoringTab()}
         {activeTab === 'system' && renderSystemTab()}
       </div>
 

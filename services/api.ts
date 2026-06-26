@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -4096,6 +4096,45 @@ export const api = {
         .eq('id', id);
 
       if (error) throw new Error(error.message);
+    }
+  },
+
+  activeStaffSessions: {
+    getActive: async (): Promise<ActiveStaffMonitorEntry[]> => {
+      try {
+        const cleanupResult = await supabase.rpc('cleanup_stale_active_staff_sessions', { p_cutoff_minutes: 60 });
+        if (cleanupResult.error && !isMissingFunctionError(cleanupResult.error, 'cleanup_stale_active_staff_sessions')) {
+          throw cleanupResult.error;
+        }
+
+        const activeThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data, error } = await supabase
+          .from('active_staff_presence_view')
+          .select('session_id, user_id, username, role, location_id, location_name, display_name, email, phone, login_at, last_seen')
+          .gte('last_seen', activeThreshold)
+          .in('role', ['admin', 'normal', 'doctor'])
+          .order('last_seen', { ascending: false });
+
+        if (error) {
+          if (isMissingRelationError(error, 'active_staff_presence_view')) {
+            return [];
+          }
+          throw error;
+        }
+
+        const latestByUserId = new Map<string, ActiveStaffMonitorEntry>();
+        for (const row of (data || []) as ActiveStaffMonitorEntry[]) {
+          const existing = latestByUserId.get(row.user_id);
+          if (!existing || new Date(row.last_seen).getTime() > new Date(existing.last_seen).getTime()) {
+            latestByUserId.set(row.user_id, row);
+          }
+        }
+
+        return Array.from(latestByUserId.values());
+      } catch (err) {
+        console.warn('Error fetching active staff sessions:', err);
+        return [];
+      }
     }
   },
 

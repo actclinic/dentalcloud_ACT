@@ -1,5 +1,6 @@
 import { User, Patient } from '../types';
 import { api } from './api';
+import { activeStaffPresence } from './activeStaffPresence';
 import type { AppTabPermission } from '../constants';
 import { DOCTOR_DASHBOARD_TABS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
@@ -13,7 +14,25 @@ export const DEFAULT_ADMIN = {
 // Session storage keys
 const SESSION_KEY = 'dental_auth_session';
 const SESSION_USER_KEY = 'dental_auth_user';
+const SESSION_INSTANCE_KEY = 'dental_auth_session_instance';
 const SESSION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+const generateSessionInstanceId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `staff-session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const getOrCreateSessionInstanceId = (): string => {
+  const existing = localStorage.getItem(SESSION_INSTANCE_KEY);
+  if (existing) return existing;
+
+  const created = generateSessionInstanceId();
+  localStorage.setItem(SESSION_INSTANCE_KEY, created);
+  return created;
+};
 
 const isRecoveryFlowActive = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -30,6 +49,7 @@ export interface AuthSession {
   allowed_tabs?: AppTabPermission[];
   location_id: string | null;
   loginTime: number;
+  clientSessionId?: string;
   doctor_id?: string | null;
   patientId?: string; // For patient sessions
   supabaseUserId?: string; // For Supabase Auth sessions
@@ -71,19 +91,7 @@ export const auth = {
         await this.initializeDefaultAdmin();
         const retryUser = await api.users.authenticate(username, password);
         if (retryUser) {
-          const isDoctorUser = Boolean(retryUser.doctor_id);
-          const resolvedRole: AuthSession['role'] = isDoctorUser ? 'doctor' : retryUser.role;
-          const session: AuthSession = {
-            userId: retryUser.id,
-            username: retryUser.username,
-            role: resolvedRole,
-            allowed_tabs: isDoctorUser ? [...DOCTOR_DASHBOARD_TABS] : resolveAllowedTabs(retryUser.role, retryUser.allowed_tabs),
-            location_id: retryUser.location_id || null,
-            doctor_id: retryUser.doctor_id || null,
-            loginTime: Date.now()
-          };
-          this.setSession(session);
-          return session;
+          return await this.createStaffSession(retryUser);
         }
       }
 
@@ -91,28 +99,22 @@ export const auth = {
         throw new Error('Invalid username or password');
       }
 
-      const isDoctorUser = Boolean(user.doctor_id);
-      const resolvedRole: AuthSession['role'] = isDoctorUser ? 'doctor' : user.role;
-      const session: AuthSession = {
-        userId: user.id,
-        username: user.username,
-        role: resolvedRole,
-        allowed_tabs: isDoctorUser ? [...DOCTOR_DASHBOARD_TABS] : resolveAllowedTabs(user.role, user.allowed_tabs),
-        location_id: user.location_id || null,
-        doctor_id: user.doctor_id || null,
-        loginTime: Date.now()
-      };
-      this.setSession(session);
-      return session;
+      return await this.createStaffSession(user);
     } catch (error: any) {
       throw new Error(error.message || 'Invalid username or password');
     }
   },
 
   // Logout
-  logout(): void {
+  async logout(): Promise<void> {
+    const session = this.getSession();
+    if (session && session.role !== 'patient') {
+      await activeStaffPresence.markInactive(session);
+    }
+
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_USER_KEY);
+    localStorage.removeItem(SESSION_INSTANCE_KEY);
   },
 
   // Get current session
@@ -126,9 +128,15 @@ export const auth = {
       if (!sessionStr) return null;
       
       const session: AuthSession = JSON.parse(sessionStr);
+      if (!session.clientSessionId) {
+        session.clientSessionId = getOrCreateSessionInstanceId();
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      }
       // Keep users signed in on this device for up to one year.
       if (Date.now() - session.loginTime > SESSION_MAX_AGE_MS) {
-        this.logout();
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(SESSION_USER_KEY);
+        localStorage.removeItem(SESSION_INSTANCE_KEY);
         return null;
       }
       return session;
@@ -150,7 +158,11 @@ export const auth = {
 
   // Set session
   setSession(session: AuthSession): void {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    const sessionWithClientId: AuthSession = {
+      ...session,
+      clientSessionId: session.clientSessionId || getOrCreateSessionInstanceId()
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionWithClientId));
   },
 
   // Get current user
@@ -215,6 +227,33 @@ export const auth = {
         }
       }
     };
+  },
+
+  async createStaffSession(user: User): Promise<AuthSession> {
+    const isDoctorUser = Boolean(user.doctor_id);
+    const resolvedRole: AuthSession['role'] = isDoctorUser ? 'doctor' : user.role;
+    const session: AuthSession = {
+      userId: user.id,
+      username: user.username,
+      role: resolvedRole,
+      allowed_tabs: isDoctorUser ? [...DOCTOR_DASHBOARD_TABS] : resolveAllowedTabs(user.role, user.allowed_tabs),
+      location_id: user.location_id || null,
+      doctor_id: user.doctor_id || null,
+      loginTime: Date.now(),
+      clientSessionId: getOrCreateSessionInstanceId()
+    };
+
+    this.setSession(session);
+
+    try {
+      await activeStaffPresence.markActive(session);
+      return session;
+    } catch (error) {
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_USER_KEY);
+      localStorage.removeItem(SESSION_INSTANCE_KEY);
+      throw error;
+    }
   }
 };
 
