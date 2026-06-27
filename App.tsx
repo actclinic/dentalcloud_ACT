@@ -122,6 +122,12 @@ type PaymentServiceFeePreview = {
   feeAmount: number;
 } | null;
 
+type AppointmentDraft = Partial<Appointment> & {
+  guest_email?: string;
+  guest_age?: string;
+  guest_address?: string;
+};
+
 type HoverTheme = 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 
 const THEME_OPTIONS: Array<{ value: HoverTheme; label: string }> = [
@@ -198,6 +204,11 @@ const mapLeadSourceToPatientType = (
   if (normalized.includes('hotline')) return 'Hotline';
   if (normalized.includes('phone') || normalized.includes('call')) return 'Rec-ph call';
   return DEFAULT_PATIENT_TYPE_NAME;
+};
+
+const normalizePhoneDigits = (value: string | null | undefined): string => {
+  const digits = (value || '').replace(/\D/g, '');
+  return digits.length > 0 ? digits : (value || '').trim();
 };
 
 const buildDefaultPatientTypeRecords = (): PatientType[] =>
@@ -663,7 +674,7 @@ const App: React.FC = () => {
   const [clinicalFeeEnabled, setClinicalFeeEnabled] = useState(false);
   const [clinicalFeeNewPatientAmount, setClinicalFeeNewPatientAmount] = useState(0);
   const [clinicalFeeReturningPatientAmount, setClinicalFeeReturningPatientAmount] = useState(0);
-  const [newAppointmentData, setNewAppointmentData] = useState<Partial<Appointment>>({ date: '', time: '', type: '', status: 'Scheduled', patient_id: '', doctor_id: '', location_id: currentLocationId || '' });
+  const [newAppointmentData, setNewAppointmentData] = useState<AppointmentDraft>({ date: '', time: '', type: '', status: 'Scheduled', patient_id: '', doctor_id: '', location_id: currentLocationId || '' });
   const [appointmentPatientMode, setAppointmentPatientMode] = useState<'registered' | 'lead'>('registered');
   const [convertingLeadAppointment, setConvertingLeadAppointment] = useState<Appointment | null>(null);
   const [appointmentClinicalFocus, setAppointmentClinicalFocus] = useState('');
@@ -796,9 +807,27 @@ const App: React.FC = () => {
     [newPatientData.city]
   );
   const branchScopedAppointmentPatients = useMemo(() => {
-    if (!currentLocationId) return patients;
-    return patients.filter((patient) => patient.location_id === currentLocationId);
-  }, [patients, currentLocationId]);
+    const appointmentLocationId = (newAppointmentData.location_id || '').trim() || currentLocationId;
+    const scopedPatients = appointmentLocationId
+      ? patients.filter((patient) => patient.location_id === appointmentLocationId)
+      : patients;
+
+    return [...scopedPatients].sort((a, b) => {
+      const nameCompare = (a.name || '').localeCompare(b.name || '');
+      if (nameCompare !== 0) return nameCompare;
+      return (a.phone || '').localeCompare(b.phone || '');
+    });
+  }, [patients, currentLocationId, newAppointmentData.location_id]);
+  const appointmentPatientOptions = useMemo(
+    () =>
+      branchScopedAppointmentPatients.map((patient) => ({
+        value: patient.id,
+        label: patient.phone?.trim()
+          ? `${patient.name} - ${patient.phone.trim()}`
+          : patient.name
+      })),
+    [branchScopedAppointmentPatients]
+  );
   const recentDoctorByPatientId = useMemo(() => {
     const latestCompletedByPatient = new Map<string, { doctorId: string; score: number }>();
     const latestAnyByPatient = new Map<string, { doctorId: string; score: number }>();
@@ -2006,7 +2035,22 @@ const App: React.FC = () => {
 
   const resetAppointmentForm = () => {
     setAppointmentPatientMode('registered');
-    setNewAppointmentData({ date: '', time: '', type: appointmentTypeOptions[0] || '', status: 'Scheduled', patient_id: '', doctor_id: '', guest_name: '', guest_phone: '', guest_source: '', guest_notes: '', location_id: currentLocationId || '' });
+    setNewAppointmentData({
+      date: '',
+      time: '',
+      type: appointmentTypeOptions[0] || '',
+      status: 'Scheduled',
+      patient_id: '',
+      doctor_id: '',
+      guest_name: '',
+      guest_phone: '',
+      guest_email: '',
+      guest_age: '',
+      guest_address: '',
+      guest_source: '',
+      guest_notes: '',
+      location_id: currentLocationId || ''
+    });
     setDoctorSearchQuery('');
     setShowDoctorDropdown(false);
     setAppointmentClinicalFocus('');
@@ -2081,13 +2125,58 @@ const App: React.FC = () => {
         clinicalFocus: appointmentClinicalFocus,
         notes: appointmentGeneralNotes
       });
+      let resolvedPatientId = appointmentPatientMode === 'registered' ? (newAppointmentData.patient_id || '').trim() : '';
+      let guestName = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_name || '').trim() : '';
+      let guestPhone = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_phone || '').trim() : '';
+      const guestEmail = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_email || '').trim() : '';
+      const guestAge = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_age || '').trim() : '';
+      const guestAddress = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_address || '').trim() : '';
+      const guestSource = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_source || '').trim() : '';
+      const guestNotes = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_notes || '').trim() : '';
+
+      if (!editingAppointment && appointmentPatientMode === 'lead') {
+        if (!guestName || !guestPhone) {
+          throw new Error('Please enter the new patient name and phone number.');
+        }
+
+        const normalizedGuestName = guestName.toLowerCase();
+        const normalizedGuestPhone = normalizePhoneDigits(guestPhone);
+        const existingPatient = patients.find((patient) => {
+          if ((patient.location_id || '').trim() !== targetLocationId) return false;
+          return (
+            patient.name.trim().toLowerCase() === normalizedGuestName &&
+            normalizePhoneDigits(patient.phone) === normalizedGuestPhone
+          );
+        });
+
+        if (existingPatient) {
+          resolvedPatientId = existingPatient.id;
+        } else {
+          const createdPatient = await api.patients.create({
+            name: guestName,
+            email: guestEmail || undefined,
+            phone: guestPhone,
+            age: guestAge ? parseInt(guestAge, 10) : undefined,
+            address: guestAddress || undefined,
+            medicalHistory: guestNotes || undefined,
+            patient_type: mapLeadSourceToPatientType(guestSource, activePatientTypeOptions),
+            location_id: targetLocationId,
+            balance: 0
+          });
+          resolvedPatientId = createdPatient.id;
+        }
+
+        guestName = '';
+        guestPhone = '';
+      }
+
       const payload: Partial<Appointment> = {
         ...newAppointmentData,
-        patient_id: appointmentPatientMode === 'registered' ? newAppointmentData.patient_id : null,
-        guest_name: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_name || '').trim() : null,
-        guest_phone: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_phone || '').trim() : null,
-        guest_source: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_source || '').trim() : null,
-        guest_notes: appointmentPatientMode === 'lead' ? (newAppointmentData.guest_notes || '').trim() : null,
+        patient_id: resolvedPatientId || null,
+        guest_name: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestName : null,
+        guest_phone: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestPhone : null,
+        guest_source: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestSource : null,
+        guest_notes: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestNotes : null,
         doctor_id: (newAppointmentData.doctor_id || '').trim() || undefined,
         location_id: targetLocationId,
         notes: compiledNotes
@@ -3429,6 +3518,9 @@ const App: React.FC = () => {
                     notes: apt.notes,
                     guest_name: apt.guest_name || '',
                     guest_phone: apt.guest_phone || '',
+                    guest_email: '',
+                    guest_age: '',
+                    guest_address: '',
                     guest_source: apt.guest_source || '',
                     guest_notes: apt.guest_notes || ''
                   });
@@ -3823,7 +3915,11 @@ const App: React.FC = () => {
       )}
 
       {showAppointmentModal && (
-        <Modal title={editingAppointment ? "Edit Appointment" : "New Appointment"} onClose={() => {setShowAppointmentModal(false); setEditingAppointment(null); resetAppointmentForm();}}>
+        <Modal
+          title={editingAppointment ? "Edit Appointment" : "New Appointment"}
+          onClose={() => {setShowAppointmentModal(false); setEditingAppointment(null); resetAppointmentForm();}}
+          maxWidthClassName="max-w-xl"
+        >
           <form onSubmit={handleCreateAppointment} className="space-y-5">
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Appointment For</label>
@@ -3832,7 +3928,16 @@ const App: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setAppointmentPatientMode('registered');
-                    setNewAppointmentData({ ...newAppointmentData, guest_name: '', guest_phone: '', guest_source: '', guest_notes: '' });
+                    setNewAppointmentData({
+                      ...newAppointmentData,
+                      guest_name: '',
+                      guest_phone: '',
+                      guest_email: '',
+                      guest_age: '',
+                      guest_address: '',
+                      guest_source: '',
+                      guest_notes: ''
+                    });
                   }}
                   className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${appointmentPatientMode === 'registered' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
                 >
@@ -3854,17 +3959,13 @@ const App: React.FC = () => {
             {appointmentPatientMode === 'registered' ? (
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient</label>
-                <select
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
-                  required
+                <SearchableSelect
                   value={newAppointmentData.patient_id || ''}
-                  onChange={(e: any) => handleAppointmentPatientChange(e.target.value)}
-                >
-                  <option value="">Select a patient</option>
-                  {branchScopedAppointmentPatients.map(patient => (
-                    <option key={patient.id} value={patient.id}>{patient.name}</option>
-                  ))}
-                </select>
+                  onChange={handleAppointmentPatientChange}
+                  options={appointmentPatientOptions}
+                  placeholder="Search patient by name or phone"
+                  emptyMessage="No patients found for this branch"
+                />
               </div>
             ) : (
               <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -3884,18 +3985,28 @@ const App: React.FC = () => {
                     placeholder="09..."
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">New Patient Source</label>
-                  <select
-                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                    value={newAppointmentData.guest_source || ''}
-                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_source: e.target.value})}
-                  >
-                    <option value="">Select source</option>
-                    {leadSourceOptionsForAppointment.map(source => (
-                      <option key={source} value={source}>{source}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Input
+                    label="New Patient Age"
+                    type="number"
+                    min="0"
+                    value={newAppointmentData.guest_age || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_age: e.target.value})}
+                    placeholder="25"
+                  />
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">New Patient Source</label>
+                    <select
+                      className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                      value={newAppointmentData.guest_source || ''}
+                      onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_source: e.target.value})}
+                    >
+                      <option value="">Select source</option>
+                      {leadSourceOptionsForAppointment.map(source => (
+                        <option key={source} value={source}>{source}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">New Patient Follow-up Notes</label>
@@ -3909,79 +4020,97 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Doctor (Optional)</label>
-              <div className="relative" ref={doctorDropdownRef}>
-                <div className="relative">
-                  <input
-                    type="text"
-                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 pr-10"
-                    placeholder="Search doctor..."
-                    value={doctorSearchQuery}
-                    onChange={(e) => {
-                      setDoctorSearchQuery(e.target.value);
-                      setShowDoctorDropdown(true);
-                    }}
-                    onFocus={() => setShowDoctorDropdown(true)}
-                    onBlur={() => {
-                      // Delay hiding to allow click events
-                      setTimeout(() => setShowDoctorDropdown(false), 200);
-                    }}
-                  />
-                  {newAppointmentData.doctor_id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleDoctorChange('');
-                        setDoctorSearchQuery('');
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Doctor (Optional)</label>
+                <div className="relative" ref={doctorDropdownRef}>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 pr-10"
+                      placeholder="Search doctor..."
+                      value={doctorSearchQuery}
+                      onChange={(e) => {
+                        setDoctorSearchQuery(e.target.value);
+                        setShowDoctorDropdown(true);
                       }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                
-                {/* Dropdown */}
-                {showDoctorDropdown && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                    <button
-                      type="button"
-                      className="w-full px-4 py-2.5 text-sm text-left hover:bg-gray-50 border-b border-gray-100"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleDoctorChange('');
-                        setShowDoctorDropdown(false);
+                      onFocus={() => setShowDoctorDropdown(true)}
+                      onBlur={() => {
+                        setTimeout(() => setShowDoctorDropdown(false), 200);
                       }}
-                    >
-                      <span className="text-gray-500">No specific doctor</span>
-                    </button>
-                    {filteredDoctors.length === 0 ? (
-                      <div className="px-4 py-3 text-sm text-gray-500 text-center">No doctors found</div>
-                    ) : (
-                      filteredDoctors.map(doctor => (
-                        <button
-                          type="button"
-                          key={doctor.id}
-                          className={`w-full px-4 py-2.5 text-sm text-left hover:bg-indigo-50 ${
-                            newAppointmentData.doctor_id === doctor.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
-                          }`}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            handleDoctorChange(doctor.id);
-                            setShowDoctorDropdown(false);
-                          }}
-                        >
-                          <div className="font-medium">{doctor.name}</div>
-                          {doctor.specialization && (
-                            <div className="text-xs text-gray-500">{doctor.specialization}</div>
-                          )}
-                        </button>
-                      ))
+                    />
+                    {newAppointmentData.doctor_id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleDoctorChange('');
+                          setDoctorSearchQuery('');
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     )}
                   </div>
+
+                  {showDoctorDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2.5 text-sm text-left hover:bg-gray-50 border-b border-gray-100"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleDoctorChange('');
+                          setShowDoctorDropdown(false);
+                        }}
+                      >
+                        <span className="text-gray-500">No specific doctor</span>
+                      </button>
+                      {filteredDoctors.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-gray-500 text-center">No doctors found</div>
+                      ) : (
+                        filteredDoctors.map(doctor => (
+                          <button
+                            type="button"
+                            key={doctor.id}
+                            className={`w-full px-4 py-2.5 text-sm text-left hover:bg-indigo-50 ${
+                              newAppointmentData.doctor_id === doctor.id ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
+                            }`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleDoctorChange(doctor.id);
+                              setShowDoctorDropdown(false);
+                            }}
+                          >
+                            <div className="font-medium">{doctor.name}</div>
+                            {doctor.specialization && (
+                              <div className="text-xs text-gray-500">{doctor.specialization}</div>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Type</label>
+                <SearchableSelect
+                  value={newAppointmentData.type || ''}
+                  onChange={(selectedType) => {
+                    setNewAppointmentData({ ...newAppointmentData, type: selectedType });
+                    if (!appointmentClinicalFocus.trim()) {
+                      setAppointmentClinicalFocus(selectedType);
+                    }
+                  }}
+                  options={appointmentTypeOptionsForModal.map((typeName) => ({ value: typeName, label: typeName }))}
+                  placeholder="Select appointment type"
+                  emptyMessage="No appointment type found"
+                />
+                {appointmentTypeOptions.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No appointment types configured yet. Add appointment types in Settings first.</p>
                 )}
               </div>
             </div>
@@ -4043,22 +4172,17 @@ const App: React.FC = () => {
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Type</label>
-                <SearchableSelect
-                  value={newAppointmentData.type || ''}
-                  onChange={(selectedType) => {
-                    setNewAppointmentData({ ...newAppointmentData, type: selectedType });
-                    if (!appointmentClinicalFocus.trim()) {
-                      setAppointmentClinicalFocus(selectedType);
-                    }
-                  }}
-                  options={appointmentTypeOptionsForModal.map((typeName) => ({ value: typeName, label: typeName }))}
-                  placeholder="Select appointment type"
-                  emptyMessage="No appointment type found"
-                />
-                {appointmentTypeOptions.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No appointment types configured yet. Add appointment types in Settings first.</p>
-                )}
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Branch / Location</label>
+                <select
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                  value={newAppointmentData.location_id || ''}
+                  onChange={(e: any) => setNewAppointmentData({ ...newAppointmentData, location_id: e.target.value })}
+                >
+                  <option value="">Select a branch...</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Status</label>
@@ -4072,19 +4196,6 @@ const App: React.FC = () => {
                   <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
-            </div>
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Branch / Location</label>
-              <select
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                value={newAppointmentData.location_id || ''}
-                onChange={(e: any) => setNewAppointmentData({ ...newAppointmentData, location_id: e.target.value })}
-              >
-                <option value="">Select a branch...</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Clinical Focus</label>

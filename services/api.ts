@@ -3911,28 +3911,99 @@ export const api = {
 
         const activeThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         const { data, error } = await supabase
-          .from('active_staff_presence_view')
-          .select('session_id, user_id, username, role, location_id, location_name, display_name, email, phone, login_at, last_seen')
+          .from('active_staff_sessions')
+          .select('session_id, user_id, username_snapshot, role_snapshot, location_id, login_at, last_seen')
           .gte('last_seen', activeThreshold)
-          .in('role', ['admin', 'normal', 'doctor'])
+          .in('role_snapshot', ['admin', 'normal', 'doctor'])
           .order('last_seen', { ascending: false });
 
         if (error) {
-          if (isMissingRelationError(error, 'active_staff_presence_view')) {
+          if (isMissingRelationError(error, 'active_staff_sessions')) {
             return [];
           }
           throw error;
         }
 
-        const latestByUserId = new Map<string, ActiveStaffMonitorEntry>();
-        for (const row of (data || []) as ActiveStaffMonitorEntry[]) {
+        const sessionRows = (data || []) as Array<{
+          session_id: string;
+          user_id: string;
+          username_snapshot: string;
+          role_snapshot: 'admin' | 'normal' | 'doctor';
+          location_id: string | null;
+          login_at: string;
+          last_seen: string;
+        }>;
+
+        const latestByUserId = new Map<string, typeof sessionRows[number]>();
+        for (const row of sessionRows) {
           const existing = latestByUserId.get(row.user_id);
           if (!existing || new Date(row.last_seen).getTime() > new Date(existing.last_seen).getTime()) {
             latestByUserId.set(row.user_id, row);
           }
         }
 
-        return Array.from(latestByUserId.values());
+        const latestSessions = Array.from(latestByUserId.values());
+        if (latestSessions.length === 0) {
+          return [];
+        }
+
+        const userIds = Array.from(new Set(latestSessions.map((row) => row.user_id).filter(Boolean)));
+        const locationIds = Array.from(new Set(latestSessions.map((row) => row.location_id).filter(Boolean))) as string[];
+
+        const [usersResult, doctorsResult, locationsResult] = await Promise.all([
+          supabase
+            .from('users')
+            .select('id, username, location_id, doctor_id')
+            .in('id', userIds),
+          supabase
+            .from('doctors')
+            .select('id, name, email, phone'),
+          locationIds.length > 0
+            ? supabase.from('locations').select('id, name').in('id', locationIds)
+            : Promise.resolve({ data: [], error: null })
+        ]);
+
+        if (usersResult.error && !isMissingRelationError(usersResult.error, 'users')) {
+          throw usersResult.error;
+        }
+        if (doctorsResult.error && !isMissingRelationError(doctorsResult.error, 'doctors')) {
+          throw doctorsResult.error;
+        }
+        if (locationsResult.error && !isMissingRelationError(locationsResult.error, 'locations')) {
+          throw locationsResult.error;
+        }
+
+        const usersById = new Map(
+          ((usersResult.data || []) as Array<{ id: string; username: string; location_id: string | null; doctor_id?: string | null }>).map((user) => [user.id, user])
+        );
+        const doctorsById = new Map(
+          ((doctorsResult.data || []) as Array<{ id: string; name?: string | null; email?: string | null; phone?: string | null }>).map((doctor) => [doctor.id, doctor])
+        );
+        const locationsById = new Map(
+          ((locationsResult.data || []) as Array<{ id: string; name: string }>).map((location) => [location.id, location.name])
+        );
+
+        return latestSessions.map((row) => {
+          const user = usersById.get(row.user_id);
+          const doctor = user?.doctor_id ? doctorsById.get(user.doctor_id) : undefined;
+          const resolvedLocationId = user?.location_id ?? row.location_id ?? null;
+
+          return {
+            session_id: row.session_id,
+            user_id: row.user_id,
+            username: user?.username || row.username_snapshot,
+            role: row.role_snapshot,
+            location_id: resolvedLocationId,
+            location_name: resolvedLocationId ? (locationsById.get(resolvedLocationId) || null) : null,
+            display_name: row.role_snapshot === 'doctor'
+              ? (doctor?.name || user?.username || row.username_snapshot)
+              : (user?.username || row.username_snapshot),
+            email: row.role_snapshot === 'doctor' ? (doctor?.email || null) : null,
+            phone: row.role_snapshot === 'doctor' ? (doctor?.phone || null) : null,
+            login_at: row.login_at,
+            last_seen: row.last_seen
+          } satisfies ActiveStaffMonitorEntry;
+        });
       } catch (err) {
         console.warn('Error fetching active staff sessions:', err);
         return [];

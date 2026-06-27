@@ -745,7 +745,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         <div className="hidden md:block flex-1 min-h-0 p-6 pt-0 overflow-hidden">
           <div className="h-full rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
             <div className="h-full overflow-auto">
-              <table className="min-w-[1100px] w-full text-sm">
+              <table className="min-w-[1040px] w-full text-sm">
                 <thead className="bg-indigo-50 border-b border-indigo-200">
                   <tr className="text-indigo-700">
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No</th>
@@ -753,7 +753,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Age</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Contact</th>
-                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[190px] min-w-[190px]">Address</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[140px] min-w-[140px]">Address</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Treatment</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Doctor</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Balance</th>
@@ -812,8 +812,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       <td className="px-3 py-3 align-top text-gray-700">
                         {getPatientContact(patient)}
                       </td>
-                      <td className="px-3 py-3 align-top text-gray-700 max-w-xs truncate" title={getPatientAddress(patient)}>
-                        {getPatientAddress(patient)}
+                      <td className="w-[140px] max-w-[140px] px-3 py-3 align-top text-gray-700" title={getPatientAddress(patient)}>
+                        <div className="whitespace-normal break-words leading-snug line-clamp-2">
+                          {getPatientAddress(patient)}
+                        </div>
                       </td>
                       <td className="px-3 py-3 align-top text-gray-700 max-w-[200px]">
                         <div className="text-[11px] font-medium text-gray-700 leading-tight max-h-[48px] overflow-y-auto space-y-0.5" title={patientRecords.map(r => r.description).filter(Boolean).join(', ')}>
