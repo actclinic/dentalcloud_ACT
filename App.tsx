@@ -22,7 +22,6 @@ import {
   X,
   MessageCircle,
   AlertTriangle,
-  BellRing,
   DollarSign
 } from 'lucide-react';
 
@@ -49,7 +48,6 @@ import {
   LoyaltyRule, 
   LoyaltyTransaction,
   Expense,
-  Recall,
   ScheduledTask,
   ReceiptSize,
   PatientType,
@@ -100,7 +98,6 @@ const MedicineSelectionModal = React.lazy(() => import('./components/MedicineSel
 const AIAssistantView = React.lazy(() => import('./components/AIAssistantView'));
 const MessagingView = React.lazy(() => import('./components/MessagingView'));
 const PatientMessagingView = React.lazy(() => import('./components/PatientMessagingView'));
-const RecallsView = React.lazy(() => import('./components/RecallsView'));
 const ExpensesView = React.lazy(() => import('./components/ExpensesView'));
 const DoctorProfileView = React.lazy(() => import('./components/DoctorProfileView'));
 const DoctorHomeView = React.lazy(() => import('./components/DoctorHomeView'));
@@ -384,7 +381,6 @@ const App: React.FC = () => {
   const [assistantExpenses, setAssistantExpenses] = useState<Expense[]>([]);
   const [assistantMedicineSales, setAssistantMedicineSales] = useState<MedicineSale[]>([]);
   const [assistantPaymentRecords, setAssistantPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
-  const [assistantRecalls, setAssistantRecalls] = useState<Recall[]>([]);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -394,7 +390,6 @@ const App: React.FC = () => {
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [medicineSales, setMedicineSales] = useState<MedicineSale[]>([]);
-  const [recalls, setRecalls] = useState<Recall[]>([]);
   const scheduledTaskProcessorRef = React.useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1185,7 +1180,6 @@ const App: React.FC = () => {
     setLoyaltyTransactions([]);
     setExpenses([]);
     setMedicineSales([]);
-    setRecalls([]);
     setDashboardPatients([]);
     setDashboardAppointments([]);
     setDashboardRecords([]);
@@ -1200,7 +1194,6 @@ const App: React.FC = () => {
     setAssistantExpenses([]);
     setAssistantMedicineSales([]);
     setAssistantPaymentRecords([]);
-    setAssistantRecalls([]);
     localStorage.removeItem('dashboardLocationId');
     setIsLoggingOut(false);
   };
@@ -1285,7 +1278,7 @@ const App: React.FC = () => {
     const queryLocationId = restrictedLocationId || currentLocationId || undefined;
     const assistantLocationId = queryLocationId;
 
-    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, recallData, salesData, paymentData] = await Promise.all([
+    const [patData, aptData, docData, typeData, recordsData, medData, expenseData, salesData, paymentData] = await Promise.all([
       api.patients.getAll(assistantLocationId),
       api.appointments.getAll(assistantLocationId),
       api.doctors.getAll(assistantLocationId),
@@ -1293,7 +1286,6 @@ const App: React.FC = () => {
       api.treatments.getAllRecords(assistantLocationId),
       api.medicines.getAll(assistantLocationId),
       api.expenses.getAll(assistantLocationId),
-      api.recalls.getAll(assistantLocationId),
       api.medicines.getSales(assistantLocationId),
       api.finance.getPayments(assistantLocationId)
     ]);
@@ -1307,7 +1299,6 @@ const App: React.FC = () => {
     setAssistantExpenses(expenseData);
     setAssistantMedicineSales(salesData);
     setAssistantPaymentRecords(mergeLegacyPaymentRecords(paymentData, assistantLocationId));
-    setAssistantRecalls(recallData);
   };
 
   const fetchInitialData = async (overrideLocationId?: string) => {
@@ -1315,10 +1306,6 @@ const App: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      api.recalls.updateOverdueStatus(overrideLocationId || currentLocationId || undefined).catch(err => {
-        console.warn('Failed to update overdue recalls:', err);
-      });
       
       const [locData, patientTypeData, appointmentTypeData] = await Promise.all([
         api.locations.getAll(),
@@ -1420,8 +1407,7 @@ const App: React.FC = () => {
         setMedicines(medData);
         setLoyaltyRules([]);
         setExpenses([]);
-        setRecalls([]);
-        setMedicineSales([]);
+            setMedicineSales([]);
 
         // Unhide the main UI as soon as the critical data is in state.
         if (requestId === initialDataFetchRequestRef.current) {
@@ -1431,17 +1417,15 @@ const App: React.FC = () => {
         // � Deferred data: load in background so the UI is interactive faster �
         void (async () => {
           try {
-            const [loyaltyData, expenseData, recallData, salesData] = await Promise.all([
+            const [loyaltyData, expenseData, salesData] = await Promise.all([
               api.loyalty.getRules(locId),
               api.expenses.getAll(locId),
-              api.recalls.getAll(locId),
               api.medicines.getSales(locId),
             ]);
             if (requestId !== initialDataFetchRequestRef.current) return;
 
             setLoyaltyRules(loyaltyData);
             setExpenses(expenseData);
-            setRecalls(recallData);
             setMedicineSales(salesData);
           } catch (deferredErr) {
             console.warn('Deferred data fetch failed:', deferredErr);
@@ -2537,223 +2521,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCreateRecall = async (data: Partial<Recall>, sendEmail: boolean = false) => {
-    try {
-      await api.recalls.create({ ...data, location_id: currentLocationId });
-      const updated = await api.recalls.getAll(currentLocationId);
-      setRecalls(updated);
-      
-      // Send recall email if requested
-      if (sendEmail && data.patient_id) {
-        const patient = patients.find(p => p.id === data.patient_id);
-        if (patient && patient.email) {
-          try {
-            await handleSendRecallEmail(
-              updated[0]?.id || '', // Get the newly created recall ID
-              patient.email,
-              patient.name,
-              data.title || 'Recall',
-              data.due_date || ''
-            );
-            setToast({ message: `Recall created and email sent to ${patient.name}.`, type: 'success', show: true });
-          } catch (emailErr: any) {
-            console.error('Failed to send recall email:', emailErr);
-            setToast({ message: `Recall created but email failed: ${emailErr.message}`, type: 'info', show: true });
-          }
-        }
-      } else {
-        setToast({ message: 'Recall created successfully.', type: 'success', show: true });
-      }
-    } catch (err: any) {
-      alert(err.message);
-      throw err;
-    }
-  };
-
-  const handleSendRecallEmail = async (
-    recallId: string,
-    patientEmail: string,
-    patientName: string,
-    recallTitle: string,
-    dueDate: string
-  ) => {
-    try {
-      // Format the due date for better readability
-      const formattedDate = new Date(dueDate).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">🦷 Dental Recall Notice</h1>
-          </div>
-          
-          <div style="padding: 30px; background: #f9fafb;">
-            <p style="font-size: 16px; color: #374151; margin: 0 0 20px 0;">Dear <strong>${patientName}</strong>,</p>
-            
-            <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
-              This is a friendly reminder from your dental clinic that you have an upcoming recall appointment scheduled.
-            </p>
-            
-            <div style="background: white; border-left: 4px solid #667eea; padding: 20px; margin: 20px 0; border-radius: 8px;">
-              <h2 style="color: #1f2937; margin: 0 0 15px 0; font-size: 20px;">📋 Recall Details</h2>
-              <p style="margin: 8px 0; color: #374151;"><strong>Type:</strong> ${recallTitle}</p>
-              <p style="margin: 8px 0; color: #374151;"><strong>Due Date:</strong> ${formattedDate}</p>
-            </div>
-            
-            <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 20px 0 0 0;">
-              Please contact our clinic to confirm your appointment or if you need to reschedule. We look forward to seeing you!
-            </p>
-          </div>
-          
-          <div style="background: #f3f4f6; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-            <p style="color: #6b7280; font-size: 13px; margin: 0;">
-              This is an automated recall notification from ${appName} Clinic Management System.
-            </p>
-          </div>
-        </div>
-      `;
-
-      const emailSettings = await loadEmailSettingsAsync();
-
-      await api.email.sendManagerEmail({
-        to: patientEmail,
-        subject: `🦷 Dental Recall Reminder: ${recallTitle}`,
-        html: emailHtml,
-        fromName: emailSettings.senderName || 'DentalCloud Clinic',
-        fromEmail: emailSettings.senderEmail
-      });
-
-      // Mark the recall as reminded
-      if (recallId) {
-        await api.recalls.markReminded(recallId);
-        const updated = await api.recalls.getAll(currentLocationId);
-        setRecalls(updated);
-      }
-
-      console.log(`[Recall Email] Sent to ${patientName} (${patientEmail})`);
-    } catch (error: any) {
-      console.error('[Recall Email] Failed to send:', error);
-      throw error;
-    }
-  };
-
-  const handleUpdateRecallStatus = async (id: string, status: Recall['status']) => {
-    try {
-      await api.recalls.updateStatus(id, status);
-      const updated = await api.recalls.getAll(currentLocationId);
-      setRecalls(updated);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleUpdateRecall = async (id: string, data: Partial<Recall>) => {
-    try {
-      await api.recalls.update(id, data);
-      const updated = await api.recalls.getAll(currentLocationId);
-      setRecalls(updated);
-      setToast({ message: 'Recall updated successfully.', type: 'success', show: true });
-    } catch (err: any) {
-      alert(err.message);
-      throw err;
-    }
-  };
-
-  const handleDeleteRecall = async (id: string) => {
-    try {
-      await api.recalls.delete(id);
-      const updated = await api.recalls.getAll(currentLocationId);
-      setRecalls(updated);
-      setToast({ message: 'Recall deleted successfully.', type: 'success', show: true });
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleDeleteAllRecalls = async () => {
-    try {
-      await api.recalls.deleteAll(currentLocationId);
-      const updated = await api.recalls.getAll(currentLocationId);
-      setRecalls(updated);
-      setToast({ message: 'Entire recall history deleted.', type: 'success', show: true });
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleUpdateLoyaltyRule = async (id: string, data: Partial<LoyaltyRule>) => {
-    try {
-      await api.loyalty.updateRule(id, data);
-      const updated = await api.loyalty.getRules(currentLocationId);
-      setLoyaltyRules(updated);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleCreateLoyaltyRule = async (data: Partial<LoyaltyRule>) => {
-    try {
-      await api.loyalty.createRule({ ...data, location_id: currentLocationId });
-      const updated = await api.loyalty.getRules(currentLocationId);
-      setLoyaltyRules(updated);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleDeleteLoyaltyRule = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this loyalty rule?')) return;
-    try {
-      await api.loyalty.deleteRule(id);
-      const updated = await api.loyalty.getRules(currentLocationId);
-      setLoyaltyRules(updated);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleResetAllLoyaltyPoints = async () => {
-    if (!confirm('CRITICAL ACTION: This will permanently reset ALL loyalty points for ALL patients in the current branch. Transaction history for this branch will also be cleared. Continue?')) return;
-    
-    setLoading(true);
-    try {
-      await api.loyalty.resetAllPoints(currentLocationId || undefined);
-      fetchInitialData();
-      alert('Branch-wide loyalty reset successful.');
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRedeemPoints = async (points: number, amount: number, patientObj?: Patient) => {
-    const targetPatient = patientObj || selectedPatient;
-    if (!targetPatient) return;
-    try {
-      const res = await api.loyalty.redeemPoints(targetPatient.id, currentLocationId, points, amount);
-      if (patientObj) {
-        // Update in list
-        setPatients(prev => prev.map(p => p.id === targetPatient.id ? { ...p, balance: res.new_balance, loyalty_points: res.new_points } : p));
-      }
-      if (selectedPatient && targetPatient.id === selectedPatient.id) {
-        setSelectedPatient({ ...selectedPatient, balance: res.new_balance, loyalty_points: res.new_points });
-      }
-      if (amount > 0) {
-        setToast({ message: `Redeemed ${points} points for ${amount} MMK discount!`, type: 'success', show: true });
-      } else {
-        setToast({ message: `Redeemed ${points} points successfully.`, type: 'success', show: true });
-      }
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
   const handleCreateTreatmentType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -3435,9 +3202,6 @@ const App: React.FC = () => {
              {canAccessView('messaging') && (
                <NavItem icon={<MessageCircle size={18} />} label={isDoctor ? 'Admin Chat' : 'Messaging'} active={currentView === 'messaging'} onClick={() => { setCurrentView('messaging'); setIsMobileMenuOpen(false); }} />
              )}
-             {canAccessView('recalls') && (
-               <NavItem icon={<BellRing size={18} />} label="Recalls" active={currentView === 'recalls'} onClick={() => { setCurrentView('recalls'); setIsMobileMenuOpen(false); }} />
-             )}
              {canAccessView('ai-assistant') && <NavItem icon={<Sparkles size={18} />} label="AI Assistant" active={currentView === 'ai-assistant'} onClick={() => { setCurrentView('ai-assistant'); setIsMobileMenuOpen(false); }} />}
           </div>
           
@@ -3745,7 +3509,6 @@ const App: React.FC = () => {
                 expenses={assistantExpenses}
                 medicineSales={assistantMedicineSales}
                 paymentRecords={assistantPaymentRecords}
-                recalls={assistantRecalls}
                 locations={locations}
                 currentLocationId={currentLocationId}
                 canAccessAllLocations={false}
@@ -3757,16 +3520,6 @@ const App: React.FC = () => {
               patients={patients} 
               messagingEnabled={messagingEnabled}
               locationId={currentLocationId || undefined}
-            />}
-            {currentView === 'recalls' && canAccessView('recalls') && <RecallsView
-              recalls={recalls}
-              patients={patients}
-              loading={loading}
-              onCreateRecall={handleCreateRecall}
-              onUpdateStatus={handleUpdateRecallStatus}
-              onDeleteRecall={handleDeleteRecall}
-              onDeleteAllRecalls={handleDeleteAllRecalls}
-              onSendRecallEmail={handleSendRecallEmail}
             />}
             {currentView === 'finance' && <ClinicalView 
                 selectedPatient={selectedPatient} 

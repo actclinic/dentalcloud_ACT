@@ -87,11 +87,6 @@ export const FLEXIBLE_STAFF_TABS = [
     description: 'Patient conversations and staff replies.'
   },
   {
-    key: 'recalls',
-    label: 'Recalls',
-    description: 'Recall reminders and follow-up tracking.'
-  },
-  {
     key: 'ai-assistant',
     label: 'AI Assistant',
     description: 'Loli AI assistant workspace.'

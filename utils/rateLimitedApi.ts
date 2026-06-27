@@ -129,15 +129,6 @@ export const rateLimitedApi = {
     resetAllPoints: createRateLimitedFunction('loyalty:resetAllPoints', api.loyalty.resetAllPoints, RATE_LIMIT_PRESETS.WRITE),
   },
 
-  recalls: {
-    ...api.recalls,
-    create: createRateLimitedFunction('recalls:create', api.recalls.create, RATE_LIMIT_PRESETS.WRITE),
-    update: createRateLimitedFunction('recalls:update', api.recalls.update, RATE_LIMIT_PRESETS.WRITE),
-    updateStatus: createRateLimitedFunction('recalls:updateStatus', api.recalls.updateStatus, RATE_LIMIT_PRESETS.WRITE),
-    delete: createRateLimitedFunction('recalls:delete', api.recalls.delete, RATE_LIMIT_PRESETS.WRITE),
-    deleteAll: createRateLimitedFunction('recalls:deleteAll', api.recalls.deleteAll, RATE_LIMIT_PRESETS.WRITE),
-  },
-
   messages: {
     ...api.messages,
     createMessage: createRateLimitedFunction('messages:createMessage', api.messages.createMessage, RATE_LIMIT_PRESETS.WRITE),

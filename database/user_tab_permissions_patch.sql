@@ -16,7 +16,6 @@ SET allowed_tabs = CASE
     "records",
     "inventory",
     "messaging",
-    "recalls",
     "ai-assistant",
     "users",
     "settings"

@@ -37,8 +37,7 @@ FROM (
     ('medicines'),
     ('medicine_sales'),
     ('expenses'),
-    ('scheduled_tasks'),
-    ('recalls')
+    ('scheduled_tasks')
 ) AS t(table_name)
 ORDER BY table_name;
 

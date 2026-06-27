@@ -433,22 +433,6 @@ export interface Conversation {
   created_at: string;
 }
 
-export interface Recall {
-  id: string;
-  location_id: string;
-  patient_id: string;
-  patient_name?: string;
-  appointment_id?: string | null;
-  title: string;
-  due_date: string; // YYYY-MM-DD
-  reminder_days_before: number;
-  status: 'PENDING' | 'SCHEDULED' | 'COMPLETED' | 'OVERDUE' | 'CANCELLED';
-  notes?: string | null;
-  last_reminded_at?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
 export interface ScheduledTask {
   id: string;
   location_id: string;

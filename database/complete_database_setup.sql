@@ -498,27 +498,6 @@ CREATE TABLE scheduled_tasks (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Recalls
-CREATE TABLE recalls (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  location_id UUID REFERENCES locations(id),
-  patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
-  appointment_id UUID REFERENCES appointments(id) ON DELETE SET NULL,
-  title VARCHAR(255) NOT NULL,
-  due_date DATE NOT NULL,
-  reminder_days_before INTEGER DEFAULT 7,
-  status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SCHEDULED', 'COMPLETED', 'OVERDUE', 'CANCELLED')),
-  notes TEXT,
-  last_reminded_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_recalls_location ON recalls(location_id);
-CREATE INDEX IF NOT EXISTS idx_recalls_patient ON recalls(patient_id);
-CREATE INDEX IF NOT EXISTS idx_recalls_status ON recalls(status);
-CREATE INDEX IF NOT EXISTS idx_recalls_due_date ON recalls(due_date);
-
 -- ============================================================================
 -- 3.1 COMPATIBILITY UPDATES (KEEP THIS FILE SELF-CONTAINED)
 -- ============================================================================
@@ -1269,7 +1248,6 @@ SELECT
     "records",
     "inventory",
     "messaging",
-    "recalls",
     "ai-assistant",
     "users",
     "settings"
@@ -1320,8 +1298,7 @@ DECLARE
     'conversations',
     'messages',
     'assistant_memory',
-    'scheduled_tasks',
-    'recalls'
+    'scheduled_tasks'
   ];
 BEGIN
   FOREACH tbl IN ARRAY tables
@@ -1599,8 +1576,6 @@ UNION ALL
 SELECT 'Medicines', COUNT(*) FROM medicines
 UNION ALL
 SELECT 'Loyalty Rules', COUNT(*) FROM loyalty_rules
-UNION ALL
-SELECT 'Recalls', COUNT(*) FROM recalls
 UNION ALL
 SELECT 'Conversations', COUNT(*) FROM conversations
 UNION ALL

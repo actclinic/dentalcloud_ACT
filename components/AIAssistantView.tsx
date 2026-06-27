@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown, Eye, EyeOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Recall, Location, MedicineSale, PaymentRecord } from '../types';
+import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Location, MedicineSale, PaymentRecord } from '../types';
 import { api } from '../services/api';
 import { Currency } from '../utils/currency';
 import { DEFAULT_PATIENT_TYPE_NAME } from '../constants';
@@ -445,7 +445,6 @@ interface AIAssistantViewProps {
   expenses: Expense[];
   medicineSales?: MedicineSale[];
   paymentRecords?: PaymentRecord[];
-  recalls?: Recall[];
   locations?: Location[];
   currentLocationId?: string;
   canAccessAllLocations?: boolean;
@@ -465,7 +464,6 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   expenses,
   medicineSales = [],
   paymentRecords = [],
-  recalls = [],
   locations = [],
   currentLocationId = '',
   canAccessAllLocations = false,
@@ -581,7 +579,6 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     () => analysisLocationId ? paymentRecords.filter(record => record.location_id === analysisLocationId) : paymentRecords,
     [paymentRecords, analysisLocationId]
   );
-  const activeRecalls = useMemo(() => filterByLocation(recalls), [recalls, analysisLocationId]);
   const activeTreatmentRecords = useMemo(() => filterByLocation(treatmentRecords), [treatmentRecords, analysisLocationId]);
   const currentStaffUser = useMemo(
     () => currentAdminId ? users.find(user => user.id === currentAdminId) : undefined,
@@ -596,10 +593,9 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
       appointments: appointments.filter(appointment => appointment.location_id === location.id).length,
       treatments: treatmentRecords.filter(record => record.location_id === location.id).length,
       expenses: expenses.filter(expense => expense.location_id === location.id).length,
-      recalls: recalls.filter(recall => recall.location_id === location.id).length,
       medicines: medicines.filter(medicine => medicine.location_id === location.id).length
     }));
-  }, [appointments, expenses, locations, medicines, patients, recalls, treatmentRecords]);
+  }, [appointments, expenses, locations, medicines, patients, treatmentRecords]);
 
   const selectedLocationLabel = analysisLocationId
     ? (locations.find(location => location.id === analysisLocationId)?.name || 'Selected Branch')
@@ -617,7 +613,6 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     'm_sell',
     'p_c',
     'patient_followup',
-    'recall_create',
     'report_schedule',
     'tr_create',
     'treatment_type_create',
@@ -1944,7 +1939,6 @@ Need more detailed help?
         d: activeDoctors.length,
         t: activeTreatmentTypes.length,
         m: activeMedicines.length,
-        r: activeRecalls.length
       }
     };
 
@@ -1964,11 +1958,6 @@ Need more detailed help?
         inv: {
           total: activeMedicines.length,
           low: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).length
-        },
-        rec: {
-          total: activeRecalls.length,
-          overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
-          due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
         }
       };
     }
@@ -2005,7 +1994,6 @@ Need more detailed help?
         d: activeDoctors.length,
         t: activeTreatmentTypes.length,
         m: activeMedicines.length,
-        r: activeRecalls.length,
         u: users.length,
         l: analysisLocationId ? 1 : Math.max(locations.length, 1)
       }
@@ -2034,11 +2022,6 @@ Need more detailed help?
           total_items: activeMedicines.length,
           total_stock: activeMedicines.reduce((sum, med) => sum + (med.stock || 0), 0),
           low_stock_count: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).length
-        },
-        rec: {
-          total: activeRecalls.length,
-          overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
-          due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
         },
         top_appointment_creator: topAppointmentCreator
       };
@@ -2111,27 +2094,6 @@ Need more detailed help?
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
       .slice(0, 8);
 
-    const recallSummary = {
-      total: activeRecalls.length,
-      pending: activeRecalls.filter(r => r.status === 'PENDING').length,
-      scheduled: activeRecalls.filter(r => r.status === 'SCHEDULED').length,
-      overdue: activeRecalls.filter(r => r.status === 'OVERDUE').length,
-      completed: activeRecalls.filter(r => r.status === 'COMPLETED').length,
-      due_today: activeRecalls.filter(r => r.due_date === today && (r.status === 'PENDING' || r.status === 'SCHEDULED')).length
-    };
-
-    const upcomingRecalls = activeRecalls
-      .filter(r => (r.status === 'PENDING' || r.status === 'SCHEDULED') && r.due_date >= today)
-      .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-      .slice(0, 10)
-      .map(r => ({
-        i: r.id,
-        p: r.patient_name || 'Unknown',
-        t: r.title,
-        dd: r.due_date,
-        s: r.status,
-        loc: r.location_id
-      }));
 
     return {
       ...baseData,
@@ -2249,10 +2211,6 @@ Need more detailed help?
         top_doctor_30d: doctorPopularity30d[0] || null,
         appointment_creators_30d: appointmentCreators30d,
         top_appointment_creator_30d: appointmentCreators30d[0] || null
-      },
-      recall_insights: {
-        summary: recallSummary,
-        upcoming: upcomingRecalls
       },
       inventory_insights: {
         low_stock_items: activeMedicines.filter(m => m.stock <= (m.min_stock || 0)).length,
@@ -2480,11 +2438,6 @@ EXPENSE MANAGEMENT:
 - exp_u(id, data): Update expense.
 - exp_d(id): Delete expense.
 
-RECALL MANAGEMENT:
-- recall_get_all(status): List recalls, optionally filtered by status.
-- recall_create(patient_name, title, due_date, reminder_days_before, notes): Create recall task.
-- recall_status(id, status): Update recall status.
-- recall_delete(id): Delete recall.
 
 MESSAGING MANAGEMENT:
 - msg_get_convs(): Get all active conversation threads with patients.
@@ -2552,7 +2505,7 @@ Examples:
 { "action": "fin_pay", "params": { "name": "Sarah Johnson", "amt": 175, "method": "KPay" } }
 { "action": "pat_hist", "params": { "name": "John Smith" } }
 { "action": "p_u", "params": { "name": "John Doe", "data": { "phone": "0912345678", "medicalHistory": "Allergic to Penicillin" } } }
-{ "action": "mgr_email_send", "params": { "to": "manager", "subject": "Daily update", "body": "Today we completed 18 treatments and scheduled 6 recalls." } }
+{ "action": "mgr_email_send", "params": { "to": "manager", "subject": "Daily update", "body": "Today we completed 18 treatments and scheduled 6 appointments." } }
 { "action": "email_schedule", "params": { "to": "owner", "subject": "Inventory alert", "body": "Composite resin stock is low at the downtown branch.", "run_at": "2026-03-21T18:00:00" } }
 `
 
@@ -3674,28 +3627,6 @@ I can provide guidance on:
               result.recipientLabel = recipient.label;
             }
             break;
-          case 'recall_create':
-            {
-              const patient = resolvePatient(pendingAction.params.patient_name || pendingAction.params.name || pendingAction.params.n);
-              if (!patient) throw new Error("Patient is required for recall creation.");
-              result = await api.recalls.create({
-                location_id: locationId,
-                patient_id: patient.id,
-                title: pendingAction.params.title,
-                due_date: pendingAction.params.due_date,
-                reminder_days_before: pendingAction.params.reminder_days_before ?? 7,
-                notes: pendingAction.params.notes || null,
-                status: pendingAction.params.status || 'PENDING'
-              });
-            }
-            break;
-          case 'recall_status':
-            await api.recalls.updateStatus(pendingAction.params.id, pendingAction.params.status);
-            result = { status: pendingAction.params.status };
-            break;
-          case 'recall_delete':
-            await api.recalls.delete(pendingAction.params.id);
-            break;
           default:
             throw new Error(`Unknown action: ${pendingAction.action}`);
         }
@@ -3755,15 +3686,6 @@ I can provide guidance on:
             break;
           case 'report_schedule':
             successMessage = `✅ Daily report email scheduled for ${result.recipientLabel || 'recipient'} at ${formatScheduledDateTime(result.run_at)}.`;
-            break;
-          case 'recall_create':
-            successMessage = `✅ Recall created for ${result.patient_name || 'the patient'} on ${result.due_date}.`;
-            break;
-          case 'recall_status':
-            successMessage = `✅ Recall status updated to ${result.status}.`;
-            break;
-          case 'recall_delete':
-            successMessage = `✅ Recall deleted successfully.`;
             break;
         }
 
@@ -4020,7 +3942,7 @@ I can provide guidance on:
             'm_c', 'm_u', 'm_restock', 'tr_create', 'tr_undo', 'fin_pay', 'apt_reschedule', 
             'apt_status', 'bulk_appointments', 'exp_c', 'exp_u', 'exp_d', 'msg_reply',
             'mgr_email_add', 'mgr_email_list', 'mgr_email_remove', 'mgr_email_send',
-            'recall_create', 'recall_status', 'recall_delete', 'patient_followup',
+            'patient_followup',
             'email_schedule', 'report_schedule'
           ];
           
@@ -4507,53 +4429,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 currentActionResult = `✅ Daily report email scheduled for ${recipient.label} at ${formatScheduledDateTime(result.run_at)}.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to schedule report email: ${err.message}`;
-              }
-              break;
-
-            // Recall Management Actions
-            case 'recall_get_all':
-              try {
-                const recallStatus = params.status ? params.status.toUpperCase() : null;
-                const recallItems = activeRecalls.filter(recall => !recallStatus || recall.status === recallStatus);
-                currentActionResult = recallItems.length === 0
-                  ? `📋 No recalls found${recallStatus ? ` with status ${recallStatus}` : ''}.`
-                  : `📋 Recalls (${recallItems.length}):\n\n${recallItems.slice(0, 15).map(recall => `• ${recall.patient_name || 'Unknown'} - ${recall.title} on ${recall.due_date} (${recall.status})`).join('\n')}`;
-              } catch (err: any) {
-                currentActionResult = `❌ Failed to get recalls: ${err.message}`;
-              }
-              break;
-            case 'recall_create':
-              try {
-                const patient = resolvePatient(params.patient_name || params.name || params.n || params.pid || params.p_id);
-                if (!patient) throw new Error("Patient not found for recall creation.");
-                result = await api.recalls.create({
-                  location_id: locationId,
-                  patient_id: patient.id,
-                  title: params.title,
-                  due_date: params.due_date,
-                  reminder_days_before: params.reminder_days_before ?? 7,
-                  status: params.status || 'PENDING',
-                  notes: params.notes || null
-                });
-                currentActionResult = `✅ Recall created for ${result.patient_name || patient.name} on ${result.due_date}.`;
-              } catch (err: any) {
-                currentActionResult = `❌ Failed to create recall: ${err.message}`;
-              }
-              break;
-            case 'recall_status':
-              try {
-                await api.recalls.updateStatus(params.id, params.status);
-                currentActionResult = `✅ Recall status updated to ${params.status}.`;
-              } catch (err: any) {
-                currentActionResult = `❌ Failed to update recall status: ${err.message}`;
-              }
-              break;
-            case 'recall_delete':
-              try {
-                await api.recalls.delete(params.id);
-                currentActionResult = `✅ Recall deleted successfully.`;
-              } catch (err: any) {
-                currentActionResult = `❌ Failed to delete recall: ${err.message}`;
               }
               break;
 

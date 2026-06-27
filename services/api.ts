@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, Recall, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -217,180 +217,6 @@ const truncateMessagePreview = (value: string, limit = 220) => {
     return normalized;
   }
   return `${normalized.slice(0, limit - 1).trimEnd()}...`;
-};
-
-const syncRecallStatusFromAppointment = async (params: {
-  appointmentId: string;
-  patientId?: string;
-  locationId?: string;
-  status?: string;
-}) => {
-  const { appointmentId, patientId, locationId, status } = params;
-  if (!appointmentId || !status) return;
-
-  const now = new Date().toISOString();
-
-  const linkFirstOpenRecall = async (targetStatus: 'SCHEDULED' | 'COMPLETED') => {
-    if (!patientId || !locationId) return;
-
-    const { data: openRecall, error: openRecallError } = await supabase
-      .from('recalls')
-      .select('id')
-      .eq('patient_id', patientId)
-      .eq('location_id', locationId)
-      .is('appointment_id', null)
-      .in('status', ['PENDING', 'OVERDUE', 'SCHEDULED'])
-      .order('due_date', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (openRecallError) throw new Error(openRecallError.message);
-    if (!openRecall) return;
-
-    const { error: linkError } = await supabase
-      .from('recalls')
-      .update({
-        appointment_id: appointmentId,
-        status: targetStatus,
-        updated_at: now
-      })
-      .eq('id', openRecall.id);
-
-    if (linkError) throw new Error(linkError.message);
-  };
-
-  if (status === 'Scheduled') {
-    const { data: linkedRecalls, error: linkedRecallsError } = await supabase
-      .from('recalls')
-      .update({ status: 'SCHEDULED', updated_at: now })
-      .eq('appointment_id', appointmentId)
-      .in('status', ['PENDING', 'OVERDUE'])
-      .select('id');
-
-    if (linkedRecallsError) throw new Error(linkedRecallsError.message);
-    if (!linkedRecalls || linkedRecalls.length === 0) {
-      await linkFirstOpenRecall('SCHEDULED');
-    }
-    return;
-  }
-
-  if (status === 'Completed') {
-    const { data: completedLinked, error: completedLinkedError } = await supabase
-      .from('recalls')
-      .update({ status: 'COMPLETED', updated_at: now })
-      .eq('appointment_id', appointmentId)
-      .in('status', ['PENDING', 'SCHEDULED', 'OVERDUE'])
-      .select('id');
-
-    if (completedLinkedError) throw new Error(completedLinkedError.message);
-    if (!completedLinked || completedLinked.length === 0) {
-      await linkFirstOpenRecall('COMPLETED');
-    }
-    return;
-  }
-
-  if (status === 'Cancelled') {
-    const { error: cancelSyncError } = await supabase
-      .from('recalls')
-      .update({
-        status: 'PENDING',
-        appointment_id: null,
-        updated_at: now
-      })
-      .eq('appointment_id', appointmentId)
-      .eq('status', 'SCHEDULED');
-
-    if (cancelSyncError) throw new Error(cancelSyncError.message);
-  }
-};
-
-const getLocalISODate = (date = new Date()): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const completeAppointmentWithClinicalFee = async (
-  appointmentId: string,
-  skipClinicalFee = false
-): Promise<ClinicalFeeCompletionResult> => {
-  const { data, error } = await supabase.rpc('complete_appointment_with_clinical_fee', {
-    p_appointment_id: appointmentId,
-    p_skip_clinical_fee: skipClinicalFee
-  });
-
-  if (error) {
-    if (isMissingFunctionError(error, 'complete_appointment_with_clinical_fee')) {
-      throw new Error('Per-visit clinical fees are not installed. Run database/clinical_fee_per_visit_migration.sql in Supabase.');
-    }
-    throw new Error(error.message);
-  }
-
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) {
-    throw new Error('Appointment completion did not return a result.');
-  }
-
-  return {
-    appointmentId: row.appointment_id,
-    feeStatus: row.fee_status,
-    feeAmount: Number(row.fee_amount || 0),
-    patientCategory: row.patient_category || null,
-    newBalance: row.new_balance === null || row.new_balance === undefined
-      ? null
-      : Number(row.new_balance)
-  };
-};
-
-const completeScheduledAppointmentForTreatment = async (params: {
-  locationId: string;
-  patientId: string;
-  doctorId?: string | null;
-  treatmentDate: string;
-}): Promise<string[]> => {
-  const { locationId, patientId, doctorId, treatmentDate } = params;
-  if (!locationId || !patientId || !treatmentDate) return [];
-
-  const { data: scheduledAppointments, error: fetchError } = await supabase
-    .from('appointments')
-    .select('id, patient_id, location_id, doctor_id, date, time, status')
-    .eq('location_id', locationId)
-    .eq('patient_id', patientId)
-    .eq('status', 'Scheduled')
-    .gte('date', treatmentDate)
-    .order('date', { ascending: true })
-    .order('time', { ascending: true });
-
-  if (fetchError) throw new Error(fetchError.message);
-  if (!scheduledAppointments || scheduledAppointments.length === 0) return [];
-
-  const normalizedDoctorId = doctorId && String(doctorId).trim() !== '' ? String(doctorId) : null;
-  const sameDayAppointments = scheduledAppointments.filter((appointment: any) => appointment.date === treatmentDate);
-  const candidateAppointments = sameDayAppointments.length > 0 ? sameDayAppointments : scheduledAppointments;
-  const appointmentToComplete =
-    (normalizedDoctorId
-      ? candidateAppointments.find((appointment: any) => appointment.doctor_id === normalizedDoctorId)
-      : undefined) ||
-    candidateAppointments.find((appointment: any) => !appointment.doctor_id) ||
-    candidateAppointments[0];
-
-  // Treatment-driven auto-completion should not apply the visit fee here.
-  // The payment collection flow decides whether to include the new/returning fee.
-  await completeAppointmentWithClinicalFee(appointmentToComplete.id, true);
-
-  try {
-    await syncRecallStatusFromAppointment({
-      appointmentId: appointmentToComplete.id,
-      patientId,
-      locationId,
-      status: 'Completed'
-    });
-  } catch (syncErr) {
-    console.warn('Recall automation sync failed on treatment appointment completion:', syncErr);
-  }
-
-  return [appointmentToComplete.id];
 };
 
 // Storage bucket for patient uploads
@@ -1570,17 +1396,6 @@ export const api = {
         if (completedResult.error) throw new Error(completedResult.error.message);
         result = completedResult.data;
       }
-
-      try {
-        await syncRecallStatusFromAppointment({
-          appointmentId: result.id,
-          patientId: result.patient_id,
-          locationId: result.location_id,
-          status: result.status
-        });
-      } catch (syncErr) {
-        console.warn('Recall automation sync failed on appointment create:', syncErr);
-      }
       
       // Flatten the response
       return {
@@ -1611,17 +1426,6 @@ export const api = {
       if (status === 'Completed') {
         const result = await completeAppointmentWithClinicalFee(id, Boolean(options.skipClinicalFee));
 
-        try {
-          await syncRecallStatusFromAppointment({
-            appointmentId: id,
-            patientId: appointment.patient_id,
-            locationId: appointment.location_id,
-            status
-          });
-        } catch (syncErr) {
-          console.warn('Recall automation sync failed on appointment status update:', syncErr);
-        }
-
         return result;
       }
 
@@ -1635,17 +1439,6 @@ export const api = {
         .eq('id', id);
 
       if (error) throw new Error(error.message);
-
-      try {
-        await syncRecallStatusFromAppointment({
-          appointmentId: id,
-          patientId: appointment.patient_id,
-          locationId: appointment.location_id,
-          status
-        });
-      } catch (syncErr) {
-        console.warn('Recall automation sync failed on appointment status update:', syncErr);
-      }
     },
     update: async (
       id: string,
@@ -1758,17 +1551,6 @@ export const api = {
 
         if (completedResult.error) throw new Error(completedResult.error.message);
         result = completedResult.data;
-      }
-
-      try {
-        await syncRecallStatusFromAppointment({
-          appointmentId: result.id,
-          patientId: result.patient_id,
-          locationId: result.location_id,
-          status: result.status
-        });
-      } catch (syncErr) {
-        console.warn('Recall automation sync failed on appointment edit:', syncErr);
       }
       
       // Flatten the response
@@ -4804,135 +4586,6 @@ export const api = {
       if (aError) throw new Error(`Planning error: ${aError.message}`);
       
       return { schedules, appointments };
-    }
-  },
-
-  recalls: {
-    getAll: async (locationId?: string, patientId?: string): Promise<Recall[]> => {
-      try {
-        let query = supabase
-          .from('recalls')
-          .select('*, patients(name)')
-          .order('due_date', { ascending: true });
-
-        if (locationId) query = query.eq('location_id', locationId);
-        if (patientId) query = query.eq('patient_id', patientId);
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        return (data || []).map((r: any) => ({
-          ...r,
-          patient_name: r.patients?.name || 'Unknown'
-        }));
-      } catch (err) {
-        console.warn('Error fetching recalls:', err);
-        return [];
-      }
-    },
-
-    create: async (data: Partial<Recall>): Promise<Recall> => {
-      const payload = {
-        location_id: data.location_id,
-        patient_id: data.patient_id,
-        appointment_id: data.appointment_id || null,
-        title: data.title,
-        due_date: data.due_date,
-        reminder_days_before: data.reminder_days_before ?? 7,
-        status: data.status || 'PENDING',
-        notes: data.notes || null
-      };
-
-      const { data: result, error } = await supabase
-        .from('recalls')
-        .insert(payload)
-        .select('*, patients(name)')
-        .single();
-
-      if (error) throw new Error(error.message);
-      return {
-        ...result,
-        patient_name: result.patients?.name || 'Unknown'
-      };
-    },
-
-    updateStatus: async (id: string, status: Recall['status']): Promise<void> => {
-      const { error } = await supabase
-        .from('recalls')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (error) throw new Error(error.message);
-    },
-
-    update: async (id: string, data: Partial<Recall>): Promise<Recall> => {
-      const { data: result, error } = await supabase
-        .from('recalls')
-        .update({
-          appointment_id: data.appointment_id || null,
-          title: data.title,
-          due_date: data.due_date,
-          reminder_days_before: data.reminder_days_before ?? 7,
-          status: data.status,
-          notes: data.notes || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select('*, patients(name)')
-        .single();
-
-      if (error) throw new Error(error.message);
-      return {
-        ...result,
-        patient_name: result.patients?.name || 'Unknown'
-      };
-    },
-
-    delete: async (id: string): Promise<void> => {
-      const { error } = await supabase
-        .from('recalls')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw new Error(error.message);
-    },
-
-    deleteAll: async (locationId?: string): Promise<void> => {
-      let query = supabase
-        .from('recalls')
-        .delete();
-
-      if (locationId) {
-        query = query.eq('location_id', locationId);
-      } else {
-        query = query.neq('id', '00000000-0000-0000-0000-000000000000');
-      }
-
-      const { error } = await query;
-      if (error) throw new Error(error.message);
-    },
-
-    markReminded: async (id: string): Promise<void> => {
-      const { error } = await supabase
-        .from('recalls')
-        .update({ last_reminded_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (error) throw new Error(error.message);
-    },
-
-    updateOverdueStatus: async (locationId?: string): Promise<void> => {
-      const today = new Date().toISOString().split('T')[0];
-      let query = supabase
-        .from('recalls')
-        .update({ status: 'OVERDUE', updated_at: new Date().toISOString() })
-        .lt('due_date', today)
-        .in('status', ['PENDING', 'SCHEDULED']);
-
-      if (locationId) query = query.eq('location_id', locationId);
-
-      const { error } = await query;
-      if (error) throw new Error(error.message);
     }
   },
 
