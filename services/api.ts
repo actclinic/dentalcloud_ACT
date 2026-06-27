@@ -5238,7 +5238,7 @@ export const api = {
       if (!adminId) throw new Error('Admin ID is required.');
       const payload = {
         admin_id: adminId,
-        location_id: locationId,
+        location_id: locationId || null,
         profile,
         updated_at: new Date().toISOString()
       };

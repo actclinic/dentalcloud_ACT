@@ -544,7 +544,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     const currentUserLocation = currentAdminId
       ? users.find(user => user.id === currentAdminId)?.location_id
       : null;
-    return resolveLocationId(currentLocationId) || currentUserLocation || users[0]?.location_id || locations[0]?.id || 'main';
+    return resolveLocationId(currentLocationId) || currentUserLocation || users[0]?.location_id || locations[0]?.id || '';
   };
 
   const [selectedLocationScope, setSelectedLocationScope] = useState<string>(() => {

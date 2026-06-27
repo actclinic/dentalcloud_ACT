@@ -2554,6 +2554,26 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRedeemPoints = async (points: number, amount: number, patientOverride?: Patient) => {
+    const patient = patientOverride || selectedPatient;
+    if (!patient) return;
+    try {
+      const result = await api.loyalty.redeemPoints(patient.id, currentLocationId || patient.location_id, points, amount);
+      const updatedPatient = {
+        ...patient,
+        balance: result.new_balance,
+        loyalty_points: result.new_points
+      };
+      setPatients(prev => prev.map(p => p.id === patient.id ? updatedPatient : p));
+      setDashboardPatients(prev => prev.map(p => p.id === patient.id ? updatedPatient : p));
+      setAssistantPatients(prev => prev.map(p => p.id === patient.id ? updatedPatient : p));
+      if (selectedPatient?.id === patient.id) setSelectedPatient(updatedPatient);
+      setToast({ message: `Redeemed ${points} points.`, type: 'success', show: true });
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const handleTreatmentSubmit = async (treatment: TreatmentType, chargeLines?: TreatmentChargeLine[]) => {
     if (!selectedPatient) return;
     if (!useFlatRate && selectedTeeth.length === 0) {
