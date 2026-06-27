@@ -69,6 +69,7 @@ import {
 } from './constants';
 import { api } from './services/api';
 import { formatCurrency, getCurrencySymbol, Currency } from './utils/currency';
+import { DOCTOR_SPECIALIZATIONS, usesFlatVisitCommission } from './utils/doctorCommission';
 import { buildFinancialReport, renderFinancialReportMarkdown } from './utils/aiReport';
 import { auth } from './services/auth';
 import { getMyanmarCities, getTownshipsForCity } from './utils/myanmarCities';
@@ -685,7 +686,7 @@ const App: React.FC = () => {
     return name.startsWith(query) || spec.startsWith(query);
   });
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: '' });
-  const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
+  const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '' });
   const [doctorCommissionRows, setDoctorCommissionRows] = useState<DoctorTreatmentCommission[]>([]);
   const [doctorCommissionAdvancedOpen, setDoctorCommissionAdvancedOpen] = useState(false);
   const [doctorCommissionLoading, setDoctorCommissionLoading] = useState(false);
@@ -2228,7 +2229,14 @@ const App: React.FC = () => {
       return;
     }
 
-    const normalizedCommissionRows = doctorCommissionRows
+    const useFlatVisitCommission = usesFlatVisitCommission(newDoctorData.specialization);
+    if (useFlatVisitCommission && Number(newDoctorData.commission_per_visit || 0) < 0) {
+      alert('Per-visit commission cannot be negative.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    const normalizedCommissionRows = useFlatVisitCommission ? [] : doctorCommissionRows
       .filter((row) => row.treatment_id)
       .map((row) => ({
         treatment_id: row.treatment_id,
@@ -2275,7 +2283,7 @@ const App: React.FC = () => {
       setShowDoctorModal(false);
       fetchInitialData();
       setEditingDoctor(null);
-      setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' });
+      setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '' });
       resetDoctorCommissionEditor();
     } catch (err: any) {
       if (isDoctorTransferValidationError(err) && editingDoctor) {
@@ -3633,7 +3641,7 @@ const App: React.FC = () => {
                    await exportAppointmentsToExcel(freshAppointments);
                 }}
             />}
-            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: '', password: '', commission_percentage: 0, schedules: [], location_id: currentLocationId || '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
+            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
@@ -4317,41 +4325,56 @@ const App: React.FC = () => {
               </select>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input label="Specialization" value={newDoctorData.specialization} onChange={(e: any) => setNewDoctorData({...newDoctorData, specialization: e.target.value})} placeholder="e.g., Orthodontics, Oral Surgery" />
               <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Commission Percentage (%)</label>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Specializations</label>
+                <select
+                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                  value={newDoctorData.specialization || 'General'}
+                  onChange={(e: any) => setNewDoctorData({ ...newDoctorData, specialization: e.target.value })}
+                >
+                  {DOCTOR_SPECIALIZATIONS.map((specialization) => (
+                    <option key={specialization} value={specialization}>{specialization}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">
+                  {usesFlatVisitCommission(newDoctorData.specialization) ? `Commission Per Visit (${getCurrencySymbol(currency)})` : 'Commission Percentage (%)'}
+                </label>
                 <div className="relative">
                   <input
                     type="number"
                     min="0"
-                    max="100"
                     step="0.01"
                     className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-8"
-                    value={newDoctorData.commission_percentage ?? 0}
-                    onChange={(e: any) => setNewDoctorData({...newDoctorData, commission_percentage: parseFloat(e.target.value) || 0})}
-                    placeholder="e.g., 50"
+                    {...(usesFlatVisitCommission(newDoctorData.specialization) ? {} : { max: 100 })}
+                    value={usesFlatVisitCommission(newDoctorData.specialization) ? (newDoctorData.commission_per_visit ?? 0) : (newDoctorData.commission_percentage ?? 0)}
+                    onChange={(e: any) => setNewDoctorData(usesFlatVisitCommission(newDoctorData.specialization) ? { ...newDoctorData, commission_per_visit: parseFloat(e.target.value) || 0 } : { ...newDoctorData, commission_percentage: parseFloat(e.target.value) || 0 })}
+                    placeholder={usesFlatVisitCommission(newDoctorData.specialization) ? 'e.g., 50000' : 'e.g., 50'}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{usesFlatVisitCommission(newDoctorData.specialization) ? getCurrencySymbol(currency) : '%'}</span>
                 </div>
-                <p className="mt-1 text-xs text-gray-400">Percentage of treatment fee paid to this doctor.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDoctorCommissionAdvancedOpen((prev) => {
-                      const next = !prev;
-                      if (next && doctorCommissionRows.length === 0) {
-                        setDoctorCommissionRows([createEmptyDoctorCommissionRow()]);
-                      }
-                      return next;
-                    });
-                  }}
-                  className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                >
-                  {doctorCommissionAdvancedOpen ? 'Hide advanced treatment commission setup' : 'Advanced: Set custom commission per treatment'}
-                </button>
+                <p className="mt-1 text-xs text-gray-400">{usesFlatVisitCommission(newDoctorData.specialization) ? 'Flat amount paid to this doctor for each visit.' : 'Percentage of treatment fee paid to this doctor.'}</p>
+                {!usesFlatVisitCommission(newDoctorData.specialization) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDoctorCommissionAdvancedOpen((prev) => {
+                        const next = !prev;
+                        if (next && doctorCommissionRows.length === 0) {
+                          setDoctorCommissionRows([createEmptyDoctorCommissionRow()]);
+                        }
+                        return next;
+                      });
+                    }}
+                    className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                  >
+                    {doctorCommissionAdvancedOpen ? 'Hide advanced treatment commission setup' : 'Advanced: Set custom commission per treatment'}
+                  </button>
+                )}
               </div>
             </div>
-            {doctorCommissionAdvancedOpen && (
+            {doctorCommissionAdvancedOpen && !usesFlatVisitCommission(newDoctorData.specialization) && (
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>

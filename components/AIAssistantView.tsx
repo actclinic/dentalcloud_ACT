@@ -3539,6 +3539,8 @@ I can provide guidance on:
               email: pendingAction.params.e,
               phone: pendingAction.params.ph,
               specialization: pendingAction.params.s,
+              commission_percentage: pendingAction.params.cp,
+              commission_per_visit: pendingAction.params.cpv,
               schedules: pendingAction.params.sch
             });
             break;
@@ -4832,6 +4834,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   email: params.e,
                   phone: params.ph,
                   specialization: params.s,
+                  commission_percentage: params.cp,
+                  commission_per_visit: params.cpv,
                   schedules: params.sch
                 });
                 currentActionResult = `✅ Dr. ${result.name} added to the system.`;

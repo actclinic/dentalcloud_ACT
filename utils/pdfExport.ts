@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, Doctor, Medicine, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from './currency';
+import { usesFlatVisitCommission } from './doctorCommission';
 import { formatTeethWithPosition } from './toothNumbering';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 
@@ -289,11 +290,11 @@ export const exportDoctorsToPDF = (doctors: Doctor[]) => {
   // Table
   autoTable(doc, {
     startY: 40,
-    head: [['Doctor Name', 'Specialization', 'Commission %', 'Contact', 'Email']],
+    head: [['Doctor Name', 'Specialization', 'Commission', 'Contact', 'Email']],
     body: exportDoctors.map(doctor => [
       `Dr. ${doctor.name}`,
       doctor.specialization || 'General',
-      doctor.commission_percentage != null ? `${doctor.commission_percentage}%` : '0%',
+      usesFlatVisitCommission(doctor.specialization) ? `${doctor.commission_per_visit || 0}/visit` : (doctor.commission_percentage != null ? `${doctor.commission_percentage}%` : '0%'),
       doctor.phone || 'N/A',
       doctor.email || 'N/A'
     ]),

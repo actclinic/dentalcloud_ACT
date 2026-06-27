@@ -159,6 +159,8 @@ RECORD TREATMENT (auto-calculates doctor commission):
   ]
 } }
 
+Doctor commission follows the doctor's specialization: General/Specialists use commission_percentage (or treatment custom rates); Ortho/Implant/Surgery use commission_per_visit flat amount.
+
 UNDO TREATMENT RECORD:
 { "action": "tr_undo", "params": { 
   "id": "treatment456", 

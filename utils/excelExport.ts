@@ -1,5 +1,6 @@
 import { Appointment, AppointmentRescheduleLog, ClinicalRecord, Doctor, Expense, Medicine, Patient, PaymentRecord } from '../types';
 import { Currency } from './currency';
+import { usesFlatVisitCommission } from './doctorCommission';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 import { formatAppointmentNotesForDisplay } from './appointmentClinicalFocus';
 
@@ -235,6 +236,7 @@ export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
     { header: 'Doctor Name', width: 24 },
     { header: 'Specialization', width: 18 },
     { header: 'Commission %', width: 14 },
+    { header: 'Commission Per Visit', width: 20 },
     { header: 'Phone', width: 16 },
     { header: 'Email', width: 28 },
     { header: 'Schedule', width: 40 }
@@ -242,7 +244,8 @@ export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
   const rows = doctors.map((doctor) => ({
     'Doctor Name': `Dr. ${doctor.name}`,
     Specialization: doctor.specialization || 'General',
-    'Commission %': doctor.commission_percentage != null ? doctor.commission_percentage : 0,
+    'Commission %': usesFlatVisitCommission(doctor.specialization) ? 'N/A' : (doctor.commission_percentage != null ? doctor.commission_percentage : 0),
+    'Commission Per Visit': usesFlatVisitCommission(doctor.specialization) ? (doctor.commission_per_visit || 0) : 'N/A',
     Phone: doctor.phone || 'N/A',
     Email: doctor.email || 'N/A',
     Schedule: doctor.schedules.length === 0

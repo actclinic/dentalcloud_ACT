@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Doctor } from '../types';
+import { DOCTOR_SPECIALIZATIONS } from '../utils/doctorCommission';
 
 interface DoctorProfileViewProps {
   doctor: Doctor | null;
@@ -29,7 +30,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({
       name: doctor?.name || '',
       email: doctor?.email || '',
       phone: doctor?.phone || '',
-      specialization: doctor?.specialization || '',
+      specialization: doctor?.specialization || 'General',
       password: ''
     });
   }, [doctor]);
@@ -45,7 +46,7 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({
         name: formData.name?.trim(),
         email: formData.email?.trim(),
         phone: formData.phone?.trim(),
-        specialization: formData.specialization?.trim(),
+        specialization: formData.specialization?.trim() || 'General',
         password: formData.password?.trim() || undefined
       });
       setFormData((prev) => ({ ...prev, password: '' }));
@@ -115,11 +116,15 @@ const DoctorProfileView: React.FC<DoctorProfileViewProps> = ({
         </div>
         <div>
           <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Specialization</label>
-          <input
-            className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            value={formData.specialization || ''}
+          <select
+            className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+            value={formData.specialization || 'General'}
             onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-          />
+          >
+            {DOCTOR_SPECIALIZATIONS.map((specialization) => (
+              <option key={specialization} value={specialization}>{specialization}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">New Password (Optional)</label>

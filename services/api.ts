@@ -10,6 +10,7 @@ import { findInvalidTeeth } from '../utils/toothNumbering';
 import { normalizePaymentMethod } from '../utils/paymentMethods';
 import { normalizePaymentReceiptSnapshot } from '../utils/paymentReceipt';
 import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../utils/receiptPreferences';
+import { calculateDoctorEarnings, usesFlatVisitCommission } from '../utils/doctorCommission';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -2099,8 +2100,18 @@ export const api = {
           commissionRate = Number(doctorRow?.commission_percentage || 0);
         }
 
-        const pct = commissionRate / 100;
-        doctorEarnings = Math.round(data.cost * pct * 100) / 100;
+        const { data: doctorRow } = await supabase
+          .from("doctors")
+          .select("specialization, commission_per_visit")
+          .eq("id", data.doctor_id)
+          .maybeSingle();
+
+        doctorEarnings = calculateDoctorEarnings({
+          cost: data.cost,
+          specialization: doctorRow?.specialization,
+          commissionRate,
+          commissionPerVisit: doctorRow?.commission_per_visit
+        });
       }
       const treatmentData = {
         ...legacyTreatmentData,
@@ -2313,6 +2324,7 @@ export const api = {
           phone: doc.phone,
           specialization: doc.specialization,
           commission_percentage: doc.commission_percentage ?? 0,
+          commission_per_visit: doc.commission_per_visit ?? 0,
           schedules: (doc.doctor_schedules || []).map((sched: any) => ({
             id: sched.id,
             day_of_week: sched.day_of_week,
@@ -2342,7 +2354,8 @@ export const api = {
           phone: data.phone,
           specialization: data.specialization,
           password: trimmedPassword || null,
-          commission_percentage: data.commission_percentage ?? 0
+          commission_percentage: data.commission_percentage ?? 0,
+          commission_per_visit: usesFlatVisitCommission(data.specialization) ? Number(data.commission_per_visit || 0) : 0
         })
         .select()
         .single();
@@ -2438,6 +2451,7 @@ export const api = {
         phone: completeDoctor.phone,
         specialization: completeDoctor.specialization,
         commission_percentage: completeDoctor.commission_percentage ?? 0,
+        commission_per_visit: completeDoctor.commission_per_visit ?? 0,
         schedules: (completeDoctor.doctor_schedules || []).map((sched: any) => ({
           id: sched.id,
           day_of_week: sched.day_of_week,
@@ -2498,9 +2512,14 @@ export const api = {
         name: data.name,
         email: nextEmail || null,
         phone: data.phone,
-        specialization: data.specialization,
-        commission_percentage: data.commission_percentage
+        specialization: data.specialization
       };
+      if (data.commission_percentage !== undefined) {
+        doctorUpdatePayload.commission_percentage = data.commission_percentage;
+      }
+      if (data.commission_per_visit !== undefined) {
+        doctorUpdatePayload.commission_per_visit = usesFlatVisitCommission(data.specialization) ? Number(data.commission_per_visit || 0) : 0;
+      }
       if (trimmedPassword) {
         doctorUpdatePayload.password = trimmedPassword;
       }
@@ -2631,6 +2650,7 @@ export const api = {
         phone: updatedDoctor.phone,
         specialization: updatedDoctor.specialization,
         commission_percentage: updatedDoctor.commission_percentage ?? 0,
+        commission_per_visit: updatedDoctor.commission_per_visit ?? 0,
         schedules: (updatedDoctor.doctor_schedules || []).map((sched: any) => ({
           id: sched.id,
           day_of_week: sched.day_of_week,

@@ -192,6 +192,7 @@ export interface Doctor {
   password?: string;
   schedules: DoctorSchedule[]; // Array of schedules for different days/times
   commission_percentage?: number; // e.g., 50 means 50% of treatment cost goes to doctor
+  commission_per_visit?: number; // Flat per-visit amount for Ortho/Implant/Surgery
   custom_commissions?: DoctorTreatmentCommission[];
   created_at?: string;
 }
@@ -207,6 +208,7 @@ export interface DoctorInput {
   password?: string;
   schedules?: DoctorScheduleInput[];
   commission_percentage?: number; // e.g., 50 means 50% of treatment cost goes to doctor
+  commission_per_visit?: number; // Flat per-visit amount for Ortho/Implant/Surgery
   created_at?: string;
 }
 

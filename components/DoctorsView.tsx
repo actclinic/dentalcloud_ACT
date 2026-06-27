@@ -3,6 +3,8 @@ import { Plus, Edit2, Trash2, Clock, Loader2, User } from 'lucide-react';
 import { Doctor, DoctorSchedule } from '../types';
 import { exportDoctorsToPDF } from '../utils/pdfExport';
 import { exportDoctorsToExcel } from '../utils/excelExport';
+import { Currency, formatCurrency } from '../utils/currency';
+import { usesFlatVisitCommission } from '../utils/doctorCommission';
 import Pagination from './Pagination';
 import { ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
@@ -10,6 +12,7 @@ import ExportMenu from './ExportMenu';
 interface DoctorsViewProps {
   doctors: Doctor[];
   loading: boolean;
+  currency: Currency;
   onAdd: () => void;
   onEdit: (doctor: Doctor) => void;
   onDelete: (id: string) => void;
@@ -18,6 +21,7 @@ interface DoctorsViewProps {
 const DoctorsView: React.FC<DoctorsViewProps> = ({
   doctors,
   loading,
+  currency,
   onAdd,
   onEdit,
   onDelete
@@ -179,7 +183,12 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
                     </div>
                   )}
                   
-                  {doctor.commission_percentage !== undefined && doctor.commission_percentage > 0 && (
+                  {usesFlatVisitCommission(doctor.specialization) && Number(doctor.commission_per_visit || 0) > 0 ? (
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 truncate">
+                      <span className="font-medium shrink-0">Commission:</span>
+                      <span className="text-green-700 font-bold">{formatCurrency(Number(doctor.commission_per_visit || 0), currency)}/visit</span>
+                    </div>
+                  ) : doctor.commission_percentage !== undefined && doctor.commission_percentage > 0 && (
                     <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 truncate">
                       <span className="font-medium shrink-0">Commission:</span>
                       <span className="text-green-700 font-bold">{doctor.commission_percentage}%</span>
