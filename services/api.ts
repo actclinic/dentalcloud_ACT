@@ -1810,11 +1810,21 @@ export const api = {
         throw new Error('Reschedule reason is required.');
       }
 
-      const { data: result, error } = await supabase
+      let { data: result, error } = await supabase
         .from('appointment_reschedule_logs')
         .insert(payload)
         .select('*')
         .single();
+
+      if (error && /appointment_reschedule_logs_admin_user_id_fkey/i.test(error.message || '')) {
+        const retry = await supabase
+          .from('appointment_reschedule_logs')
+          .insert({ ...payload, admin_user_id: null })
+          .select('*')
+          .single();
+        result = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         if (isMissingRelationError(error, 'appointment_reschedule_logs')) {
