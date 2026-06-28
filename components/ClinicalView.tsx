@@ -185,10 +185,12 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     });
   }, [treatmentTypes, treatmentSearchTerm]);
   const halfTeeth = React.useMemo(() => ({
-    upper: [1, 2, 5, 6].flatMap((quadrant) => getTeethInQuadrant(quadrant, quadrant > 4)),
-    lower: [3, 4, 7, 8].flatMap((quadrant) => getTeethInQuadrant(quadrant, quadrant > 4))
+    upperAdult: [1, 2].flatMap((quadrant) => getTeethInQuadrant(quadrant)),
+    lowerAdult: [3, 4].flatMap((quadrant) => getTeethInQuadrant(quadrant)),
+    upperChild: [5, 6].flatMap((quadrant) => getTeethInQuadrant(quadrant, true)),
+    lowerChild: [7, 8].flatMap((quadrant) => getTeethInQuadrant(quadrant, true))
   }), []);
-  const selectedHalf = (['upper', 'lower'] as const).find(
+  const selectedHalf = (['upperAdult', 'lowerAdult', 'upperChild', 'lowerChild'] as const).find(
     (half) => selectedTeeth.length === halfTeeth[half].length && halfTeeth[half].every((tooth) => selectedTeeth.includes(tooth))
   ) || '';
   const canApplyTreatment = useFlatRate || selectedTeeth.length > 0;
@@ -586,15 +588,17 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                       onToggleFlatRate(false);
                       return;
                     }
-                    onSelectTeeth(halfTeeth[e.target.value as 'upper' | 'lower']);
+                    onSelectTeeth(halfTeeth[e.target.value as keyof typeof halfTeeth]);
                     onToggleFlatRate(true);
                   }}
                   className="rounded-2xl border border-indigo-200 bg-white px-5 py-3 text-base font-black text-indigo-900 shadow-sm outline-none transition hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                   aria-label="Apply treatment to half teeth"
                 >
                   <option value="">{selectedHalf ? 'Clear Half Teeth' : 'HALF TEETH'}</option>
-                  <option value="upper">Upper</option>
-                  <option value="lower">Lower</option>
+                  <option value="upperAdult">Upper (Adult)</option>
+                  <option value="lowerAdult">Lower (Adult)</option>
+                  <option value="upperChild">Upper (Child)</option>
+                  <option value="lowerChild">Lower (Child)</option>
                 </select>
               </div>
             </div>
