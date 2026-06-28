@@ -39,6 +39,7 @@ DROP TABLE IF EXISTS payments CASCADE;
 DROP TABLE IF EXISTS treatments CASCADE;
 DROP TABLE IF EXISTS appointments CASCADE;
 DROP TABLE IF EXISTS doctor_schedules CASCADE;
+DROP TABLE IF EXISTS doctor_locations CASCADE;
 DROP TABLE IF EXISTS doctors CASCADE;
 DROP TABLE IF EXISTS patients CASCADE;
 DROP TABLE IF EXISTS treatment_types CASCADE;
@@ -223,6 +224,13 @@ CREATE TABLE doctor_schedules (
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE doctor_locations (
+  doctor_id UUID NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (doctor_id, location_id)
 );
 
 -- Link optional doctor login accounts to users (one doctor -> one staff login)
@@ -938,6 +946,7 @@ CREATE INDEX idx_otp_codes_expires ON otp_codes(expires_at);
 CREATE INDEX idx_otp_codes_email_code_used_expires ON otp_codes(email, code, used, expires_at);
 CREATE INDEX idx_doctors_location ON doctors(location_id);
 CREATE INDEX idx_doctor_schedules_doctor ON doctor_schedules(doctor_id);
+CREATE INDEX idx_doctor_locations_location_id ON doctor_locations(location_id);
 CREATE INDEX idx_treatment_types_location ON treatment_types(location_id);
 CREATE INDEX idx_treatments_patient ON treatments(patient_id);
 CREATE INDEX idx_treatments_location ON treatments(location_id);
@@ -1553,6 +1562,7 @@ DECLARE
     'appointment_types',
     'doctors',
     'doctor_schedules',
+    'doctor_locations',
     'doctor_treatment_commissions',
     'treatment_types',
     'treatments',
@@ -1840,6 +1850,8 @@ UNION ALL
 SELECT 'Doctors', COUNT(*) FROM doctors
 UNION ALL
 SELECT 'Doctor Schedules', COUNT(*) FROM doctor_schedules
+UNION ALL
+SELECT 'Doctor Locations', COUNT(*) FROM doctor_locations
 UNION ALL
 SELECT 'Treatment Types', COUNT(*) FROM treatment_types
 UNION ALL

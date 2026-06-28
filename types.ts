@@ -185,6 +185,7 @@ export interface DoctorScheduleInput {
 export interface Doctor {
   id: string;
   location_id: string;
+  location_ids?: string[];
   name: string;
   email?: string;
   phone?: string;
@@ -201,6 +202,7 @@ export interface Doctor {
 export interface DoctorInput {
   id?: string;
   location_id: string;
+  location_ids?: string[];
   name: string;
   email?: string;
   phone?: string;

@@ -49,6 +49,7 @@ DROP TABLE IF EXISTS public.treatments CASCADE;
 DROP TABLE IF EXISTS public.appointments CASCADE;
 DROP TABLE IF EXISTS public.doctor_treatment_commissions CASCADE;
 DROP TABLE IF EXISTS public.doctor_schedules CASCADE;
+DROP TABLE IF EXISTS public.doctor_locations CASCADE;
 DROP TABLE IF EXISTS public.doctors CASCADE;
 DROP TABLE IF EXISTS public.patients CASCADE;
 DROP TABLE IF EXISTS public.patient_types CASCADE;

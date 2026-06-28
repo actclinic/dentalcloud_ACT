@@ -14,6 +14,7 @@ import { calculateDoctorEarnings, usesFlatVisitCommission } from '../utils/docto
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
+let doctorLocationsSupport: boolean | null = null;
 let conversationsDoctorUserSupport: boolean | null = null;
 let storageConfigVersion = 0;
 
@@ -95,6 +96,72 @@ const detectUsersDoctorIdSupport = async (): Promise<boolean> => {
 
   usersDoctorIdSupport = true;
   return true;
+};
+
+const detectDoctorLocationsSupport = async (): Promise<boolean> => {
+  if (doctorLocationsSupport !== null) return doctorLocationsSupport;
+
+  const { error } = await supabase
+    .from('doctor_locations')
+    .select('doctor_id')
+    .limit(1);
+
+  if (error) {
+    if (isMissingRelationError(error, 'doctor_locations')) {
+      doctorLocationsSupport = false;
+      return false;
+    }
+    throw error;
+  }
+
+  doctorLocationsSupport = true;
+  return true;
+};
+
+const getDoctorLocationIds = (data: Partial<Doctor> | any): string[] => {
+  const ids = Array.isArray(data.location_ids) ? data.location_ids : [data.location_id];
+  const normalized = ids.map((id: unknown) => String(id || '').trim()).filter(Boolean) as string[];
+  return Array.from(new Set(normalized));
+};
+
+const saveDoctorLocations = async (doctorId: string, locationIds: string[]) => {
+  if (!(await detectDoctorLocationsSupport())) return;
+
+  await supabase.from('doctor_locations').delete().eq('doctor_id', doctorId);
+  if (locationIds.length === 0) return;
+
+  const { error } = await supabase
+    .from('doctor_locations')
+    .insert(locationIds.map((location_id) => ({ doctor_id: doctorId, location_id })));
+
+  if (error) throw new Error(error.message);
+};
+
+const mapDoctor = (doc: any): Doctor => {
+  const joinedLocationIds = Array.isArray(doc.doctor_locations)
+    ? doc.doctor_locations.map((row: any) => row.location_id).filter(Boolean)
+    : [];
+  const location_ids = joinedLocationIds.length ? joinedLocationIds : [doc.location_id].filter(Boolean);
+
+  return {
+    id: doc.id,
+    location_id: doc.location_id,
+    location_ids,
+    name: doc.name,
+    email: doc.email,
+    phone: doc.phone,
+    specialization: doc.specialization,
+    commission_percentage: doc.commission_percentage ?? 0,
+    commission_per_visit: doc.commission_per_visit ?? 0,
+    schedules: (doc.doctor_schedules || []).map((sched: any) => ({
+      id: sched.id,
+      doctor_id: sched.doctor_id,
+      day_of_week: sched.day_of_week,
+      start_time: sched.start_time,
+      end_time: sched.end_time
+    })),
+    created_at: doc.created_at
+  };
 };
 
 const detectConversationsDoctorUserSupport = async (): Promise<boolean> => {
@@ -2141,15 +2208,21 @@ export const api = {
         appointmentsQuery = appointmentsQuery.eq('location_id', locationId);
       }
 
+      let treatmentsQuery = supabase
+        .from('treatments')
+        .select('id', { count: 'exact', head: true })
+        .eq('doctor_id', doctorId);
+
+      if (locationId) {
+        treatmentsQuery = treatmentsQuery.eq('location_id', locationId);
+      }
+
       const [
         { count: appointmentCount, error: appointmentError },
         { count: treatmentCount, error: treatmentError }
       ] = await Promise.all([
         appointmentsQuery,
-        supabase
-          .from('treatments')
-          .select('id', { count: 'exact', head: true })
-          .eq('doctor_id', doctorId)
+        treatmentsQuery
       ]);
 
       if (appointmentError) throw new Error(appointmentError.message);
@@ -2166,12 +2239,13 @@ export const api = {
     },
     getAll: async (locationId?: string): Promise<Doctor[]> => {
       try {
+        const supportsDoctorLocations = await detectDoctorLocationsSupport();
         let query = supabase
           .from('doctors')
-          .select('*, doctor_schedules(*)')
+          .select(`*, doctor_schedules(*)${supportsDoctorLocations ? ', doctor_locations(location_id)' : ''}`)
           .order('name');
         
-        if (locationId) {
+        if (locationId && !supportsDoctorLocations) {
           query = query.eq('location_id', locationId);
         }
 
@@ -2179,30 +2253,18 @@ export const api = {
         
         if (error) throw error;
         
-        // Transform the data to match Doctor interface
-        return (data || []).map((doc: any) => ({
-          id: doc.id,
-          location_id: doc.location_id,
-          name: doc.name,
-          email: doc.email,
-          phone: doc.phone,
-          specialization: doc.specialization,
-          commission_percentage: doc.commission_percentage ?? 0,
-          commission_per_visit: doc.commission_per_visit ?? 0,
-          schedules: (doc.doctor_schedules || []).map((sched: any) => ({
-            id: sched.id,
-            day_of_week: sched.day_of_week,
-            start_time: sched.start_time,
-            end_time: sched.end_time
-          })),
-          created_at: doc.created_at
-        }));
+        const doctors = (data || []).map(mapDoctor);
+        return locationId && supportsDoctorLocations
+          ? doctors.filter((doctor) => (doctor.location_ids || [doctor.location_id]).includes(locationId))
+          : doctors;
       } catch (err) {
         console.warn("Error fetching doctors:", err);
         return [];
       }
     },
     create: async (data: Partial<Doctor> | any): Promise<Doctor> => {
+      const locationIds = getDoctorLocationIds(data);
+      const primaryLocationId = locationIds[0] || data.location_id;
       const trimmedPassword = typeof data.password === 'string' ? data.password.trim() : '';
       const trimmedEmail = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
       if (trimmedPassword && !trimmedEmail) {
@@ -2212,7 +2274,7 @@ export const api = {
       const { data: doctorData, error: doctorError } = await supabase
         .from('doctors')
         .insert({
-          location_id: data.location_id,
+          location_id: primaryLocationId,
           name: data.name,
           email: trimmedEmail || null,
           phone: data.phone,
@@ -2245,7 +2307,7 @@ export const api = {
           }
 
           const doctorUserPayload: any = {
-            location_id: data.location_id || null,
+            location_id: primaryLocationId || null,
             doctor_id: doctorData.id,
             username: trimmedEmail,
             password: trimmedPassword,
@@ -2268,6 +2330,8 @@ export const api = {
           throw new Error(doctorUserError.message || 'Failed to create doctor login account.');
         }
       }
+
+      await saveDoctorLocations(doctorData.id, locationIds);
 
       // Then create schedules if provided (filter and validate)
       if (data.schedules && data.schedules.length > 0) {
@@ -2299,31 +2363,16 @@ export const api = {
       }
 
       // Fetch the complete doctor with schedules
+      const supportsDoctorLocations = await detectDoctorLocationsSupport();
       const { data: completeDoctor, error: fetchError } = await supabase
         .from('doctors')
-        .select('*, doctor_schedules(*)')
+        .select(`*, doctor_schedules(*)${supportsDoctorLocations ? ', doctor_locations(location_id)' : ''}`)
         .eq('id', doctorData.id)
         .single();
 
       if (fetchError) throw new Error(fetchError.message);
 
-      return {
-        id: completeDoctor.id,
-        location_id: completeDoctor.location_id,
-        name: completeDoctor.name,
-        email: completeDoctor.email,
-        phone: completeDoctor.phone,
-        specialization: completeDoctor.specialization,
-        commission_percentage: completeDoctor.commission_percentage ?? 0,
-        commission_per_visit: completeDoctor.commission_per_visit ?? 0,
-        schedules: (completeDoctor.doctor_schedules || []).map((sched: any) => ({
-          id: sched.id,
-          day_of_week: sched.day_of_week,
-          start_time: sched.start_time,
-          end_time: sched.end_time
-        })),
-        created_at: completeDoctor.created_at
-      };
+      return mapDoctor(completeDoctor);
     },
     update: async (id: string, data: Partial<Doctor> | any): Promise<Doctor> => {
       const { data: existingDoctor, error: existingDoctorError } = await supabase
@@ -2333,6 +2382,10 @@ export const api = {
         .single();
 
       if (existingDoctorError) throw new Error(existingDoctorError.message);
+
+      const hasLocationAssignments = data.location_ids !== undefined || (data.location_id !== undefined && data.location_id !== existingDoctor.location_id);
+      const locationIds = hasLocationAssignments ? getDoctorLocationIds(data) : [];
+      const primaryLocationId = hasLocationAssignments ? locationIds[0] : data.location_id;
 
       const trimmedPassword = typeof data.password === 'string' ? data.password.trim() : '';
       const nextEmailRaw = data.email !== undefined ? data.email : existingDoctor.email;
@@ -2356,23 +2409,16 @@ export const api = {
         throw new Error('Doctor email is required for doctor login accounts.');
       }
 
-      if (data.location_id !== undefined) {
-        const isBranchTransfer =
-          !!data.location_id &&
-          !!existingDoctor?.location_id &&
-          data.location_id !== existingDoctor.location_id;
-
-        if (isBranchTransfer) {
+      if (hasLocationAssignments && existingDoctor?.location_id && !locationIds.includes(existingDoctor.location_id)) {
           const doctorRecordState = await api.doctors.checkDoctorRecords(id, existingDoctor.location_id || undefined);
           if (doctorRecordState.hasAny) {
             throw new Error('Cannot transfer doctor: Doctor has existing appointments or treatment history in this branch.');
           }
-        }
       }
 
       // Update doctor info
       const doctorUpdatePayload: any = {
-        location_id: data.location_id,
+        location_id: primaryLocationId,
         name: data.name,
         email: nextEmail || null,
         phone: data.phone,
@@ -2394,6 +2440,9 @@ export const api = {
         .eq('id', id);
 
       if (doctorError) throw new Error(doctorError.message);
+      if (hasLocationAssignments) {
+        await saveDoctorLocations(id, locationIds);
+      }
       if (supportsDoctorId) {
         const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
         const { data: linkedDoctorUser } = await supabase
@@ -2423,7 +2472,7 @@ export const api = {
           if (linkedDoctorUser) {
             const linkedUserPayload: any = {
               username: nextEmail,
-              location_id: data.location_id || existingDoctor.location_id || null
+              location_id: primaryLocationId || existingDoctor.location_id || null
             };
             if (trimmedPassword) {
               linkedUserPayload.password = trimmedPassword;
@@ -2440,7 +2489,7 @@ export const api = {
             if (linkedUserError) throw new Error(linkedUserError.message);
           } else if (trimmedPassword) {
             const newDoctorUserPayload: any = {
-              location_id: data.location_id || existingDoctor.location_id || null,
+              location_id: primaryLocationId || existingDoctor.location_id || null,
               doctor_id: id,
               username: nextEmail,
               password: trimmedPassword,
@@ -2498,31 +2547,16 @@ export const api = {
       }
 
       // Fetch updated doctor
+      const supportsDoctorLocations = await detectDoctorLocationsSupport();
       const { data: updatedDoctor, error: fetchError } = await supabase
         .from('doctors')
-        .select('*, doctor_schedules(*)')
+        .select(`*, doctor_schedules(*)${supportsDoctorLocations ? ', doctor_locations(location_id)' : ''}`)
         .eq('id', id)
         .single();
 
       if (fetchError) throw new Error(fetchError.message);
 
-      return {
-        id: updatedDoctor.id,
-        location_id: updatedDoctor.location_id,
-        name: updatedDoctor.name,
-        email: updatedDoctor.email,
-        phone: updatedDoctor.phone,
-        specialization: updatedDoctor.specialization,
-        commission_percentage: updatedDoctor.commission_percentage ?? 0,
-        commission_per_visit: updatedDoctor.commission_per_visit ?? 0,
-        schedules: (updatedDoctor.doctor_schedules || []).map((sched: any) => ({
-          id: sched.id,
-          day_of_week: sched.day_of_week,
-          start_time: sched.start_time,
-          end_time: sched.end_time
-        })),
-        created_at: updatedDoctor.created_at
-      };
+      return mapDoctor(updatedDoctor);
     },
     delete: async (id: string): Promise<void> => {
       const supportsDoctorId = await detectUsersDoctorIdSupport();
