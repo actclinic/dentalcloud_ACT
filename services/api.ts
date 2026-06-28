@@ -1635,8 +1635,10 @@ export const api = {
         }
       }
 
+      const { guest_email: _guestEmail, guest_age: _guestAge, guest_address: _guestAddress, ...appointmentData } = data as Partial<Appointment> & { guest_email?: unknown; guest_age?: unknown; guest_address?: unknown };
+
       const updatePayload = {
-        ...data,
+        ...appointmentData,
         status: shouldComplete ? undefined : data.status,
         patient_id: Object.prototype.hasOwnProperty.call(data, 'patient_id')
           ? (data.patient_id || null)
