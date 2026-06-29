@@ -5,6 +5,13 @@ import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord 
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
 import { appointmentPatientName, buildRecallsCancelsLists } from '../utils/recallsCancels';
+import {
+  buildDailyAppointmentData,
+  buildDailyFinancialData,
+  buildMonthlyProfitData,
+  calculateDashboardRangeSummary,
+  countPatientsCreatedInRange
+} from '../utils/dashboardMath';
 
 interface DashboardViewProps {
   patients: Patient[];
@@ -156,73 +163,45 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     </div>
   );
 
-  const rangeTreatmentRevenue = useMemo(
-    () => filteredTreatmentRecords.reduce((sum, record) => sum + (record.cost || 0), 0),
-    [filteredTreatmentRecords]
-  );
+  const rangeSummary = useMemo(() => calculateDashboardRangeSummary({
+    filteredTreatmentRecords,
+    filteredPaymentRecords,
+    filteredExpenses,
+    filteredAppointments,
+    patients,
+    dateFrom,
+    dateTo,
+    rangeDates
+  }), [filteredTreatmentRecords, filteredPaymentRecords, filteredExpenses, filteredAppointments, patients, dateFrom, dateTo, rangeDates]);
 
-  const rangeCollectedPayments = useMemo(
-    () => filteredPaymentRecords.reduce((sum, payment) => sum + (payment.amount || 0), 0),
-    [filteredPaymentRecords]
-  );
+  const rangeCollectedPayments = rangeSummary.collectedPayments;
+  const rangeRevenue = rangeSummary.revenue;
+  const rangeExpenses = rangeSummary.expenses;
+  const rangeProfit = rangeSummary.profit;
+  const rangeAppointments = rangeSummary.appointments;
+  const rangeNewPatients = rangeSummary.newPatients;
+  const rangeDayCount = rangeSummary.dayCount;
+  const avgDailyRevenue = rangeSummary.avgDailyRevenue;
 
-  const rangeRevenue = useMemo(
-    () => rangeTreatmentRevenue + rangeCollectedPayments,
-    [rangeTreatmentRevenue, rangeCollectedPayments]
-  );
-
-  const rangeExpenses = useMemo(
-    () => filteredExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0),
-    [filteredExpenses]
-  );
-
-  const rangeProfit = useMemo(() => rangeRevenue - rangeExpenses, [rangeRevenue, rangeExpenses]);
-
-  const rangeAppointments = useMemo(() => filteredAppointments.length, [filteredAppointments]);
-
-  const rangeNewPatients = useMemo(
-    () => patients.filter(patient => isWithinRange(patient.created_at?.slice(0, 10))).length,
-    [patients, dateFrom, dateTo]
-  );
-
-  const rangeDayCount = Math.max(rangeDates.length, 1);
-  const avgDailyRevenue = rangeRevenue / rangeDayCount;
+  const formatDateLabel = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   const dailyFinancialData = useMemo(() => {
-    return chartDates.map(dateStr => {
-      const dateLabel = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const treatmentRevenue = filteredTreatmentRecords
-        .filter(record => record.date === dateStr)
-        .reduce((sum, record) => sum + (record.cost || 0), 0);
-      const collectedPayment = filteredPaymentRecords
-        .filter(payment => payment.date === dateStr)
-        .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const revenue = treatmentRevenue + collectedPayment;
-      const totalExpense = filteredExpenses
-        .filter(expense => expense.date === dateStr)
-        .reduce((sum, expense) => sum + (expense.amount || 0), 0);
-      return {
-        name: dateLabel,
-        revenue,
-        expenses: totalExpense,
-        profit: revenue - totalExpense,
-        date: dateStr
-      };
+    return buildDailyFinancialData({
+      chartDates,
+      filteredTreatmentRecords,
+      filteredPaymentRecords,
+      filteredExpenses,
+      formatDateLabel
     });
   }, [chartDates, filteredTreatmentRecords, filteredPaymentRecords, filteredExpenses]);
 
   const dailyAppointmentData = useMemo(() => {
-    return chartDates.map(dateStr => {
-      const dateLabel = new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const treatmentRevenue = filteredTreatmentRecords
-        .filter(record => record.date === dateStr)
-        .reduce((sum, record) => sum + (record.cost || 0), 0);
-      const collectedPayment = filteredPaymentRecords
-        .filter(payment => payment.date === dateStr)
-        .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-      const revenue = treatmentRevenue + collectedPayment;
-      const appointmentsCount = filteredAppointments.filter(apt => apt.date === dateStr).length;
-      return { name: dateLabel, revenue, appointments: appointmentsCount, date: dateStr };
+    return buildDailyAppointmentData({
+      chartDates,
+      filteredTreatmentRecords,
+      filteredPaymentRecords,
+      filteredAppointments,
+      formatDateLabel
     });
   }, [chartDates, filteredTreatmentRecords, filteredPaymentRecords, filteredAppointments]);
 
@@ -378,30 +357,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   // New Patients by Month (range)
   const newPatientsMonthlyData = useMemo(() => {
     return rangeMonths.map(month => {
-      const count = patients.filter(p => {
-        if (!p.created_at) return false;
-        const created = new Date(p.created_at);
-        const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
-        return key === month.key;
-      }).length;
+      const monthStart = `${month.key}-01`;
+      const monthEnd = `${month.key}-31`;
+      const boundedFrom = dateFrom > monthStart ? dateFrom : monthStart;
+      const boundedTo = dateTo < monthEnd ? dateTo : monthEnd;
+      const count = countPatientsCreatedInRange(patients, boundedFrom, boundedTo);
       return { name: month.label, count };
     });
-  }, [patients, rangeMonths]);
+  }, [patients, rangeMonths, dateFrom, dateTo]);
 
   const monthlyProfitData = useMemo(() => {
-    return rangeMonths.map(month => {
-      const revenue = filteredTreatmentRecords
-        .filter(record => record.date.startsWith(month.key))
-        .reduce((sum, record) => sum + (record.cost || 0), 0);
-      const totalExpense = filteredExpenses
-        .filter(expense => expense.date.startsWith(month.key))
-        .reduce((sum, expense) => sum + (expense.amount || 0), 0);
-      return {
-        label: month.label,
-        revenue,
-        expenses: totalExpense,
-        profit: revenue - totalExpense
-      };
+    return buildMonthlyProfitData({
+      rangeMonths,
+      filteredTreatmentRecords,
+      filteredExpenses
     });
   }, [filteredTreatmentRecords, filteredExpenses, rangeMonths]);
 
@@ -623,12 +592,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-4">
         {[
-          { label: 'Revenue (Range)', value: formatCurrency(rangeRevenue, currency), note: `${rangeDayCount} days`, icon: <DollarSign className="w-4 h-4 text-emerald-600" /> },
+          { label: 'Production Revenue', value: formatCurrency(rangeRevenue, currency), note: `${rangeDayCount} days`, icon: <DollarSign className="w-4 h-4 text-emerald-600" /> },
+          { label: 'Collections', value: formatCurrency(rangeCollectedPayments, currency), note: `${filteredPaymentRecords.length} payments`, icon: <DollarSign className="w-4 h-4 text-violet-600" /> },
           { label: 'Expenses (Range)', value: formatCurrency(rangeExpenses, currency), note: 'Operating spend', icon: <TrendingDown className="w-4 h-4 text-red-600" /> },
-          { label: 'Net Profit', value: formatCurrency(rangeProfit, currency), note: 'Revenue - expenses', icon: <Activity className="w-4 h-4 text-indigo-600" /> },
-          { label: 'Avg Daily Revenue', value: formatCurrency(avgDailyRevenue, currency), note: 'Daily average', icon: <LineChartIcon className="w-4 h-4 text-sky-600" /> },
+          { label: 'Net Profit', value: formatCurrency(rangeProfit, currency), note: 'Production - expenses', icon: <Activity className="w-4 h-4 text-indigo-600" /> },
+          { label: 'Avg Daily Production', value: formatCurrency(avgDailyRevenue, currency), note: 'Daily average', icon: <LineChartIcon className="w-4 h-4 text-sky-600" /> },
           { label: 'Appointments', value: rangeAppointments.toString(), note: 'In selected range', icon: <CalendarIcon className="w-4 h-4 text-amber-600" /> },
           { label: 'New Patients', value: rangeNewPatients.toString(), note: 'Created in range', icon: <Users className="w-4 h-4 text-purple-600" /> }
         ].map(item => (
@@ -646,8 +616,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Revenue vs Expenses</h3>
-            <p className="text-xs text-gray-500">Daily totals within the selected range</p>
+            <h3 className="text-lg font-semibold text-gray-800">Production vs Expenses</h3>
+            <p className="text-xs text-gray-500">Daily production, collections, and operating spend within the selected range</p>
           </div>
           <span className="inline-flex items-center gap-2 text-xs text-gray-500">
             <LineChartIcon className="w-4 h-4" />
@@ -673,13 +643,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               <Tooltip
                 formatter={(value: number | undefined, name?: string) => {
                   const amount = value ?? 0;
-                  if (name === 'revenue') return [formatCurrency(amount, currency), 'Revenue'];
+                  if (name === 'revenue') return [formatCurrency(amount, currency), 'Production'];
+                  if (name === 'collections') return [formatCurrency(amount, currency), 'Collections'];
                   if (name === 'expenses') return [formatCurrency(amount, currency), 'Expenses'];
                   return [formatCurrency(amount, currency), 'Profit'];
                 }}
               />
               <Legend />
               <Area type="monotone" dataKey="revenue" stroke="#4F46E5" strokeWidth={2} fill="url(#colorRevenue)" />
+              <Area type="monotone" dataKey="collections" stroke="#7C3AED" strokeWidth={2} fillOpacity={0} />
               <Area type="monotone" dataKey="expenses" stroke="#EF4444" strokeWidth={2} fill="url(#colorExpenses)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -865,8 +837,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">Appointments vs Revenue</h3>
-          <p className="text-xs text-gray-500 mb-4">Daily appointment count compared to revenue</p>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Appointments vs Production</h3>
+          <p className="text-xs text-gray-500 mb-4">Daily appointment count compared to production revenue</p>
           <div className="h-[300px] w-full min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dailyAppointmentData}>
@@ -884,7 +856,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 <Tooltip
                   formatter={(value: number | undefined, name?: string) => {
                     const amount = value ?? 0;
-                    if (name === 'revenue') return [formatCurrency(amount, currency), 'Revenue'];
+                    if (name === 'revenue') return [formatCurrency(amount, currency), 'Production'];
                     return [amount, 'Appointments'];
                   }}
                 />
@@ -1022,7 +994,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-800 mb-2">Net Profit by Month</h3>
-          <p className="text-xs text-gray-500 mb-4">Revenue minus expenses within the range</p>
+          <p className="text-xs text-gray-500 mb-4">Production revenue minus expenses within the range</p>
           <div className="h-[260px] w-full min-h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyProfitData}>
@@ -1033,7 +1005,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                   formatter={(value: number | undefined, name?: string) => {
                     const amount = value ?? 0;
                     if (name === 'profit') return [formatCurrency(amount, currency), 'Net Profit'];
-                    if (name === 'revenue') return [formatCurrency(amount, currency), 'Revenue'];
+                    if (name === 'revenue') return [formatCurrency(amount, currency), 'Production'];
                     return [formatCurrency(amount, currency), 'Expenses'];
                   }}
                 />

@@ -153,6 +153,11 @@ const customStyles = `
     100% { transform: translateX(120%); opacity: 0; }
   }
 
+  @keyframes loli-talk {
+    0%, 100% { transform: scaleY(0.35); opacity: 0.5; }
+    45% { transform: scaleY(1); opacity: 1; }
+  }
+
   .loli-orbit {
     animation: loli-orbit 16s linear infinite;
   }
@@ -163,6 +168,23 @@ const customStyles = `
 
   .loli-scan {
     animation: loli-scan 3.8s ease-in-out infinite;
+  }
+
+  .loli-talk-bar {
+    transform-origin: center bottom;
+    animation: loli-talk 0.9s ease-in-out infinite;
+  }
+
+  .loli-talk-bar:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+
+  .loli-talk-bar:nth-child(3) {
+    animation-delay: 0.24s;
+  }
+
+  .loli-talk-bar:nth-child(4) {
+    animation-delay: 0.36s;
   }
 
   @keyframes border-glow {
@@ -389,7 +411,8 @@ const customStyles = `
     .typing-dot,
     .loli-orbit,
     .loli-breathe,
-    .loli-scan {
+    .loli-scan,
+    .loli-talk-bar {
       animation: none !important;
     }
   }
@@ -5277,7 +5300,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
                 <span className="absolute inset-[-3px] rounded-full border border-indigo-200/80 loli-orbit" />
                 <img
-                  src="./assets/loli-logo.png"
+                  src="/loliAiAssistant.svg"
                   alt="Loli AI Assistant Logo"
                   className="h-9 w-9 rounded-full object-cover"
                 />
@@ -5290,27 +5313,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   </span>
                 </div>
                 <p className="text-sm text-slate-500">Ask questions, review records, or run clinic actions from one workspace.</p>
-              </div>
-            </div>
-
-            <div className="relative hidden min-w-[260px] overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-fuchsia-50 px-4 py-3 shadow-sm lg:block">
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.18),transparent_28%),radial-gradient(circle_at_80%_30%,rgba(217,70,239,0.16),transparent_26%),radial-gradient(circle_at_50%_95%,rgba(16,185,129,0.12),transparent_30%)]" />
-              <div className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-white/55 to-transparent loli-scan" />
-              <div className="relative flex items-center gap-3">
-                <div className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center">
-                  <span className="absolute inset-0 rounded-full border border-indigo-200/80" />
-                  <span className="absolute inset-1 rounded-full border border-dashed border-purple-200 loli-orbit" />
-                  <img
-                    src="./assets/loli-logo.png"
-                    alt="Animated Loli assistant"
-                    className="h-12 w-12 rounded-full object-cover loli-breathe"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-500">Loli is online</p>
-                  <p className="mt-1 text-sm font-bold text-slate-900">Clinic copilot ready</p>
-                  <p className="mt-0.5 text-xs text-slate-500">Ask, analyze, or let agent mode handle safe clinic tasks.</p>
-                </div>
               </div>
             </div>
 
@@ -5605,8 +5607,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
                   {isLoading && (
                     <div className="flex justify-start gap-3 animate-fade-in-up">
-                      <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg animate-pulse-glow">
-                        <Bot className="h-4 w-4" />
+                      <div className="relative mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg animate-pulse-glow">
+                        <span className="absolute inset-[-3px] rounded-full border border-indigo-200/80 loli-orbit" />
+                        <img
+                          src="/loliAiAssistant.svg"
+                          alt="Loli AI Assistant thinking"
+                          className="h-8 w-8 rounded-full object-cover loli-breathe"
+                        />
                       </div>
                       <div className="rounded-2xl border border-indigo-100 bg-white px-5 py-4 shadow-md animate-border-glow">
                         <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
@@ -5631,6 +5638,43 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           <div className="border-t border-gray-200 bg-white px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
             <div className="w-full">
               <div className="rounded-xl border border-gray-200 bg-white p-3">
+                <div className="mb-3 overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/70 px-3 py-3 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 shadow-sm">
+                        <span className="absolute inset-[-4px] rounded-full border border-indigo-200/80 loli-orbit" />
+                        <span className="absolute inset-[-8px] rounded-full bg-indigo-200/30 blur-md" />
+                        <img
+                          src="/loliAiAssistant.svg"
+                          alt="Loli AI Assistant talking"
+                          className="relative h-10 w-10 rounded-full object-cover loli-breathe"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">
+                          {isLoading ? 'Loli is replying' : isListening ? 'Loli is listening' : mode === 'agent' ? 'Agent conversation ready' : 'Live clinic conversation'}
+                        </p>
+                        <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+                          {isLoading ? 'Thinking through your request in real time' : isListening ? 'Speak naturally — Loli is following along' : 'Talk with Loli like a chairside clinical copilot'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <div className="flex h-9 items-end gap-1 rounded-full border border-indigo-100 bg-white/80 px-3 py-2 shadow-inner" aria-hidden="true">
+                        <span className="loli-talk-bar h-3 w-1.5 rounded-full bg-indigo-400" />
+                        <span className="loli-talk-bar h-5 w-1.5 rounded-full bg-purple-500" />
+                        <span className="loli-talk-bar h-4 w-1.5 rounded-full bg-fuchsia-400" />
+                        <span className="loli-talk-bar h-6 w-1.5 rounded-full bg-indigo-600" />
+                      </div>
+                      <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
+                        <User className="h-3.5 w-3.5 text-slate-500" />
+                        <span>Clinician</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex flex-col gap-3 md:flex-row">
                   <textarea
                     ref={inputRef}
