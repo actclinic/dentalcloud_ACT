@@ -9,6 +9,7 @@ interface DoctorHomeViewProps {
   treatmentRecords: ClinicalRecord[];
   patients: Patient[];
   locations: Location[];
+  activeLocationIds?: string[];
   onSelectPatient: (patient: Patient) => void;
   onOpenAppointmentsForDate: (filter: 'today' | 'tomorrow') => void;
 }
@@ -18,6 +19,7 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
   treatmentRecords,
   patients,
   locations,
+  activeLocationIds = [],
   onSelectPatient,
   onOpenAppointmentsForDate
 }) => {
@@ -81,11 +83,33 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
     return branchNameById.get(locationId) || `Branch-${fallbackIndex + 1}`;
   };
 
+  const visibleBranchIds = useMemo(() => {
+    const ids = new Set<string>();
+    activeLocationIds.forEach((locationId) => {
+      if (locationId) ids.add(locationId);
+    });
+    appointments.forEach((appointment) => {
+      if (appointment.location_id) ids.add(appointment.location_id);
+    });
+    treatmentRecords.forEach((record) => {
+      if (record.location_id) ids.add(record.location_id);
+    });
+    return Array.from(ids);
+  }, [activeLocationIds, appointments, treatmentRecords]);
+
   const buildBranchTotals = <T extends { location_id?: string }>(
     items: T[],
-    valueSelector: (item: T) => number
+    valueSelector: (item: T) => number,
+    includeLocationIds: string[] = []
   ) => {
     const totals = new Map<string, { locationId: string; name: string; value: number }>();
+    includeLocationIds.forEach((locationId, index) => {
+      totals.set(locationId, {
+        locationId,
+        name: getBranchName(locationId, index),
+        value: 0
+      });
+    });
     items.forEach((item) => {
       const locationId = item.location_id || 'unassigned';
       const current = totals.get(locationId) || {
@@ -103,23 +127,26 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
   const todayIncomeByBranch = useMemo(() => {
     return buildBranchTotals(
       treatmentRecords.filter((record) => record.date === today),
-      (record) => Number(record.cost || 0)
+      (record) => Number(record.cost || 0),
+      visibleBranchIds
     );
-  }, [treatmentRecords, today, branchNameById]);
+  }, [treatmentRecords, today, branchNameById, visibleBranchIds]);
 
   const todayAppointmentsByBranch = useMemo(() => {
     return buildBranchTotals(
       appointments.filter((appointment) => appointment.date === today),
-      () => 1
+      () => 1,
+      visibleBranchIds
     );
-  }, [appointments, today, branchNameById]);
+  }, [appointments, today, branchNameById, visibleBranchIds]);
 
   const tomorrowAppointmentsByBranch = useMemo(() => {
     return buildBranchTotals(
       appointments.filter((appointment) => appointment.date === tomorrow),
-      () => 1
+      () => 1,
+      visibleBranchIds
     );
-  }, [appointments, tomorrow, branchNameById]);
+  }, [appointments, tomorrow, branchNameById, visibleBranchIds]);
   
   const monthlyIncome = useMemo(() => {
     return treatmentRecords

@@ -136,7 +136,35 @@ const customStyles = `
       background-position: 200% 0;
     }
   }
-  
+
+  @keyframes loli-orbit {
+    0% { transform: rotate(0deg) translateX(0); }
+    100% { transform: rotate(360deg) translateX(0); }
+  }
+
+  @keyframes loli-breathe {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 18px 28px rgba(79, 70, 229, 0.24)); }
+    50% { transform: scale(1.045); filter: drop-shadow(0 24px 38px rgba(124, 58, 237, 0.32)); }
+  }
+
+  @keyframes loli-scan {
+    0% { transform: translateX(-120%); opacity: 0; }
+    15%, 70% { opacity: 1; }
+    100% { transform: translateX(120%); opacity: 0; }
+  }
+
+  .loli-orbit {
+    animation: loli-orbit 16s linear infinite;
+  }
+
+  .loli-breathe {
+    animation: loli-breathe 4.8s ease-in-out infinite;
+  }
+
+  .loli-scan {
+    animation: loli-scan 3.8s ease-in-out infinite;
+  }
+
   @keyframes border-glow {
     0%, 100% {
       border-color: rgba(99, 102, 241, 0.2);
@@ -344,6 +372,26 @@ const customStyles = `
   .ai-markdown em {
     font-style: italic;
     color: #64748b;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in-up,
+    .animate-fade-in-right,
+    .animate-slide-in-right,
+    .animate-slide-out-right,
+    .animate-shake,
+    .animate-pulse-glow,
+    .animate-gradient-shift,
+    .animate-float,
+    .animate-shimmer,
+    .animate-border-glow,
+    .animate-ecg-pulse,
+    .typing-dot,
+    .loli-orbit,
+    .loli-breathe,
+    .loli-scan {
+      animation: none !important;
+    }
   }
 `;
 
@@ -5226,7 +5274,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
+              <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
+                <span className="absolute inset-[-3px] rounded-full border border-indigo-200/80 loli-orbit" />
                 <img
                   src="./assets/loli-logo.png"
                   alt="Loli AI Assistant Logo"
@@ -5241,6 +5290,27 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   </span>
                 </div>
                 <p className="text-sm text-slate-500">Ask questions, review records, or run clinic actions from one workspace.</p>
+              </div>
+            </div>
+
+            <div className="relative hidden min-w-[260px] overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-fuchsia-50 px-4 py-3 shadow-sm lg:block">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.18),transparent_28%),radial-gradient(circle_at_80%_30%,rgba(217,70,239,0.16),transparent_26%),radial-gradient(circle_at_50%_95%,rgba(16,185,129,0.12),transparent_30%)]" />
+              <div className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-white/55 to-transparent loli-scan" />
+              <div className="relative flex items-center gap-3">
+                <div className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full border border-indigo-200/80" />
+                  <span className="absolute inset-1 rounded-full border border-dashed border-purple-200 loli-orbit" />
+                  <img
+                    src="./assets/loli-logo.png"
+                    alt="Animated Loli assistant"
+                    className="h-12 w-12 rounded-full object-cover loli-breathe"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-500">Loli is online</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">Clinic copilot ready</p>
+                  <p className="mt-0.5 text-xs text-slate-500">Ask, analyze, or let agent mode handle safe clinic tasks.</p>
+                </div>
               </div>
             </div>
 

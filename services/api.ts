@@ -1934,13 +1934,17 @@ export const api = {
         doctor_name: rec.doctors?.name || undefined
       }));
     },
-    getAllRecords: async (locationId?: string): Promise<ClinicalRecord[]> => {
+    getAllRecords: async (locationId?: string, options?: { limit?: number | null }): Promise<ClinicalRecord[]> => {
       try {
         let query = supabase
           .from('treatments')
           .select('*, patients(name, balance), doctors(name)')
-          .order('date', { ascending: false })
-          .limit(50);
+          .order('date', { ascending: false });
+
+        const limit = options?.limit === undefined ? 50 : options.limit;
+        if (typeof limit === 'number' && limit > 0) {
+          query = query.limit(limit);
+        }
 
         if (locationId) {
           query = query.eq('location_id', locationId);

@@ -1466,8 +1466,8 @@ const App: React.FC = () => {
           activeSessionDoctor ? Promise.resolve([activeSessionDoctor]) : api.doctors.getAll(locId),
           api.treatments.getTypes(locId),
           isDoctorMultiBranchSession
-            ? Promise.all(doctorQueryLocationIds.map((locationId) => api.treatments.getAllRecords(locationId))).then((groups) => groups.flat())
-            : api.treatments.getAllRecords(locId),
+            ? Promise.all(doctorQueryLocationIds.map((locationId) => api.treatments.getAllRecords(locationId, { limit: null }))).then((groups) => groups.flat())
+            : api.treatments.getAllRecords(locId, sessionDoctorId ? { limit: null } : undefined),
           api.medicines.getAll(locId),
           api.finance.getPayments(locId),
           api.appointmentRescheduleLogs.getAll(locId)
@@ -3252,6 +3252,9 @@ const App: React.FC = () => {
   const currentDoctor = isDoctor && session?.doctor_id
     ? doctors.find((doctor) => doctor.id === session.doctor_id) || null
     : null;
+  const currentDoctorLocationIds = currentDoctor
+    ? Array.from(new Set([...(currentDoctor.location_ids || []), currentDoctor.location_id].filter(Boolean)))
+    : [];
   const shouldShowAdminBadge = isAdmin && currentUser.trim().toLowerCase() !== 'admin';
   const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging' || currentView === 'patients' || currentView === 'appointments';
   const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs) as ViewState[];
@@ -3432,6 +3435,7 @@ const App: React.FC = () => {
                   treatmentRecords={globalRecords}
                   patients={patients}
                   locations={locations}
+                  activeLocationIds={currentDoctorLocationIds}
                   onSelectPatient={handlePatientSelect}
                   onOpenAppointmentsForDate={handleOpenDoctorAppointmentsForDate}
                 />
