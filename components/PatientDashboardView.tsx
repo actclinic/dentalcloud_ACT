@@ -12,7 +12,7 @@ import PatientMessagingView from './PatientMessagingView';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 
 interface PatientDashboardProps {
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
   messagingEnabled?: boolean;
   hoverTheme: 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
 }
@@ -163,6 +163,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   const handleLogout = () => {
     auth.logout();
     onLogout();
+  };
+
+  const handleLoginAgain = async () => {
+    setError(null);
+    setPatient(null);
+    await onLogout();
   };
 
   const openCreateAppointmentModal = () => {
@@ -330,12 +336,20 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         <div className="bg-white rounded-xl border border-gray-100 p-6 max-w-md text-center">
           <h3 className="text-sm font-semibold text-gray-900 mb-1">Error Loading Dashboard</h3>
           <p className="text-xs text-gray-500 mb-4">{error}</p>
-          <button
-            onClick={fetchPatientData}
-            className="bg-[var(--hover-600)] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[var(--hover-700)] transition-colors"
-          >
-            Try Again
-          </button>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={fetchPatientData}
+              className="bg-[var(--hover-600)] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[var(--hover-700)] transition-colors"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={handleLoginAgain}
+              className="border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Login Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -508,7 +522,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-800 truncate">{apt.date}</p>
-                            <p className="text-xs text-gray-400 truncate">{apt.time} · {apt.type}</p>
+                            <p className="text-xs text-gray-400 truncate">{apt.time} ï¿½ {apt.type}</p>
                           </div>
                           <span className="px-2 py-0.5 text-xs rounded bg-[var(--hover-50)] text-[var(--hover-600)] font-medium flex-shrink-0">
                             {apt.status}
@@ -1316,7 +1330,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                 <FileText className="w-6 h-6 text-[var(--hover-600)]" />
                 <div>
                   <h3 className="font-semibold text-gray-900">{selectedDocument.name}</h3>
-                  <p className="text-xs text-gray-500">{selectedDocument.type || 'File'} · {formatBytes(selectedDocument.size)}</p>
+                  <p className="text-xs text-gray-500">{selectedDocument.type || 'File'} ï¿½ {formatBytes(selectedDocument.size)}</p>
                 </div>
               </div>
               <button
