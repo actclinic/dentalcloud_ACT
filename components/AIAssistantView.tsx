@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, Loader2, Sparkles, AlertCircle, User, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown, Eye, EyeOff } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, AlertCircle, Copy, Check, Plus, Trash2, MessageCircle, Zap, ShieldQuestion, Mic, HelpCircle, X, Brain, MapPin, ThumbsUp, ThumbsDown, Eye, EyeOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Location, MedicineSale, PaymentRecord } from '../types';
@@ -5296,13 +5296,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
       <div className="border-b border-gray-200 bg-white">
         <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
-                <span className="absolute inset-[-3px] rounded-full border border-indigo-200/80 loli-orbit" />
+            <div className="flex items-center gap-4">
+              <div className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-md">
+                <span className="absolute inset-[-4px] rounded-full border border-indigo-200/80 loli-orbit" />
                 <img
                   src="/loliAiAssistant.svg"
                   alt="Loli AI Assistant Logo"
-                  className="h-9 w-9 rounded-full object-cover"
+                  className="h-14 w-14 rounded-full object-cover"
                 />
               </div>
               <div>
@@ -5638,43 +5638,6 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           <div className="border-t border-gray-200 bg-white px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
             <div className="w-full">
               <div className="rounded-xl border border-gray-200 bg-white p-3">
-                <div className="mb-3 overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/70 px-3 py-3 shadow-sm">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 shadow-sm">
-                        <span className="absolute inset-[-4px] rounded-full border border-indigo-200/80 loli-orbit" />
-                        <span className="absolute inset-[-8px] rounded-full bg-indigo-200/30 blur-md" />
-                        <img
-                          src="/loliAiAssistant.svg"
-                          alt="Loli AI Assistant talking"
-                          className="relative h-10 w-10 rounded-full object-cover loli-breathe"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">
-                          {isLoading ? 'Loli is replying' : isListening ? 'Loli is listening' : mode === 'agent' ? 'Agent conversation ready' : 'Live clinic conversation'}
-                        </p>
-                        <p className="mt-1 truncate text-sm font-semibold text-slate-900">
-                          {isLoading ? 'Thinking through your request in real time' : isListening ? 'Speak naturally — Loli is following along' : 'Talk with Loli like a chairside clinical copilot'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 sm:justify-end">
-                      <div className="flex h-9 items-end gap-1 rounded-full border border-indigo-100 bg-white/80 px-3 py-2 shadow-inner" aria-hidden="true">
-                        <span className="loli-talk-bar h-3 w-1.5 rounded-full bg-indigo-400" />
-                        <span className="loli-talk-bar h-5 w-1.5 rounded-full bg-purple-500" />
-                        <span className="loli-talk-bar h-4 w-1.5 rounded-full bg-fuchsia-400" />
-                        <span className="loli-talk-bar h-6 w-1.5 rounded-full bg-indigo-600" />
-                      </div>
-                      <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
-                        <User className="h-3.5 w-3.5 text-slate-500" />
-                        <span>Clinician</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 <div className="flex flex-col gap-3 md:flex-row">
                   <textarea
                     ref={inputRef}
