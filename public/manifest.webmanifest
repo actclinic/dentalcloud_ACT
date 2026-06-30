@@ -1,7 +1,7 @@
 {
-  "name": "DentalCloud Pro",
-  "short_name": "DentalCloud",
-  "description": "DentalCloud patient and staff app",
+  "name": "My Dentist Myanmar",
+  "short_name": "My Dentist",
+  "description": "patient and staff app",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
