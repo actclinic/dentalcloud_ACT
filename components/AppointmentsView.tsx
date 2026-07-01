@@ -157,6 +157,11 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
+  const formatDoctorDisplayName = (doctorName?: string | null) => {
+    const normalizedName = (doctorName || '').trim().replace(/^dr\.?\s*/i, '');
+    return normalizedName ? `Dr. ${normalizedName}` : '-';
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Scheduled':
@@ -226,6 +231,11 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     return [...configuredOptions, ...historicalOptions];
   }, [appointments, doctors]);
 
+  const doctorFilterSuggestions = useMemo(
+    () => makeUniqueSortedOptions(doctorOptions.map((option) => option.label)),
+    [doctorOptions]
+  );
+
   const treatmentOptions = useMemo(() => {
     const configuredNames = makeUniqueSortedOptions(
       treatmentTypes.map((treatmentType) => treatmentType.name || '')
@@ -240,6 +250,11 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
 
     return [...configuredNames, ...historicalNames];
   }, [appointments, treatmentTypes]);
+
+  const treatmentFilterSuggestions = useMemo(
+    () => makeUniqueSortedOptions(treatmentOptions),
+    [treatmentOptions]
+  );
 
   const searchFilteredAppointments = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -262,16 +277,22 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
       if (!matchesSearch) return false;
 
       if (doctorFilter) {
+        const normalizedDoctorFilter = doctorFilter.trim().toLowerCase();
+        const appointmentDoctorName = apt.doctor_name?.trim() || '';
+        const resolvedDoctorName = (
+          doctorNameById.get(apt.doctor_id || '') ||
+          appointmentDoctorName
+        ).trim();
         const isDoctorIdFilter = doctorFilter.startsWith('id:');
-        const doctorFilterValue = doctorFilter.replace(/^(id|name):/, '');
-        const selectedDoctorName = isDoctorIdFilter
-          ? doctorNameById.get(doctorFilterValue)
-          : doctorFilterValue;
-        const appointmentDoctorName = apt.doctor_name?.trim();
+        const isDoctorNameFilter = doctorFilter.startsWith('name:');
         const matchesDoctor = isDoctorIdFilter
-          ? apt.doctor_id === doctorFilterValue ||
-            (!!selectedDoctorName && appointmentDoctorName === selectedDoctorName)
-          : appointmentDoctorName === doctorFilterValue;
+          ? apt.doctor_id === doctorFilter.replace(/^id:/, '') ||
+            appointmentDoctorName.toLowerCase() === (doctorNameById.get(doctorFilter.replace(/^id:/, '')) || '').trim().toLowerCase()
+          : isDoctorNameFilter
+            ? appointmentDoctorName.toLowerCase() === doctorFilter.replace(/^name:/, '').trim().toLowerCase()
+            : appointmentDoctorName.toLowerCase().includes(normalizedDoctorFilter) ||
+              resolvedDoctorName.toLowerCase().includes(normalizedDoctorFilter) ||
+              (apt.doctor_id || '').toLowerCase().includes(normalizedDoctorFilter);
 
         if (!matchesDoctor) return false;
       }
@@ -280,7 +301,10 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         const selectedTreatment = treatmentFilter.trim().toLowerCase();
         const appointmentType = (apt.type || '').trim().toLowerCase();
         const clinicalFocus = clinicalPlan.clinicalFocus.trim().toLowerCase();
-        if (appointmentType !== selectedTreatment && clinicalFocus !== selectedTreatment) {
+        const matchesTreatment =
+          appointmentType.includes(selectedTreatment) ||
+          clinicalFocus.includes(selectedTreatment);
+        if (!matchesTreatment) {
           return false;
         }
       }
@@ -505,34 +529,44 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         </svg>
       </div>
       <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:ml-auto">
-        <select
-          value={doctorFilter}
-          onChange={(e) => {
-            setDoctorFilter(e.target.value);
-            resetAppointmentPages();
-          }}
-          className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[130px] max-w-[180px]"
-          aria-label="Filter appointments by doctor"
-        >
-          <option value="">Doctor</option>
-          {doctorOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-        <select
-          value={treatmentFilter}
-          onChange={(e) => {
-            setTreatmentFilter(e.target.value);
-            resetAppointmentPages();
-          }}
-          className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white min-w-[130px] max-w-[200px]"
-          aria-label="Filter appointments by treatment"
-        >
-          <option value="">Treatment</option>
-          {treatmentOptions.map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
+        <div className="relative min-w-[150px] max-w-[220px]">
+          <input
+            type="text"
+            list="appointment-doctor-filter-options"
+            value={doctorFilter}
+            onChange={(e) => {
+              setDoctorFilter(e.target.value);
+              resetAppointmentPages();
+            }}
+            placeholder="Doctor"
+            className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            aria-label="Filter appointments by doctor"
+          />
+          <datalist id="appointment-doctor-filter-options">
+            {doctorFilterSuggestions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </div>
+        <div className="relative min-w-[150px] max-w-[220px]">
+          <input
+            type="text"
+            list="appointment-treatment-filter-options"
+            value={treatmentFilter}
+            onChange={(e) => {
+              setTreatmentFilter(e.target.value);
+              resetAppointmentPages();
+            }}
+            placeholder="Treatment"
+            className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            aria-label="Filter appointments by treatment"
+          />
+          <datalist id="appointment-treatment-filter-options">
+            {treatmentFilterSuggestions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 whitespace-nowrap">
             <span>Filter day</span>
@@ -633,7 +667,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                   {isNewPatientAppointment(appointment) && renderNewPatientBadge()}
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">
-                                  Dr. {appointment.doctor_name || '-'} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
+                                  {formatDoctorDisplayName(appointment.doctor_name)} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
                                 </p>
                                 {isNewPatientAppointment(appointment) && (
                                   <p className="text-xs text-amber-700 mt-1">
@@ -688,7 +722,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                                   {isNewPatientAppointment(appointment) && renderNewPatientBadge()}
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">
-                                  Dr. {appointment.doctor_name || '-'} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
+                                  {formatDoctorDisplayName(appointment.doctor_name)} • {formatDateDDMMYYYY(appointment.date)} • {formatTime(appointment.time)}
                                 </p>
                                 {isNewPatientAppointment(appointment) && (
                                   <p className="text-xs text-amber-700 mt-1">
@@ -748,7 +782,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                               return (
                                 <tr key={appointment.id} className={`${rowStyle} border-b border-gray-100 last:border-b-0`}>
                                   <td className="px-3 py-3 align-top font-semibold text-gray-700">{rowNo}</td>
-                                  <td className="px-3 py-3 align-top text-gray-800">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
+                                  <td className="px-3 py-3 align-top text-gray-800">{formatDoctorDisplayName(appointment.doctor_name)}</td>
                                   <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">{formatDateDDMMYYYY(appointment.date)}</td>
                                   <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">{formatTime(appointment.time)}</td>
                                   <td className="px-3 py-3 align-top font-medium text-gray-900">
