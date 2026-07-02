@@ -2288,7 +2288,10 @@ const App: React.FC = () => {
       }
 
       const payload: Partial<Appointment> = {
-        ...newAppointmentData,
+        date: newAppointmentData.date,
+        time: newAppointmentData.time,
+        type: newAppointmentData.type,
+        status: newAppointmentData.status,
         patient_id: resolvedPatientId || null,
         guest_name: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestName : null,
         guest_phone: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestPhone : null,
@@ -2296,7 +2299,8 @@ const App: React.FC = () => {
         guest_notes: appointmentPatientMode === 'lead' && !resolvedPatientId ? guestNotes : null,
         doctor_id: (newAppointmentData.doctor_id || '').trim() || undefined,
         location_id: targetLocationId,
-        notes: compiledNotes
+        notes: compiledNotes,
+        converted_patient_id: newAppointmentData.converted_patient_id || null
       };
       if (editingAppointment) {
         const isDateRescheduled = editingAppointment.date !== payload.date;

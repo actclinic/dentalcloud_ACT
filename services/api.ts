@@ -1751,7 +1751,18 @@ export const api = {
         }
       }
 
-      const { guest_email: _guestEmail, guest_age: _guestAge, guest_address: _guestAddress, ...appointmentData } = data as Partial<Appointment> & { guest_email?: unknown; guest_age?: unknown; guest_address?: unknown };
+      const {
+        guest_email: _guestEmail,
+        guest_age: _guestAge,
+        guest_address: _guestAddress,
+        guest_password: _guestPassword,
+        ...appointmentData
+      } = data as Partial<Appointment> & {
+        guest_email?: unknown;
+        guest_age?: unknown;
+        guest_address?: unknown;
+        guest_password?: unknown;
+      };
 
       const updatePayload = {
         ...appointmentData,
