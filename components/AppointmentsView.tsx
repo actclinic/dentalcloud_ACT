@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Calendar, Plus, Loader2, Edit2, Trash2, Clock, User, FileText, ChevronLeft, ChevronRight, List, CalendarDays, Eye } from 'lucide-react';
+import { Calendar, Plus, Loader2, Edit2, Trash2, Clock, User, FileText, ChevronLeft, ChevronRight, List, CalendarDays, Eye, RotateCw } from 'lucide-react';
 import { Appointment, Doctor, Patient, TreatmentType } from '../types';
 import { exportAppointmentsToPDF } from '../utils/pdfExport';
 import { exportAppointmentsToExcel } from '../utils/excelExport';
 import { parseAppointmentClinicalFocus } from '../utils/appointmentClinicalFocus';
 import { type Currency } from '../utils/currency';
+import { formatDoctorName } from '../utils/doctorName';
 import Pagination from './Pagination';
 import { ConfirmDialog } from './Shared';
 import ExportMenu from './ExportMenu';
@@ -31,6 +32,7 @@ interface AppointmentsViewProps {
   onOpenAppointmentLog?: () => void;
   onExportPDF?: () => Promise<void>;
   onExportExcel?: () => Promise<void>;
+  onRefresh?: () => void | Promise<void>;
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
@@ -56,6 +58,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   onOpenAppointmentLog,
   onExportPDF,
   onExportExcel,
+  onRefresh,
   canCreate = true,
   canEdit = true,
   canDelete = true,
@@ -69,6 +72,8 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [pastPage, setPastPage] = useState(1);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'tomorrow' | 'today' | 'custom'>(initialDateQuickFilter);
   const [dateFilter, setDateFilter] = useState('');
@@ -95,6 +100,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const resetAppointmentPages = () => {
     setUpcomingPage(1);
     setPastPage(1);
+    setCurrentPage(1);
   };
 
   const applyQuickDateFilter = (filter: 'all' | 'tomorrow' | 'today') => {
@@ -158,8 +164,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   };
 
   const formatDoctorDisplayName = (doctorName?: string | null) => {
-    const normalizedName = (doctorName || '').trim().replace(/^dr\.?\s*/i, '');
-    return normalizedName ? `Dr. ${normalizedName}` : '-';
+    return formatDoctorName(doctorName);
   };
 
   const getStatusColor = (status: string) => {
@@ -322,6 +327,16 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     });
   }, [searchFilteredAppointments, dateQuickFilter, tomorrowISO, todayLocalISO, dateFilter]);
 
+  const sortedTableAppointments = useMemo(() => {
+    return filteredAppointments
+      .slice()
+      .sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.time.localeCompare(b.time);
+      });
+  }, [filteredAppointments]);
+
   // Separate upcoming and past appointments
   const upcomingAppointments = filteredAppointments.filter(apt => {
     const aptDate = new Date(apt.date);
@@ -359,6 +374,12 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
     const startIndex = (pastPage - 1) * itemsPerPage;
     return pastAppointments.slice(startIndex, startIndex + itemsPerPage);
   }, [pastAppointments, pastPage, showAllPast]);
+
+  const paginatedTableAppointments = useMemo(() => {
+    if (showAll) return sortedTableAppointments;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return sortedTableAppointments.slice(startIndex, startIndex + itemsPerPage);
+  }, [sortedTableAppointments, currentPage, showAll]);
 
   const [exporting, setExporting] = useState(false);
 
@@ -479,6 +500,13 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
             Calendar
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => void onRefresh?.()}
+          className="flex-1 md:flex-initial flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+        >
+          <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
+        </button>
         {onOpenAppointmentLog && (
           <button
             onClick={onOpenAppointmentLog}
@@ -742,11 +770,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                   </div>
                 </div>
               ) : (() => {
-                const tableRows = dateQuickFilter === 'today'
-                  ? filteredAppointments
-                      .slice()
-                      .sort((a, b) => a.time.localeCompare(b.time))
-                  : [...paginatedUpcoming, ...paginatedPast];
+                const tableRows = paginatedTableAppointments;
 
                 return (
                   <div className="rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
@@ -773,7 +797,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                             </tr>
                           ) : (
                             tableRows.map((appointment, index) => {
-                              const rowNo = index + 1;
+                              const rowNo = showAll ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1;
                               const rowStyle = appointment.status === 'Cancelled'
                                 ? 'bg-red-100/80 border-l-4 border-l-red-500'
                                 : appointment.status === 'Completed'
@@ -864,30 +888,17 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                 );
               })()}
 
-              {dateQuickFilter !== 'today' && (
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-gray-100 bg-white p-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-2">Upcoming Pagination</p>
-                    <Pagination
-                      totalItems={upcomingAppointments.length}
-                      itemsPerPage={itemsPerPage}
-                      currentPage={upcomingPage}
-                      onPageChange={setUpcomingPage}
-                      showAll={showAllUpcoming}
-                      onToggleShowAll={() => setShowAllUpcoming(!showAllUpcoming)}
-                    />
-                  </div>
-                  <div className="rounded-xl border border-gray-100 bg-white p-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-2">Past Pagination</p>
-                    <Pagination
-                      totalItems={pastAppointments.length}
-                      itemsPerPage={itemsPerPage}
-                      currentPage={pastPage}
-                      onPageChange={setPastPage}
-                      showAll={showAllPast}
-                      onToggleShowAll={() => setShowAllPast(!showAllPast)}
-                    />
-                  </div>
+              {uiStyle === 'table' && (
+                <div className="mt-4 rounded-xl border border-gray-100 bg-white p-3">
+                  <Pagination
+                    totalItems={sortedTableAppointments.length}
+                    itemsPerPage={itemsPerPage}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                    showAll={showAll}
+                    onToggleShowAll={() => setShowAll(!showAll)}
+                    showAllToggle={false}
+                  />
                 </div>
               )}
             </>
@@ -1007,7 +1018,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
                             </div>
                             <div className="text-[11px] md:text-xs text-gray-500 mt-0.5 truncate">
                               {formatTime(appointment.time)} • {appointment.type || 'Checkup'}
-                              {appointment.doctor_name ? ` • Dr. ${appointment.doctor_name}` : ''}
+                              {appointment.doctor_name ? ` • ${formatDoctorDisplayName(appointment.doctor_name)}` : ''}
                             </div>
                             {isNewPatientAppointment(appointment) && (
                               <div className="mt-0.5 text-[11px] md:text-xs text-amber-700 truncate">

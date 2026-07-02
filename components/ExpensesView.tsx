@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, Loader2, BarChart3, Eye, TrendingDown, TrendingUp, DollarSign, Calendar, Tag } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, BarChart3, Eye, TrendingDown, TrendingUp, DollarSign, Calendar, Tag, RotateCw } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import { ClinicalRecord, Expense, MedicineSale } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
@@ -18,6 +18,7 @@ interface ExpensesViewProps {
   onAdd: () => void;
   onEdit: (expense: Expense) => void;
   onDelete: (id: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 const ExpensesView: React.FC<ExpensesViewProps> = ({
@@ -28,7 +29,8 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
   currency,
   onAdd,
   onEdit,
-  onDelete
+  onDelete,
+  onRefresh
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
@@ -196,6 +198,14 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void onRefresh?.()}
+              className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 bg-white text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all duration-200"
+            >
+              <RotateCw className="w-4 h-4" />
+              Refresh
+            </button>
             <ExportMenu
               disabled={expenses.length === 0}
               onExportPDF={handleDownloadPDF}

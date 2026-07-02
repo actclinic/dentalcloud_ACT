@@ -10,6 +10,7 @@ import { SearchableSelect } from './SearchableSelect';
 import Receipt from './Receipt';
 import PatientMessagingView from './PatientMessagingView';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { formatDoctorName } from '../utils/doctorName';
 
 interface PatientDashboardProps {
   onLogout: () => void | Promise<void>;
@@ -633,7 +634,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
                         {apt.doctor_name && (
                           <p className="text-xs text-gray-500 mb-2">
                             <User className="w-3 h-3 inline mr-1" />
-                            Dr. {apt.doctor_name}
+                            {formatDoctorName(apt.doctor_name)}
                           </p>
                         )}
                         {apt.notes && (

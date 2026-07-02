@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, Calendar, Clock, Filter, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, Calendar, Clock, Filter, AlertTriangle, RotateCw } from 'lucide-react';
 import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType, TreatmentType, Doctor, Location } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
@@ -12,6 +12,7 @@ import { getMyanmarCities, getTownshipsForCity } from '../utils/myanmarCities';
 import { api } from '../services/api';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS } from '../constants';
 import PatientQRScanButton from './PatientQRScanButton';
+import { formatDoctorName, normalizeDoctorName } from '../utils/doctorName';
 
 type BranchTransferRecordState = {
   hasAppointments: boolean;
@@ -35,6 +36,7 @@ interface PatientsViewProps {
   onUpdatePatientAuth?: (patient: Patient, password: string) => void;
   onExportPDF?: () => Promise<void>;
   onExportExcel?: () => Promise<void>;
+  onRefresh?: () => void | Promise<void>;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
   doctors?: Pick<Doctor, 'id' | 'name'>[];
@@ -57,6 +59,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   onUpdatePatientAuth,
   onExportPDF,
   onExportExcel,
+  onRefresh,
   loyaltyEnabled, 
   loyaltyRules = [],
   doctors = [],
@@ -212,6 +215,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b));
   };
+
+  const getUniquePatientDoctorNames = (records: ClinicalRecord[]) => (
+    [...new Set(records.map((record) => normalizeDoctorName(record.doctor_name)).filter(Boolean))]
+  );
 
   const doctorNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -509,6 +516,13 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"/>
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void onRefresh?.()}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 border border-gray-200 bg-white px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
+          </button>
           <ExportMenu
             disabled={patients.length === 0 || exporting}
             onExportPDF={handleDownloadPDF}
@@ -687,7 +701,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                             Date: {formatCreatedDate(record.date)}{typeof record.cost === 'number' ? ` • Charge: ${formatCurrency(record.cost, currency)}` : ''}
                           </p>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            Doctor: {record.doctor_name?.trim() || '-'}
+                            Doctor: {formatDoctorName(record.doctor_name)}
                           </p>
                         </div>
                       ))}
@@ -837,17 +851,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       <td className="px-3 py-3 align-top text-gray-700">
                         <div className="text-[11px] font-medium text-gray-700 leading-tight max-h-[48px] overflow-y-auto space-y-0.5">
                           {patientRecords.length > 0 ? (
-                            [...new Set(patientRecords.map(r => r.doctor_name?.trim()).filter(Boolean))].slice(0, 2).map((name, i) => (
+                            getUniquePatientDoctorNames(patientRecords).slice(0, 2).map((name, i) => (
                               <div key={i} className="flex items-start gap-1">
                                 <span className="text-gray-400 mt-0.5 shrink-0">•</span>
-                                <span className="truncate">Dr. {name}</span>
+                                <span className="truncate">{formatDoctorName(name)}</span>
                               </div>
                             ))
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
-                          {[...new Set(patientRecords.map(r => r.doctor_name?.trim()).filter(Boolean))].length > 2 && (
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">+{[...new Set(patientRecords.map(r => r.doctor_name?.trim()).filter(Boolean))].length - 2} more</div>
+                          {getUniquePatientDoctorNames(patientRecords).length > 2 && (
+                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">+{getUniquePatientDoctorNames(patientRecords).length - 2} more</div>
                           )}
                         </div>
                       </td>

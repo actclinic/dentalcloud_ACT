@@ -375,6 +375,30 @@ const normalizePatientUsernameForAuth = (value?: string | null): string | null =
   return normalized || null;
 };
 
+class ApiValidationError extends Error {
+  status: number;
+  code: string;
+  details?: Record<string, unknown>;
+
+  constructor(message: string, code: string, details?: Record<string, unknown>, status = 422) {
+    super(message);
+    this.name = 'ApiValidationError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+
+  toJSON() {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        details: this.details || null
+      }
+    };
+  }
+}
+
 const isValidEmailAddress = (email?: string | null) => {
   if (!email) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -707,6 +731,52 @@ export const api = {
   },
 
   patients: {
+    checkDuplicate: async (
+      data: Pick<Partial<Patient>, 'name' | 'phone' | 'age'> & { excludePatientId?: string }
+    ): Promise<{
+      isDuplicate: boolean;
+      match: Pick<Patient, 'id' | 'name' | 'phone' | 'age' | 'location_id' | 'created_at'> | null;
+    }> => {
+      const normalizedPhoneDigits = normalizePhoneDigitsForLookup(data.phone);
+      const normalizedAge = typeof data.age === 'number' && Number.isFinite(data.age)
+        ? data.age
+        : Number.parseInt(String(data.age || ''), 10);
+
+      if (!normalizedPhoneDigits || !Number.isFinite(normalizedAge)) {
+        return { isDuplicate: false, match: null };
+      }
+
+      let query = supabase
+        .from('patients')
+        .select('id, name, phone, age, location_id, created_at')
+        .eq('age', normalizedAge)
+        .limit(50);
+
+      if (data.excludePatientId) {
+        query = query.neq('id', data.excludePatientId);
+      }
+
+      const { data: rows, error } = await query;
+      if (error) throw new Error(error.message);
+
+      const match = (rows || []).find((row: any) => {
+        return normalizePhoneDigitsForLookup(row.phone) === normalizedPhoneDigits;
+      });
+
+      return {
+        isDuplicate: !!match,
+        match: match
+          ? {
+              id: match.id,
+              name: match.name,
+              phone: match.phone,
+              age: match.age,
+              location_id: match.location_id,
+              created_at: match.created_at
+            }
+          : null
+      };
+    },
     getAll: async (locationId?: string): Promise<Patient[]> => {
       try {
         const baseColumns = 'id, patient_unique_id, location_id, name, email, phone, age, address, city, patient_type, balance, loyalty_points, medical_history, created_at, patient_auth(id, username)';
@@ -818,6 +888,25 @@ export const api = {
       
       const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
       const normalizedPhone = normalizePhoneForStorage(data.phone);
+      const duplicateCheck = await api.patients.checkDuplicate({
+        name: data.name,
+        phone: normalizedPhone || data.phone,
+        age: data.age
+      });
+      if (duplicateCheck.isDuplicate && duplicateCheck.match) {
+        throw new ApiValidationError(
+          'A patient with the same phone number and age already exists.',
+          'DUPLICATE_PATIENT',
+          {
+            duplicate_patient_id: duplicateCheck.match.id,
+            duplicate_name: duplicateCheck.match.name,
+            duplicate_phone: duplicateCheck.match.phone,
+            duplicate_age: duplicateCheck.match.age,
+            duplicate_location_id: duplicateCheck.match.location_id,
+            duplicate_created_at: duplicateCheck.match.created_at
+          }
+        );
+      }
       const payload = {
         location_id: finalLocationId,
         name: data.name,
@@ -1861,6 +1950,33 @@ export const api = {
       }
 
       return mapAppointmentRescheduleLog(result);
+    },
+
+    update: async (
+      id: string,
+      data: Partial<Pick<AppointmentRescheduleLog, 'original_date' | 'new_date' | 'reason' | 'doctor_name'>>
+    ): Promise<AppointmentRescheduleLog> => {
+      const payload = {
+        original_date: data.original_date,
+        new_date: data.new_date,
+        reason: data.reason?.trim(),
+        doctor_name: data.doctor_name?.trim() || null
+      };
+
+      if (payload.reason !== undefined && !payload.reason) {
+        throw new Error('Reschedule reason is required.');
+      }
+
+      const { data: result, error } = await supabase
+        .from('appointment_reschedule_logs')
+        .update(payload)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      return mapAppointmentRescheduleLog(result);
     }
   },
 
@@ -1968,6 +2084,75 @@ export const api = {
         console.warn("Error fetching records:", err);
         return [];
       }
+    },
+    updateAuditRecord: async (
+      id: string,
+      data: Partial<Pick<ClinicalRecord, 'date' | 'description' | 'teeth' | 'doctor_id'>>
+    ): Promise<ClinicalRecord> => {
+      if (data.teeth) {
+        const invalidTeeth = findInvalidTeeth(data.teeth);
+        if (invalidTeeth.length > 0) {
+          throw new Error(`Invalid tooth labels: ${invalidTeeth.join(', ')}. Use adult FDI numbers or baby labels 1A-4E.`);
+        }
+      }
+
+      const { data: existingRecord, error: existingRecordError } = await supabase
+        .from('treatments')
+        .select('id, cost, doctor_id, standard_cost')
+        .eq('id', id)
+        .single();
+
+      if (existingRecordError) throw new Error(existingRecordError.message);
+
+      const nextDoctorId = Object.prototype.hasOwnProperty.call(data, 'doctor_id')
+        ? (data.doctor_id && String(data.doctor_id).trim() !== '' ? data.doctor_id : null)
+        : existingRecord.doctor_id;
+
+      let doctorEarnings = 0;
+      if (nextDoctorId) {
+        const { data: doctorRow, error: doctorError } = await supabase
+          .from('doctors')
+          .select('specialization, commission_percentage, commission_per_visit')
+          .eq('id', nextDoctorId)
+          .maybeSingle();
+
+        if (doctorError) throw new Error(doctorError.message);
+
+        doctorEarnings = calculateDoctorEarnings({
+          cost: Number(existingRecord.cost || 0),
+          specialization: doctorRow?.specialization,
+          commissionRate: Number(doctorRow?.commission_percentage || 0),
+          commissionPerVisit: Number(doctorRow?.commission_per_visit || 0)
+        });
+      }
+
+      const payload = {
+        date: data.date,
+        description: data.description,
+        teeth: data.teeth,
+        doctor_id: nextDoctorId,
+        doctor_earnings: doctorEarnings
+      };
+
+      const { data: result, error } = await supabase
+        .from('treatments')
+        .update(payload)
+        .eq('id', id)
+        .select('*, patients(name, balance), doctors(name)')
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      return {
+        ...result,
+        standardCost: result.standard_cost ?? existingRecord.standard_cost ?? null,
+        discountAmount: Number(result.discount_amount || 0),
+        pricingNote: result.pricing_note || null,
+        doctorEarnings: Number(result.doctor_earnings || 0),
+        patient_name: result.patients?.name || 'Unknown',
+        patient_balance: Number(result.patients?.balance || 0),
+        doctor_name: result.doctors?.name || undefined
+      };
     },
     deleteAllRecords: async (locationId?: string): Promise<void> => {
       let query = supabase
@@ -2865,6 +3050,54 @@ export const api = {
       }
 
       return normalizePaymentReceiptSnapshot(data?.receipt_snapshot) || snapshot;
+    },
+    updateAuditEntry: async (
+      id: string,
+      data: {
+        date?: string;
+        paymentMethod?: PaymentMethod;
+        receiptNumber?: string | null;
+      }
+    ): Promise<PaymentRecord> => {
+      const payload = {
+        payment_date: data.date,
+        payment_method: data.paymentMethod ? normalizePaymentMethod(data.paymentMethod) : undefined,
+        receipt_number: data.receiptNumber?.trim() || null
+      };
+
+      if (payload.payment_method === 'UNKNOWN') {
+        throw new Error('Select a valid payment method.');
+      }
+
+      const { data: row, error } = await supabase
+        .from('payments')
+        .update(payload)
+        .eq('id', id)
+        .select('*, patients(name)')
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      return {
+        id: row.id,
+        location_id: row.location_id,
+        patientId: row.patient_id,
+        patient_name: row.patients?.name,
+        amount: Number(row.amount || 0),
+        originalAmount: Number(row.original_amount ?? row.amount ?? 0),
+        clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
+        treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
+        date: row.payment_date || row.created_at?.slice(0, 10) || '',
+        type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
+        balanceBefore: Number(row.balance_before ?? (Number(row.remaining_balance || 0) + Number(row.amount || 0))),
+        remainingBalance: Number(row.remaining_balance || 0),
+        paymentMethod: normalizePaymentMethod(row.payment_method),
+        receiptNumber: row.receipt_number,
+        receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
+        createdAt: row.created_at,
+        createdByUserId: row.created_by_user_id,
+        createdByUserName: row.created_by_user_name
+      };
     }
   },
 

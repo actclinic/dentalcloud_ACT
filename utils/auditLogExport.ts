@@ -3,6 +3,7 @@ import { Currency, formatCurrency } from './currency';
 import { filterAuditRowsByDateRange } from './auditLogFilters';
 import { formatTeethArray, formatTeethWithPosition } from './toothNumbering';
 import { formatPaymentMethod } from './paymentMethods';
+import { formatDoctorName } from './doctorName';
 
 export type AuditFilter = 'all' | 'appointments' | 'reschedules' | 'treatments' | 'payments';
 
@@ -50,6 +51,10 @@ export const formatAuditPatientBalance = (balance: number | null | undefined, cu
   if (balance === null || balance === undefined) return '-';
   const numericBalance = Number(balance || 0);
   return numericBalance > 0 ? formatCurrency(numericBalance, currency) : 'Clear';
+};
+
+const formatAuditDoctorName = (doctorName?: string | null): string => {
+  return formatDoctorName(doctorName);
 };
 
 export const buildAuditLogRows = (
@@ -196,7 +201,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         type: 'Appointment',
         dateTime: `${appointment.date || '-'} ${appointment.time || ''}`.trim(),
         patient: appointment.patient_name || 'Unknown',
-        clinician: appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-',
+        clinician: formatAuditDoctorName(appointment.doctor_name),
         activity: `Appointment made for ${appointment.date || '-'} at ${appointment.time || '-'} (${appointment.type || 'Checkup'}, ${appointment.status || '-'})`,
         recordedBy: `${appointment.created_by_user_name || 'Unknown'}\n${formatAuditCreatedAt(appointment.created_at)}`,
         patientBalance: formatAuditPatientBalance(appointment.patient_balance, currency),
@@ -212,7 +217,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         type: 'Rescheduled Appointment',
         dateTime: formatAuditCreatedAt(rescheduleLog.created_at),
         patient: rescheduleLog.patient_name || 'Unknown',
-        clinician: rescheduleLog.doctor_name ? `Dr. ${rescheduleLog.doctor_name}` : '-',
+        clinician: formatAuditDoctorName(rescheduleLog.doctor_name),
         activity: `Original Date: ${rescheduleLog.original_date || '-'} -> New Date: ${rescheduleLog.new_date || '-'}\nReason: ${rescheduleLog.reason || '-'}`,
         recordedBy: `${rescheduleLog.admin_name || 'Unknown'}\n${formatAuditCreatedAt(rescheduleLog.created_at)}`,
         patientBalance: '-',
@@ -229,7 +234,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         dateTime: formatAuditCreatedAt(payment.createdAt || payment.date),
         patient: payment.patient_name || 'Unknown',
         clinician: '-',
-        activity: `Payment received${payment.receiptNumber ? ` (${payment.receiptNumber})` : ''}`,
+        activity: `Patient paid ${formatCurrency(payment.amount, currency)}${payment.receiptNumber ? ` (${payment.receiptNumber})` : ''}`,
         recordedBy: payment.createdByUserName || 'Unknown',
         patientBalance: formatAuditPatientBalance(payment.remainingBalance, currency),
         amount: payment.amount,
@@ -247,7 +252,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
       type: 'Treatment',
       dateTime: record.date || '-',
       patient: record.patient_name || 'Unknown',
-      clinician: record.doctor_name ? `Dr. ${record.doctor_name}` : '-',
+      clinician: formatAuditDoctorName(record.doctor_name),
       activity: `${activityLines}\nTeeth: ${teethLabel}`,
       recordedBy: 'Clinical record',
       patientBalance: formatAuditPatientBalance(record.patient_balance, currency),

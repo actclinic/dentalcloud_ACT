@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Clock, Loader2, User } from 'lucide-react';
+import { Plus, Edit2, Trash2, Clock, Loader2, User, RotateCw } from 'lucide-react';
 import { Doctor, DoctorSchedule } from '../types';
 import { exportDoctorsToPDF } from '../utils/pdfExport';
 import { exportDoctorsToExcel } from '../utils/excelExport';
@@ -16,6 +16,7 @@ interface DoctorsViewProps {
   onAdd: () => void;
   onEdit: (doctor: Doctor) => void;
   onDelete: (id: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 const DoctorsView: React.FC<DoctorsViewProps> = ({
@@ -24,7 +25,8 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
   currency,
   onAdd,
   onEdit,
-  onDelete
+  onDelete,
+  onRefresh
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
@@ -105,6 +107,13 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
+          <button
+            type="button"
+            onClick={() => void onRefresh?.()}
+            className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-700 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
+            <RotateCw className="w-4 h-4 shrink-0" /> <span>Refresh</span>
+          </button>
           <ExportMenu
             disabled={doctors.length === 0}
             onExportPDF={handleDownloadPDF}

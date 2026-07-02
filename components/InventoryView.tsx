@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Package, AlertTriangle, Loader2, TrendingUp, BarChart3 } from 'lucide-react';
+import { Plus, Edit2, Trash2, Package, AlertTriangle, Loader2, TrendingUp, BarChart3, RotateCw } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import { Medicine } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
@@ -24,6 +24,7 @@ interface InventoryViewProps {
   onAdd: () => void;
   onEdit: (medicine: Medicine) => void;
   onDelete: (id: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 const InventoryView: React.FC<InventoryViewProps> = ({
@@ -33,7 +34,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({
   currency,
   onAdd,
   onEdit,
-  onDelete
+  onDelete,
+  onRefresh
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
@@ -142,6 +144,13 @@ const InventoryView: React.FC<InventoryViewProps> = ({
           </svg>
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void onRefresh?.()}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
+          </button>
           <ExportMenu
             disabled={medicines.length === 0}
             onExportPDF={handleDownloadPDF}

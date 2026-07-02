@@ -1,4 +1,5 @@
 import { Appointment } from '../types';
+import { formatDoctorName } from './doctorName';
 
 export type VerificationStatus = 'passed' | 'failed' | 'uncertain';
 
@@ -163,7 +164,7 @@ const appointmentEvidence = (appointment: Appointment | undefined): string[] => 
     `Patient: ${appointment.patient_name || appointment.patient_id}`,
     `Date/time: ${appointment.date} ${appointment.time}`,
     `Status: ${appointment.status}`,
-    appointment.doctor_name ? `Doctor: Dr. ${appointment.doctor_name}` : 'Doctor: unassigned'
+    appointment.doctor_name ? `Doctor: ${formatDoctorName(appointment.doctor_name)}` : 'Doctor: unassigned'
   ];
 };
 

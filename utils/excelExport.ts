@@ -3,6 +3,7 @@ import { Currency } from './currency';
 import { usesFlatVisitCommission } from './doctorCommission';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 import { formatAppointmentNotesForDisplay } from './appointmentClinicalFocus';
+import { formatDoctorName, normalizeDoctorName } from './doctorName';
 
 type ExcelPrimitive = string | number;
 type ExcelRow = Record<string, ExcelPrimitive>;
@@ -108,8 +109,8 @@ const summarizeTreatmentsForExport = (records: ClinicalRecord[]) => {
 };
 
 const summarizeDoctorsForExport = (records: ClinicalRecord[]) => {
-  const doctors = Array.from(new Set(records.map((record) => record.doctor_name?.trim()).filter(Boolean)));
-  return doctors.length > 0 ? doctors.map((doctor) => `Dr. ${doctor}`).join(', ') : 'N/A';
+  const doctors = Array.from(new Set(records.map((record) => normalizeDoctorName(record.doctor_name)).filter(Boolean)));
+  return doctors.length > 0 ? doctors.map((doctor) => formatDoctorName(doctor, 'N/A')).join(', ') : 'N/A';
 };
 
 export const exportPatientsToExcel = async (patients: Patient[], currency: Currency, treatmentRecords: ClinicalRecord[] = []) => {
@@ -182,7 +183,7 @@ export const exportAppointmentsToExcel = async (appointments: Appointment[]) => 
       Phone: appointment.guest_phone || '',
       Source: appointment.patient_id ? 'Registered Patient' : appointment.guest_source || 'Lead',
       Type: appointment.type || 'Checkup',
-      Doctor: appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : 'N/A',
+      Doctor: formatDoctorName(appointment.doctor_name, 'N/A'),
       Status: appointment.status,
       Notes: formatAppointmentNotesForDisplay(appointment.notes)
     }));
@@ -242,7 +243,7 @@ export const exportDoctorsToExcel = async (doctors: Doctor[]) => {
     { header: 'Schedule', width: 40 }
   ];
   const rows = doctors.map((doctor) => ({
-    'Doctor Name': `Dr. ${doctor.name}`,
+    'Doctor Name': formatDoctorName(doctor.name, 'N/A'),
     Specialization: doctor.specialization || 'General',
     'Commission %': usesFlatVisitCommission(doctor.specialization) ? 'N/A' : (doctor.commission_percentage != null ? doctor.commission_percentage : 0),
     'Commission Per Visit': usesFlatVisitCommission(doctor.specialization) ? (doctor.commission_per_visit || 0) : 'N/A',

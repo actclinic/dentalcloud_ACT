@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, FileDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, FileDown, RotateCw } from 'lucide-react';
 import { TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { getColorForCategory } from '../utils/colorUtils';
@@ -8,12 +8,14 @@ import Pagination from './Pagination';
 interface TreatmentConfigViewProps {
   treatmentTypes: TreatmentType[];
   currency: Currency;
+  loading?: boolean;
   onAdd: () => void;
   onEdit: (t: TreatmentType) => void;
   onDelete: (id: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
-const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentTypes, currency, onAdd, onEdit, onDelete }) => {
+const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentTypes, currency, loading = false, onAdd, onEdit, onDelete, onRefresh }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,6 +71,14 @@ const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentType
             </svg>
           </div>
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void onRefresh?.()}
+              disabled={loading}
+              className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-700 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RotateCw className="w-4 h-4 shrink-0" /> <span>Refresh</span>
+            </button>
             <button onClick={handleDownloadPDF} disabled={treatmentTypes.length === 0}
               className="inline-flex items-center gap-2 bg-green-600 text-white px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <FileDown className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Export CSV</span>

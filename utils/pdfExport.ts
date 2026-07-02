@@ -5,6 +5,7 @@ import { formatCurrency, Currency } from './currency';
 import { usesFlatVisitCommission } from './doctorCommission';
 import { formatTeethWithPosition } from './toothNumbering';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
+import { formatDoctorName, normalizeDoctorName } from './doctorName';
 
 // Add type declaration for jsPDF with autoTable
 declare module 'jspdf' {
@@ -31,9 +32,9 @@ const summarizeTreatmentsForExport = (records: ClinicalRecord[]) => {
 };
 
 const summarizeDoctorsForExport = (records: ClinicalRecord[]) => {
-  const doctors = Array.from(new Set(records.map((record) => record.doctor_name?.trim()).filter(Boolean)));
+  const doctors = Array.from(new Set(records.map((record) => normalizeDoctorName(record.doctor_name)).filter(Boolean)));
   if (doctors.length === 0) return '-';
-  const visibleDoctors = doctors.slice(0, 2).map((doctor) => `Dr. ${doctor}`).join(', ');
+  const visibleDoctors = doctors.slice(0, 2).map((doctor) => formatDoctorName(doctor)).join(', ');
   return doctors.length > 2 ? `${visibleDoctors} +${doctors.length - 2} more` : visibleDoctors;
 };
 
@@ -143,7 +144,7 @@ export const exportAppointmentsToPDF = (appointments: Appointment[]) => {
         apt.patient_name || 'Unknown',
         apt.patient_id ? 'Registered' : [apt.guest_phone, apt.guest_source].filter(Boolean).join(' / ') || 'Lead',
         apt.type || 'Checkup',
-        apt.doctor_name ? `Dr. ${apt.doctor_name}` : 'N/A',
+        formatDoctorName(apt.doctor_name, 'N/A'),
         apt.status
       ]),
       theme: 'grid',
@@ -292,7 +293,7 @@ export const exportDoctorsToPDF = (doctors: Doctor[]) => {
     startY: 40,
     head: [['Doctor Name', 'Specialization', 'Commission', 'Contact', 'Email']],
     body: exportDoctors.map(doctor => [
-      `Dr. ${doctor.name}`,
+      formatDoctorName(doctor.name, 'N/A'),
       doctor.specialization || 'General',
       usesFlatVisitCommission(doctor.specialization) ? `${doctor.commission_per_visit || 0}/visit` : (doctor.commission_percentage != null ? `${doctor.commission_percentage}%` : '0%'),
       doctor.phone || 'N/A',

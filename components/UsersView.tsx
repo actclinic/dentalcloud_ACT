@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Loader2, User, Shield, UserCheck, FileDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, User, Shield, UserCheck, FileDown, RotateCw } from 'lucide-react';
 import { User as UserType } from '../types';
 import { Modal } from './Shared';
 import Pagination from './Pagination';
@@ -13,6 +13,7 @@ interface UsersViewProps {
   onAdd: () => void;
   onEdit: (user: UserType) => void;
   onDelete: (id: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
 const UsersView: React.FC<UsersViewProps> = ({
@@ -21,7 +22,8 @@ const UsersView: React.FC<UsersViewProps> = ({
   isAdmin,
   onAdd,
   onEdit,
-  onDelete
+  onDelete,
+  onRefresh
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
@@ -157,6 +159,13 @@ const UsersView: React.FC<UsersViewProps> = ({
           </div>
           {isAdmin && (
             <>
+              <button
+                type="button"
+                onClick={() => void onRefresh?.()}
+                className="flex flex-1 items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors sm:flex-initial"
+              >
+                <RotateCw className="w-4 h-4" /> Refresh
+              </button>
               <button
                 onClick={handleDownloadCSV}
                 disabled={users.length === 0}

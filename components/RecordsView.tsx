@@ -11,6 +11,7 @@ import { toLocalISODate } from '../utils/auditLogFilters';
 import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow, type AuditFilter } from '../utils/auditLogExport';
 import { buildRecordsViewFilterOptions } from '../utils/recordsViewFilterOptions';
 import { formatPaymentMethod } from '../utils/paymentMethods';
+import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -80,6 +81,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
         {numericBalance > 0 ? formatCurrency(numericBalance, currency) : 'Clear'}
       </span>
     );
+  };
+
+  const formatDoctorName = (doctorName?: string | null) => {
+    return formatDisplayDoctorName(doctorName);
   };
 
   const renderTreatmentDescriptionList = (rec: ClinicalRecord) => {
@@ -353,7 +358,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           <td className="px-6 py-4 font-bold text-slate-900">{payment.patient_name || 'Unknown'}</td>
                           <td className="px-6 py-4 text-sm text-slate-400">-</td>
                           <td className="px-6 py-4 text-sm text-slate-700">
-                            Payment received{payment.receiptNumber ? ` · ${payment.receiptNumber}` : ''}
+                            Patient paid {formatCurrency(payment.amount, currency)}{payment.receiptNumber ? ` · ${payment.receiptNumber}` : ''}
                           </td>
                           <td className="px-6 py-4 text-sm text-slate-700">{payment.createdByUserName || 'Unknown'}</td>
                           <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(payment.remainingBalance)}</td>
@@ -389,7 +394,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           </td>
                           <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">{formatCreatedAt(rescheduleLog.created_at)}</td>
                           <td className="px-6 py-4 font-bold text-slate-900">{rescheduleLog.patient_name || 'Unknown'}</td>
-                          <td className="px-6 py-4 text-sm text-slate-700">{rescheduleLog.doctor_name ? `Dr. ${rescheduleLog.doctor_name}` : '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-700">{formatDoctorName(rescheduleLog.doctor_name)}</td>
                           <td className="px-6 py-4 text-sm text-slate-700 max-w-md">
                             <div className="space-y-1">
                               <p className="font-semibold text-amber-800">Original Date: {rescheduleLog.original_date} -&gt; New Date: {rescheduleLog.new_date}</p>
@@ -419,7 +424,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           </td>
                           <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">{appointment.date} {appointment.time}</td>
                           <td className="px-6 py-4 font-bold text-slate-900">{appointment.patient_name || 'Unknown'}</td>
-                          <td className="px-6 py-4 text-sm text-slate-700">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : '-'}</td>
+                          <td className="px-6 py-4 text-sm text-slate-700">{formatDoctorName(appointment.doctor_name)}</td>
                           <td className="px-6 py-4 text-sm text-slate-700 max-w-md">
                             Appointment made for {appointment.date} at {appointment.time} ({appointment.type || 'Checkup'}, {appointment.status})
                           </td>
@@ -445,17 +450,12 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">{rec.date}</td>
                         <td className="px-6 py-4 font-bold text-slate-900">{rec.patient_name || 'Unknown'}</td>
-                        <td className="px-6 py-4 text-sm text-slate-700">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{formatDoctorName(rec.doctor_name)}</td>
                         <td className="px-6 py-4 text-sm text-slate-700 max-w-md">
                           {renderTreatmentDescriptionList(rec)}
                           <span className="block text-xs font-mono text-gray-500 mt-1">
                             {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
                           </span>
-                          {(rec as any)._groupedRecords && (rec as any)._groupedRecords.length > 0 && (
-                            <span className="block text-[11px] font-semibold text-slate-600 mt-1.5 pt-1.5 border-t border-slate-100">
-                              Total: {formatCurrency(rec.cost || 0, currency)}
-                            </span>
-                          )}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-700">Clinical record</td>
                         <td className="px-6 py-4 text-right text-sm">{renderPatientBalance(rec.patient_balance)}</td>
@@ -535,7 +535,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           Original Date: {rescheduleLog.original_date} -&gt; New Date: {rescheduleLog.new_date}
                         </p>
                         <p className="mt-2 break-words text-xs text-slate-600">Reason: {rescheduleLog.reason || '-'}</p>
-                        <p className="mt-2 text-xs text-slate-500">{rescheduleLog.doctor_name ? `Dr. ${rescheduleLog.doctor_name}` : 'No clinician assigned'}</p>
+                        <p className="mt-2 text-xs text-slate-500">{rescheduleLog.doctor_name ? formatDoctorName(rescheduleLog.doctor_name) : 'No clinician assigned'}</p>
                       </div>
                       <div className="mt-3 rounded-xl bg-slate-50 p-3">
                         <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1">Admin</p>
@@ -563,7 +563,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                         <p className="mt-1 break-words text-sm text-slate-800">
                           Appointment made for {appointment.date} at {appointment.time || 'No time'} ({appointment.type || 'Checkup'}, {appointment.status})
                         </p>
-                        <p className="mt-2 text-xs text-slate-500">{appointment.doctor_name ? `Dr. ${appointment.doctor_name}` : 'No clinician assigned'}</p>
+                        <p className="mt-2 text-xs text-slate-500">{appointment.doctor_name ? formatDoctorName(appointment.doctor_name) : 'No clinician assigned'}</p>
                       </div>
                       <div className="mt-3 rounded-xl bg-slate-50 p-3">
                         <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1">Recorded By</p>
@@ -586,7 +586,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                         <p className="text-[11px] font-black uppercase tracking-wider text-emerald-500">Treatment</p>
                         <p className="mt-0.5 break-words text-sm font-bold text-slate-900">{rec.patient_name || 'Unknown'}</p>
                         <p className="mt-1 text-xs text-slate-500">{rec.date}</p>
-                        <p className="mt-1 break-words text-xs text-slate-500">{rec.doctor_name ? `Dr. ${rec.doctor_name}` : 'No clinician assigned'}</p>
+                        <p className="mt-1 break-words text-xs text-slate-500">{rec.doctor_name ? formatDoctorName(rec.doctor_name) : 'No clinician assigned'}</p>
                       </div>
                       <p className="shrink-0 text-right text-sm font-black text-slate-900">{formatCurrency(rec.cost || 0, currency)}</p>
                     </div>
@@ -606,11 +606,6 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                       <p className="mt-2 break-words font-mono text-xs text-slate-500">
                         {rec.teeth && rec.teeth.length > 0 ? formatTeethWithPosition(rec.teeth) : 'General'}
                       </p>
-                      {(rec as any)._groupedRecords && (rec as any)._groupedRecords.length > 0 && (
-                        <p className="mt-2 border-t border-slate-200 pt-2 text-xs font-semibold text-slate-600">
-                          Total: {formatCurrency(rec.cost || 0, currency)}
-                        </p>
-                      )}
                     </div>
                   </div>
                 );
@@ -630,8 +625,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
           onToggleShowAll={() => setShowAll(!showAll)}
         />
       )}
+
     </div>
   );
 };
 
 export default RecordsView;
+

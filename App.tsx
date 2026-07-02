@@ -126,6 +126,7 @@ type AppointmentDraft = Partial<Appointment> & {
   guest_email?: string;
   guest_age?: string;
   guest_address?: string;
+  guest_password?: string;
 };
 
 type HoverTheme = 'blue' | 'green' | 'yellow' | 'brown' | 'dark';
@@ -209,6 +210,20 @@ const mapLeadSourceToPatientType = (
 const normalizePhoneDigits = (value: string | null | undefined): string => {
   const digits = (value || '').replace(/\D/g, '');
   return digits.length > 0 ? digits : (value || '').trim();
+};
+
+const isDuplicatePatientValidationError = (error: unknown): error is {
+  status: number;
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+} => {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { status?: unknown }).status === 422 &&
+    (error as { code?: unknown }).code === 'DUPLICATE_PATIENT'
+  );
 };
 
 const buildDefaultPatientTypeRecords = (): PatientType[] =>
@@ -438,6 +453,8 @@ const App: React.FC = () => {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [doctorTransferBlockedOpen, setDoctorTransferBlockedOpen] = useState(false);
   const [doctorTransferBlockedReasons, setDoctorTransferBlockedReasons] = useState<string[]>([]);
+  const [patientDuplicateWarning, setPatientDuplicateWarning] = useState<string | null>(null);
+  const [appointmentDuplicateWarning, setAppointmentDuplicateWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; show: boolean }>({ message: '', type: 'success', show: false });
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [lastPaymentAmount, setLastPaymentAmount] = useState<number>(0);
@@ -1849,6 +1866,67 @@ const App: React.FC = () => {
     if (currentView === 'records') fetchGlobalRecords();
   }, [currentView, currentLocationId]);
 
+  const checkDuplicatePatientDraft = async (params: {
+    phone?: string | null;
+    age?: number | string | null;
+    name?: string | null;
+  }) => {
+    const phoneDigits = normalizePhoneDigits(params.phone);
+    const parsedAge = typeof params.age === 'number'
+      ? params.age
+      : Number.parseInt(String(params.age || ''), 10);
+
+    if (!phoneDigits || !Number.isFinite(parsedAge)) {
+      return null;
+    }
+
+    const result = await api.patients.checkDuplicate({
+      name: params.name || undefined,
+      phone: params.phone || undefined,
+      age: parsedAge
+    });
+
+    return result.isDuplicate ? result.match : null;
+  };
+
+  const validateNewPatientDuplicate = async () => {
+    try {
+      const match = await checkDuplicatePatientDraft({
+        name: newPatientData.name,
+        phone: newPatientData.phone,
+        age: newPatientData.age
+      });
+      setPatientDuplicateWarning(
+        match
+          ? `Duplicate patient found: ${match.name} (${match.phone || 'no phone'}, age ${match.age ?? '-'})`
+          : null
+      );
+      return match;
+    } catch (error) {
+      console.warn('Patient duplicate pre-check failed:', error);
+      return null;
+    }
+  };
+
+  const validateAppointmentLeadDuplicate = async () => {
+    try {
+      const match = await checkDuplicatePatientDraft({
+        name: newAppointmentData.guest_name,
+        phone: newAppointmentData.guest_phone,
+        age: newAppointmentData.guest_age
+      });
+      setAppointmentDuplicateWarning(
+        match
+          ? `Existing patient found: ${match.name} (${match.phone || 'no phone'}, age ${match.age ?? '-'})`
+          : null
+      );
+      return match;
+    } catch (error) {
+      console.warn('Appointment duplicate pre-check failed:', error);
+      return null;
+    }
+  };
+
   const handleCreatePatient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -1862,6 +1940,16 @@ const App: React.FC = () => {
     setIsSubmitting(true);
     try {
       console.log('Creating patient with location_id:', newPatientData.location_id);
+      const duplicateMatch = await checkDuplicatePatientDraft({
+        name: newPatientData.name,
+        phone: newPatientData.phone,
+        age: newPatientData.age
+      });
+      if (duplicateMatch) {
+        const duplicateMessage = `Duplicate patient found: ${duplicateMatch.name} (${duplicateMatch.phone || 'no phone'}, age ${duplicateMatch.age ?? '-'})`;
+        setPatientDuplicateWarning(duplicateMessage);
+        throw new Error(duplicateMessage);
+      }
       const patientInput = {
         ...newPatientData,
         location_id: newPatientData.location_id,
@@ -1889,6 +1977,7 @@ const App: React.FC = () => {
         patient_type: activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME,
         location_id: ''
       });
+      setPatientDuplicateWarning(null);
       setConvertingLeadAppointment(null);
       const createdBranch = locations.find((loc) => loc.id === createdPatient.location_id);
       const viewingDifferentBranch = !!createdPatient.location_id && !!currentLocationId && createdPatient.location_id !== currentLocationId;
@@ -1903,7 +1992,10 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error('Patient creation error:', err);
-      alert(`Error creating patient: ${err.message}`);
+      const message = isDuplicatePatientValidationError(err)
+        ? err.message
+        : err.message;
+      alert(`Error creating patient: ${message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -2072,6 +2164,7 @@ const App: React.FC = () => {
       guest_email: '',
       guest_age: '',
       guest_address: '',
+      guest_password: '',
       guest_source: '',
       guest_notes: '',
       location_id: currentLocationId || ''
@@ -2082,6 +2175,7 @@ const App: React.FC = () => {
     setAppointmentGeneralNotes('');
     setAppointmentRescheduleReasonPreset('Patient did not arrive');
     setAppointmentRescheduleReasonCustom('');
+    setAppointmentDuplicateWarning(null);
   };
 
   const createEmptyDoctorCommissionRow = (): DoctorTreatmentCommission => ({
@@ -2156,6 +2250,7 @@ const App: React.FC = () => {
       const guestEmail = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_email || '').trim() : '';
       const guestAge = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_age || '').trim() : '';
       const guestAddress = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_address || '').trim() : '';
+      const guestPassword = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_password || '').trim() : '';
       const guestSource = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_source || '').trim() : '';
       const guestNotes = appointmentPatientMode === 'lead' ? (newAppointmentData.guest_notes || '').trim() : '';
 
@@ -2163,33 +2258,30 @@ const App: React.FC = () => {
         if (!guestName || !guestPhone) {
           throw new Error('Please enter the new patient name and phone number.');
         }
-
-        const normalizedGuestName = guestName.toLowerCase();
-        const normalizedGuestPhone = normalizePhoneDigits(guestPhone);
-        const existingPatient = patients.find((patient) => {
-          if ((patient.location_id || '').trim() !== targetLocationId) return false;
-          return (
-            patient.name.trim().toLowerCase() === normalizedGuestName &&
-            normalizePhoneDigits(patient.phone) === normalizedGuestPhone
-          );
+        const duplicateMatch = await checkDuplicatePatientDraft({
+          name: guestName,
+          phone: guestPhone,
+          age: guestAge
         });
-
-        if (existingPatient) {
-          resolvedPatientId = existingPatient.id;
-        } else {
-          const createdPatient = await api.patients.create({
-            name: guestName,
-            email: guestEmail || undefined,
-            phone: guestPhone,
-            age: guestAge ? parseInt(guestAge, 10) : undefined,
-            address: guestAddress || undefined,
-            medicalHistory: guestNotes || undefined,
-            patient_type: mapLeadSourceToPatientType(guestSource, activePatientTypeOptions),
-            location_id: targetLocationId,
-            balance: 0
-          });
-          resolvedPatientId = createdPatient.id;
+        if (duplicateMatch) {
+          const duplicateMessage = `Duplicate patient found: ${duplicateMatch.name} (${duplicateMatch.phone || 'no phone'}, age ${duplicateMatch.age ?? '-'})`;
+          setAppointmentDuplicateWarning(duplicateMessage);
+          throw new Error(`${duplicateMessage}. Please choose the registered patient instead.`);
         }
+
+        const createdPatient = await api.patients.create({
+          name: guestName,
+          email: guestEmail || undefined,
+          phone: guestPhone,
+          password: guestPassword || undefined,
+          age: guestAge ? parseInt(guestAge, 10) : undefined,
+          address: guestAddress || undefined,
+          medicalHistory: guestNotes || undefined,
+          patient_type: mapLeadSourceToPatientType(guestSource, activePatientTypeOptions),
+          location_id: targetLocationId,
+          balance: 0
+        });
+        resolvedPatientId = createdPatient.id;
 
         guestName = '';
         guestPhone = '';
@@ -2886,6 +2978,7 @@ const App: React.FC = () => {
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!selectedPatient) return;
     if (paymentOriginalAmount <= 0) {
       alert('This patient does not have an outstanding balance to collect.');
@@ -2899,6 +2992,7 @@ const App: React.FC = () => {
       alert('Please select a payment type.');
       return;
     }
+    setIsSubmitting(true);
     try {
       const session = auth.getSession();
       const paymentDate = toLocalISODate(new Date());
@@ -2989,6 +3083,8 @@ const App: React.FC = () => {
       fetchInitialData(); 
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -3463,6 +3559,7 @@ const App: React.FC = () => {
                 appointments={appointments}
                 loading={loading} 
                 currency={currency} 
+                onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }}
                 loyaltyEnabled={loyaltyEnabled} 
                 loyaltyRules={loyaltyRules}
                 doctors={doctors}
@@ -3532,6 +3629,7 @@ const App: React.FC = () => {
                 doctors={doctors}
                 treatmentTypes={treatmentTypes}
                 loading={loading} 
+                onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }}
                 onAddAppointment={() => {setEditingAppointment(null); resetAppointmentForm(); setShowAppointmentModal(true)}} 
                 onEditAppointment={(apt) => {
                   const clinicalPlan = parseAppointmentClinicalFocus(apt.notes);
@@ -3551,6 +3649,7 @@ const App: React.FC = () => {
                     guest_email: '',
                     guest_age: '',
                     guest_address: '',
+                    guest_password: '',
                     guest_source: apt.guest_source || '',
                     guest_notes: apt.guest_notes || ''
                   });
@@ -3590,10 +3689,10 @@ const App: React.FC = () => {
                    await exportAppointmentsToExcel(freshAppointments);
                 }}
             />}
-            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
-            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
+            {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
+            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} />}
-            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
                 expenses={expenses}
@@ -3601,12 +3700,13 @@ const App: React.FC = () => {
                 medicineSales={medicineSales}
                 loading={loading}
                 currency={currency}
+                onRefresh={async () => { await fetchExpenses(); }}
                 onAdd={() => {setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData()); setShowExpenseModal(true);}}
                 onEdit={(expense) => {setEditingExpense(expense); setNewExpenseData({ description: expense.description, amount: expense.amount, category: expense.category, date: expense.date }); setShowExpenseModal(true);}}
                 onDelete={handleDeleteExpense}
               />
             )}
-            {currentView === 'users' && canAccessView('users') && <UsersView users={users} loading={loading} isAdmin={isAdmin} onAdd={() => {setEditingUser(null); setUserFormError(null); setNewUserData(getDefaultUserFormData()); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setUserFormError(null); setNewUserData({ username: user.username, password: '', role: user.role, location_id: user.location_id, allowed_tabs: resolveAllowedTabs(user.role, user.allowed_tabs) }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
+            {currentView === 'users' && canAccessView('users') && <UsersView users={users} loading={loading} isAdmin={isAdmin} onRefresh={async () => { await fetchUsers(); }} onAdd={() => {setEditingUser(null); setUserFormError(null); setNewUserData(getDefaultUserFormData()); setShowUserModal(true)}} onEdit={(user) => {setEditingUser(user); setUserFormError(null); setNewUserData({ username: user.username, password: '', role: user.role, location_id: user.location_id, allowed_tabs: resolveAllowedTabs(user.role, user.allowed_tabs) }); setShowUserModal(true)}} onDelete={handleDeleteUser} />}
             {currentView === 'settings' && canAccessView('settings') && (
               isDoctor ? (
                 <DoctorProfileView
@@ -3796,7 +3896,7 @@ const App: React.FC = () => {
 
       {/* Modals */}
       {showPatientModal && (
-        <Modal title={convertingLeadAppointment ? "Register New Patient" : "Register Clinical Patient"} onClose={() => { setShowPatientModal(false); setConvertingLeadAppointment(null); }}>
+        <Modal title={convertingLeadAppointment ? "Register New Patient" : "Register Clinical Patient"} onClose={() => { setShowPatientModal(false); setConvertingLeadAppointment(null); setPatientDuplicateWarning(null); }}>
           <form onSubmit={handleCreatePatient} className="space-y-5">
             {convertingLeadAppointment && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -3809,10 +3909,10 @@ const App: React.FC = () => {
                 </p>
               </div>
             )}
-            <Input label="Full Patient Name" required value={newPatientData.name} onChange={(e: any) => setNewPatientData({...newPatientData, name: e.target.value})} />
+            <Input label="Full Patient Name" required value={newPatientData.name} onChange={(e: any) => { setNewPatientData({...newPatientData, name: e.target.value}); setPatientDuplicateWarning(null); }} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                <Input label="Primary Email" type="email" value={newPatientData.email} onChange={(e: any) => setNewPatientData({...newPatientData, email: e.target.value})} />
-               <Input label="Mobile Contact" required value={newPatientData.phone} onChange={(e: any) => setNewPatientData({...newPatientData, phone: e.target.value})} />
+               <Input label="Mobile Contact" required value={newPatientData.phone} onChange={(e: any) => { setNewPatientData({...newPatientData, phone: e.target.value}); setPatientDuplicateWarning(null); }} onBlur={() => { void validateNewPatientDuplicate(); }} />
             </div>
             
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -3825,7 +3925,8 @@ const App: React.FC = () => {
                   required
                   className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   value={newPatientData.age ?? ''}
-                  onChange={(e) => setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value, 10) : undefined})}
+                  onChange={(e) => { setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value, 10) : undefined}); setPatientDuplicateWarning(null); }}
+                  onBlur={() => { void validateNewPatientDuplicate(); }}
                   placeholder="Enter age"
                 />
               </div>
@@ -3846,6 +3947,12 @@ const App: React.FC = () => {
               <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                 <span>Please add the patient's age before finalizing registration.</span>
+              </div>
+            )}
+            {patientDuplicateWarning && (
+              <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>{patientDuplicateWarning}</span>
               </div>
             )}
 
@@ -3960,6 +4067,7 @@ const App: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setAppointmentPatientMode('registered');
+                    setAppointmentDuplicateWarning(null);
                     setNewAppointmentData({
                       ...newAppointmentData,
                       guest_name: '',
@@ -3967,6 +4075,7 @@ const App: React.FC = () => {
                       guest_email: '',
                       guest_age: '',
                       guest_address: '',
+                      guest_password: '',
                       guest_source: '',
                       guest_notes: ''
                     });
@@ -3979,6 +4088,7 @@ const App: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setAppointmentPatientMode('lead');
+                    setAppointmentDuplicateWarning(null);
                     setNewAppointmentData({ ...newAppointmentData, patient_id: '' });
                   }}
                   className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${appointmentPatientMode === 'lead' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
@@ -4006,14 +4116,15 @@ const App: React.FC = () => {
                     label="New Patient Name"
                     required
                     value={newAppointmentData.guest_name || ''}
-                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_name: e.target.value})}
+                    onChange={(e: any) => { setNewAppointmentData({...newAppointmentData, guest_name: e.target.value}); setAppointmentDuplicateWarning(null); }}
                     placeholder="Name for follow-up"
                   />
                   <Input
                     label="New Patient Phone"
                     required
                     value={newAppointmentData.guest_phone || ''}
-                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_phone: e.target.value})}
+                    onChange={(e: any) => { setNewAppointmentData({...newAppointmentData, guest_phone: e.target.value}); setAppointmentDuplicateWarning(null); }}
+                    onBlur={() => { void validateAppointmentLeadDuplicate(); }}
                     placeholder="09..."
                   />
                 </div>
@@ -4023,7 +4134,8 @@ const App: React.FC = () => {
                     type="number"
                     min="0"
                     value={newAppointmentData.guest_age || ''}
-                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_age: e.target.value})}
+                    onChange={(e: any) => { setNewAppointmentData({...newAppointmentData, guest_age: e.target.value}); setAppointmentDuplicateWarning(null); }}
+                    onBlur={() => { void validateAppointmentLeadDuplicate(); }}
                     placeholder="25"
                   />
                   <div>
@@ -4040,6 +4152,33 @@ const App: React.FC = () => {
                     </select>
                   </div>
                 </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Input
+                    label="New Patient Email"
+                    type="email"
+                    value={newAppointmentData.guest_email || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_email: e.target.value})}
+                    placeholder="Optional email for portal login"
+                  />
+                  <Input
+                    label="Portal Password"
+                    type="password"
+                    minLength={4}
+                    value={newAppointmentData.guest_password || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_password: e.target.value})}
+                    placeholder="Optional password for patient portal"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">New Patient Address</label>
+                  <textarea
+                    className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                    rows={2}
+                    value={newAppointmentData.guest_address || ''}
+                    onChange={(e: any) => setNewAppointmentData({...newAppointmentData, guest_address: e.target.value})}
+                    placeholder="Patient address for registration"
+                  />
+                </div>
                 <div>
                   <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">New Patient Follow-up Notes</label>
                   <textarea
@@ -4050,6 +4189,12 @@ const App: React.FC = () => {
                     placeholder="Marketing context, caller request, preferred contact time..."
                   />
                 </div>
+                {appointmentDuplicateWarning && (
+                  <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <span>{appointmentDuplicateWarning}</span>
+                  </div>
+                )}
               </div>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -5023,6 +5168,7 @@ const App: React.FC = () => {
                   step="0.01"
                   max={paymentOriginalAmount || undefined}
                   autoFocus
+                  disabled={isSubmitting}
                   value={paymentAmountTendered}
                   onChange={(e: any) => {
                     const rawValue = Number.parseFloat(e.target.value);
@@ -5046,12 +5192,13 @@ const App: React.FC = () => {
                         key={method.value}
                         type="button"
                         aria-pressed={isSelected}
+                        disabled={isSubmitting}
                         onClick={() => setPaymentDraft((prev) => ({ ...prev, paymentMethod: method.value }))}
                         className={`min-h-12 rounded-xl border px-3 py-2 text-sm font-bold transition ${
                           isSelected
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-100'
                             : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                        }`}
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
                       >
                         {method.label}
                       </button>
@@ -5079,7 +5226,7 @@ const App: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={paymentAmountTendered <= 0 || paymentClearedAmount <= 0 || !isSelectablePaymentMethod(paymentDraft.paymentMethod)}
+                disabled={isSubmitting || paymentAmountTendered <= 0 || paymentClearedAmount <= 0 || !isSelectablePaymentMethod(paymentDraft.paymentMethod)}
                 className="w-full rounded-2xl py-5 text-lg font-black shadow-lg transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
                   backgroundColor: paymentThemeColors.primary,
@@ -5087,7 +5234,7 @@ const App: React.FC = () => {
                   boxShadow: `0 18px 36px -18px ${paymentThemeColors.primaryHover}`
                 }}
               >
-                Confirm Payment
+                {isSubmitting ? 'Processing Payment...' : 'Confirm Payment'}
               </button>
             </div>
           </form>

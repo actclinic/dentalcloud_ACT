@@ -3,6 +3,7 @@ import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, Rot
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
+import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
 import { formatTeethArray, formatTeethWithPosition, getTeethInQuadrant } from '../utils/toothNumbering';
 import { Modal, Input, TimeInput } from './Shared';
 import { SearchableSelect } from './SearchableSelect';
@@ -316,7 +317,8 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
 
   const formatDoctorName = (name?: string) => {
     if (!name) return '—';
-    return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
+    const normalizedName = name.trim().replace(/^dr\.?\s*/i, '');
+    return normalizedName ? `Dr. ${normalizedName}` : 'â€”';
   };
 
   const getDefaultTreatmentCost = (treatment: TreatmentType) => {
@@ -551,7 +553,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Booked Doctor</p>
-                <p className="text-sm font-black text-indigo-900">Dr. {bookedDoctorName}</p>
+                <p className="text-sm font-black text-indigo-900">{formatDoctorName(bookedDoctorName)}</p>
               </div>
             </div>
           </div>
@@ -611,7 +613,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                   { value: '', label: 'Select doctor (optional)' },
                   ...doctors.map((doctor) => ({
                     value: doctor.id,
-                    label: `Dr. ${doctor.name}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
+                    label: `${formatDoctorName(doctor.name)}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
                   }))
                 ]}
                 placeholder="Select doctor (optional)"
@@ -1644,7 +1646,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                     { value: '', label: 'No specific doctor' },
                     ...doctors.map((doctor) => ({
                       value: doctor.id,
-                      label: `Dr. ${doctor.name}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
+                      label: `${formatDoctorName(doctor.name)}${doctor.specialization ? ` - ${doctor.specialization}` : ''}`
                     }))
                   ]}
                   placeholder="Select doctor"

@@ -201,6 +201,7 @@ describe('audit log export rows', () => {
       amount: 10000,
       paymentMethod: 'KPay'
     });
+    expect(tableRow.activity).toContain('Patient paid 10,000Ks');
     expect(tableRow.activity).toContain('REC-20260530-000001');
   });
 

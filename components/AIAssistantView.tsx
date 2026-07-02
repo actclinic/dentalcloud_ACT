@@ -11,6 +11,7 @@ import { formatTeethArray, formatTeethWithPosition, parseTeethInput } from '../u
 import { buildAppointmentClinicalFocusNotes } from '../utils/appointmentClinicalFocus';
 import { buildFinancialReport, renderFinancialReportMarkdown, buildInsightsNoNumbers, runReportUpgradeCheck, buildAIReportPayload, payloadToReport, validateAIReportPayload, resolveFinancialReportAnchorDate, AIReportPayload } from '../utils/aiReport';
 import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod } from '../utils/paymentMethods';
+import { formatDoctorName } from '../utils/doctorName';
 import { ASSISTANT_PRODUCT_KNOWLEDGE } from '../utils/assistantProductKnowledge';
 import {
   ExpectedAppointmentState,
@@ -849,7 +850,7 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   };
 
   const formatAppointmentLabel = (appointment: Appointment) =>
-    `${appointment.patient_name || 'Unknown Patient'}${appointment.patient_id ? '' : ' (lead)'} on ${appointment.date} at ${appointment.time}${appointment.doctor_name ? ` with Dr. ${appointment.doctor_name}` : ''}`;
+    `${appointment.patient_name || 'Unknown Patient'}${appointment.patient_id ? '' : ' (lead)'} on ${appointment.date} at ${appointment.time}${appointment.doctor_name ? ` with ${formatDoctorName(appointment.doctor_name)}` : ''}`;
 
   const isAppointmentActionIntent = (text: string) => {
     const normalized = normalizeLookupText(text);
@@ -3739,7 +3740,7 @@ I can provide guidance on:
             successMessage = `✅ Patient ${result?.name || 'with ID ' + pendingAction.params.id} deleted successfully.`;
             break;
           case 'dr_c':
-            successMessage = `✅ Dr. ${result.name} added to the system.`;
+            successMessage = `✅ ${formatDoctorName(result.name)} added to the system.`;
             break;
           case 'dr_d':
             successMessage = `✅ Doctor removed from system.`;
@@ -3765,7 +3766,7 @@ I can provide guidance on:
           const verificationText = renderVerificationResult(result.verification);
           switch (pendingAction.action) {
             case 'apt_c':
-              successMessage = `Appointment created for ${result.patient_name} with Dr. ${result.doctor_name || 'Unassigned'} at ${result.time}.\n\n${verificationText}`;
+              successMessage = `Appointment created for ${result.patient_name} with ${formatDoctorName(result.doctor_name, 'Unassigned')} at ${result.time}.\n\n${verificationText}`;
               break;
             case 'apt_u':
               successMessage = `Appointment update completed.\n\n${verificationText}`;
@@ -4654,7 +4655,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
                 currentActionResult = patientAppointments.length === 0
                   ? `📅 No past appointments found for ${patient.name}.`
-                  : `📅 Past appointments for ${patient.name}:\n\n${patientAppointments.slice(0, 12).map(a => `• ${a.date} at ${a.time}${a.doctor_name ? ` with Dr. ${a.doctor_name}` : ''} (${a.status})`).join('\n')}`;
+                  : `📅 Past appointments for ${patient.name}:\n\n${patientAppointments.slice(0, 12).map(a => `• ${a.date} at ${a.time}${a.doctor_name ? ` with ${formatDoctorName(a.doctor_name)}` : ''} (${a.status})`).join('\n')}`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to get past appointments: ${err.message}`;
               }
@@ -4666,8 +4667,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 const date = params.date || params.dt;
                 const availableTimes = await api.doctors.getAvailableTimes(doctor.id, date);
                 currentActionResult = availableTimes.length === 0
-                  ? `⚠️ Dr. ${doctor.name} has no free slots on ${date}.`
-                  : `✅ Dr. ${doctor.name} is available on ${date} at: ${availableTimes.join(', ')}.`;
+                  ? `⚠️ ${formatDoctorName(doctor.name)} has no free slots on ${date}.`
+                  : `✅ ${formatDoctorName(doctor.name)} is available on ${date} at: ${availableTimes.join(', ')}.`;
               } catch (err: any) {
                 currentActionResult = `❌ Failed to check availability: ${err.message}`;
               }
@@ -4785,7 +4786,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                   commission_per_visit: params.cpv,
                   schedules: params.sch
                 });
-                currentActionResult = `✅ Dr. ${result.name} added to the system.`;
+                currentActionResult = `✅ ${formatDoctorName(result.name)} added to the system.`;
               } catch (err: any) {
                 console.error('Doctor creation error:', err);
                 currentActionResult = `❌ Failed to create doctor: ${err.message}`;
@@ -5082,7 +5083,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     currentActionResult = `📅 No appointments found for ${matchedPatients.length === 1 ? matchedPatients[0].name : 'matching patients'}.`;
                   } else {
                     currentActionResult = `📅 Found ${patientAppointments.length} appointments:\n\n${patientAppointments.slice(0, 10).map(a => 
-                      `• ${a.date} at ${a.time}: ${a.patient_name} with Dr. ${a.doctor_name} (${a.status})`
+                      `• ${a.date} at ${a.time}: ${a.patient_name} with ${formatDoctorName(a.doctor_name)} (${a.status})`
                     ).join('\n')}`;
                   }
                 }
@@ -5103,7 +5104,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             const verificationText = renderVerificationResult(result.verification);
             switch (action) {
               case 'apt_c':
-                currentActionResult = `Appointment created for ${result.patient_name} with Dr. ${result.doctor_name || 'Unassigned'} at ${result.time}.\n\n${verificationText}`;
+                currentActionResult = `Appointment created for ${result.patient_name} with ${formatDoctorName(result.doctor_name, 'Unassigned')} at ${result.time}.\n\n${verificationText}`;
                 break;
               case 'apt_u':
                 currentActionResult = `Appointment update completed for ${formatAppointmentLabel(result)}.\n\n${verificationText}`;
