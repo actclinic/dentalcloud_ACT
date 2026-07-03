@@ -427,6 +427,7 @@ const App: React.FC = () => {
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientToEditFromAppointment, setPatientToEditFromAppointment] = useState<Patient | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
   const [selectedTeeth, setSelectedTeeth] = useState<number[]>([]);
   const [useFlatRate, setUseFlatRate] = useState(false);
@@ -3148,6 +3149,31 @@ const App: React.FC = () => {
     handlePatientSelect(patient);
   };
 
+  const handleEditAppointmentPatientInfo = (appointment: Appointment) => {
+    const patient = patients.find((item) => item.id === appointment.patient_id);
+    if (!patient) {
+      setToast({
+        message: 'Patient profile is not available for this appointment.',
+        type: 'error',
+        show: true
+      });
+      return;
+    }
+
+    if (!canAccessView('patients')) {
+      setToast({
+        message: 'You do not have permission to edit patient profiles.',
+        type: 'error',
+        show: true
+      });
+      return;
+    }
+
+    setPatientToEditFromAppointment(patient);
+    setCurrentView('patients');
+    setIsMobileMenuOpen(false);
+  };
+
   const handleConvertLeadAppointment = (appointment: Appointment) => {
     setConvertingLeadAppointment(appointment);
     setNewPatientData({
@@ -3626,6 +3652,8 @@ const App: React.FC = () => {
                     alert('Error: ' + err.message);
                   }
                 }}
+                patientToEdit={patientToEditFromAppointment}
+                onPatientEditHandled={() => setPatientToEditFromAppointment(null)}
             />}
             {currentView === 'appointments' && canAccessView('appointments') && <AppointmentsView 
                 appointments={appointments} 
@@ -3670,6 +3698,7 @@ const App: React.FC = () => {
                 currency={currency}
                 onViewChart={handleViewAppointmentChart}
                 onSelectPatient={handlePatientSelect}
+                onEditPatientInfo={handleEditAppointmentPatientInfo}
                 onConvertLead={handleConvertLeadAppointment}
                 onOpenAppointmentLog={canAccessView('records') && !isDoctor ? () => {
                   setRecordsInitialFilter('appointments');

@@ -165,6 +165,51 @@ body {
   --hover-700: #1e293b;
 }
 
+/* Appointment action buttons follow the selected Settings theme while keeping
+   each action visually distinct. */
+.appointment-action-button {
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.appointment-action-button:hover {
+  transform: translateY(-1px);
+}
+
+.appointment-action-clinical {
+  border-color: var(--hover-600);
+  background-color: var(--hover-600);
+  color: #ffffff;
+  box-shadow: 0 10px 18px -14px var(--hover-700);
+}
+
+.appointment-action-clinical:hover {
+  border-color: var(--hover-700);
+  background-color: var(--hover-700);
+}
+
+.appointment-action-patient {
+  border-color: var(--hover-200);
+  background-color: var(--hover-50);
+  color: var(--hover-700);
+}
+
+.appointment-action-patient:hover {
+  border-color: var(--hover-300);
+  background-color: var(--hover-100);
+  color: var(--hover-800);
+}
+
+.appointment-action-appointment {
+  border-color: color-mix(in srgb, var(--hover-500) 38%, white);
+  background-color: color-mix(in srgb, var(--hover-500) 12%, white);
+  color: var(--hover-800);
+}
+
+.appointment-action-appointment:hover {
+  border-color: color-mix(in srgb, var(--hover-600) 55%, white);
+  background-color: color-mix(in srgb, var(--hover-500) 20%, white);
+}
+
 /* Theme-aware navigation colors */
 :root,
 [data-theme='blue'] {

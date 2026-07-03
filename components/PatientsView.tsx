@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, Calendar, Clock, Filter, AlertTriangle, RotateCw } from 'lucide-react';
 import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType, TreatmentType, Doctor, Location } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
@@ -37,6 +37,8 @@ interface PatientsViewProps {
   onExportPDF?: () => Promise<void>;
   onExportExcel?: () => Promise<void>;
   onRefresh?: () => void | Promise<void>;
+  patientToEdit?: Patient | null;
+  onPatientEditHandled?: () => void;
   loyaltyEnabled: boolean;
   loyaltyRules?: LoyaltyRule[];
   doctors?: Pick<Doctor, 'id' | 'name'>[];
@@ -60,6 +62,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   onExportPDF,
   onExportExcel,
   onRefresh,
+  patientToEdit,
+  onPatientEditHandled,
   loyaltyEnabled, 
   loyaltyRules = [],
   doctors = [],
@@ -108,6 +112,29 @@ const PatientsView: React.FC<PatientsViewProps> = ({
 
   const isBranchTransferValidationError = (error: unknown) =>
     error instanceof Error && error.message.includes('Cannot transfer branch: Patient has existing records');
+
+  const openEditPatientModal = (patient: Patient) => {
+    setEditModal({ open: true, patient });
+    setEditData({
+      name: patient.name,
+      email: patient.email || '',
+      phone: patient.phone || '',
+      medicalHistory: patient.medicalHistory || '',
+      age: patient.age?.toString() || '',
+      address: patient.address || '',
+      city: patient.city || '',
+      township: patient.township || '',
+      patient_type: normalizePatientType(patient.patient_type),
+      location_id: patient.location_id || ''
+    });
+  };
+
+  useEffect(() => {
+    if (!patientToEdit) return;
+
+    openEditPatientModal(patientToEdit);
+    onPatientEditHandled?.();
+  }, [patientToEdit, onPatientEditHandled]);
 
   const getBranchTransferBlockedItems = (recordState: BranchTransferRecordState): string[] => {
     const blockedItems: string[] = [];
@@ -877,19 +904,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditModal({ open: true, patient });
-                              setEditData({
-                                name: patient.name,
-                                email: patient.email || '',
-                                phone: patient.phone || '',
-                                medicalHistory: patient.medicalHistory || '',
-                                age: patient.age?.toString() || '',
-                                address: patient.address || '',
-                                city: patient.city || '',
-                                township: patient.township || '',
-                                patient_type: normalizePatientType(patient.patient_type),
-                                location_id: patient.location_id || ''
-                              });
+                              openEditPatientModal(patient);
                             }}
                             className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
                             title="Edit patient profile"
@@ -1029,19 +1044,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
-                  setEditModal({ open: true, patient });
-                  setEditData({
-                    name: patient.name,
-                    email: patient.email || '',
-                    phone: patient.phone || '',
-                    medicalHistory: patient.medicalHistory || '',
-                    age: patient.age?.toString() || '',
-                    address: patient.address || '',
-                    city: patient.city || '',
-                    township: patient.township || '',
-                    patient_type: normalizePatientType(patient.patient_type),
-                    location_id: patient.location_id || ''
-                  });
+                  openEditPatientModal(patient);
                 }}
                 className="w-full mt-2 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100 flex items-center justify-center gap-2"
               >
