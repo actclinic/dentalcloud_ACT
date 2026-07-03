@@ -1059,6 +1059,74 @@ export const api = {
       return mapPatient(result);
     },
     delete: async (id: string): Promise<void> => {
+      // FIX: Before deleting the patient, we must handle appointments whose
+      // patient_id will become NULL due to ON DELETE SET NULL.
+      //
+      // The appointments table has this constraint:
+      //   CONSTRAINT appointments_registered_or_guest_check CHECK (
+      //     patient_id IS NOT NULL
+      //     OR (guest_name IS NOT NULL AND guest_phone IS NOT NULL)
+      //   )
+      //
+      // If a patient is deleted and an appointment has patient_id set but
+      // no guest info, ON DELETE SET NULL makes patient_id NULL, violating
+      // the constraint and causing the delete to fail.
+      //
+      // Fix: Populate guest_name / guest_phone from the patient record on
+      // any affected appointments BEFORE deleting the patient.
+
+      // 1. Fetch the patient to get their name and phone for guest fallback.
+      const { data: patient, error: patientFetchError } = await supabase
+        .from('patients')
+        .select('name, phone')
+        .eq('id', id)
+        .single();
+
+      if (patientFetchError) {
+        throw new Error(`Failed to fetch patient before deletion: ${patientFetchError.message}`);
+      }
+
+      if (!patient) {
+        throw new Error('Patient not found.');
+      }
+
+      // 2. Find appointments linked to this patient that are missing
+      //    guest info and would break the constraint after SET NULL.
+      const { data: patientAppointments, error: fetchAppointmentsError } = await supabase
+        .from('appointments')
+        .select('id, guest_name, guest_phone')
+        .eq('patient_id', id);
+
+      if (fetchAppointmentsError) {
+        throw new Error(`Failed to check appointments before patient deletion: ${fetchAppointmentsError.message}`);
+      }
+
+      // 3. Populate guest_name/guest_phone on appointments that lack them.
+      const appointmentsNeedingFix = (patientAppointments || []).filter(
+        (apt) => !apt.guest_name?.trim() || !apt.guest_phone?.trim()
+      );
+
+      if (appointmentsNeedingFix.length > 0) {
+        const { error: updateError } = await supabase
+          .from('appointments')
+          .update({
+            guest_name: patient.name || 'Unknown Patient',
+            guest_phone: patient.phone?.trim() || 'N/A',
+          })
+          .in(
+            'id',
+            appointmentsNeedingFix.map((a) => a.id)
+          );
+
+        if (updateError) {
+          throw new Error(
+            `Failed to preserve appointments before patient deletion: ${updateError.message}`
+          );
+        }
+      }
+
+      // 4. Now safe to delete — ON DELETE SET NULL leaves patient_id NULL,
+      //    but guest_name + guest_phone satisfy the constraint.
       const { error } = await supabase
         .from('patients')
         .delete()
@@ -1066,6 +1134,19 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
+    _deprecatedDelete: async (id: string): Promise<void> => {
+
+
+
+      const { error } = await supabase
+
+        .from('patients')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
+    },
+
 
     // Update or create patient auth record
     updateAccount: async (
