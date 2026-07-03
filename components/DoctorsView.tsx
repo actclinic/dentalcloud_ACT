@@ -110,9 +110,9 @@ const DoctorsView: React.FC<DoctorsViewProps> = ({
           <button
             type="button"
             onClick={() => void onRefresh?.()}
-            className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-700 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors whitespace-nowrap"
+            className="refresh-action-button inline-flex items-center gap-2 border px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap"
           >
-            <RotateCw className="w-4 h-4 shrink-0" /> <span>Refresh</span>
+            <RotateCw className="refresh-action-icon w-4 h-4 shrink-0" /> <span>Refresh</span>
           </button>
           <ExportMenu
             disabled={doctors.length === 0}

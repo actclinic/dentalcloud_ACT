@@ -299,9 +299,9 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
             </button>
             <button
               onClick={onRefresh}
-              className="theme-accent-text theme-accent-soft-bg flex min-h-10 items-center justify-center gap-2 rounded-xl border theme-accent-border px-3 py-2 text-sm font-bold transition-colors hover:bg-blue-100 sm:px-4"
+              className="refresh-action-button flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold sm:px-4"
             >
-              <RotateCw size={16} /> Refresh
+              <RotateCw size={16} className="refresh-action-icon" /> Refresh
             </button>
             </div>
             </div>

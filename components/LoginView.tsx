@@ -599,10 +599,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, appName = '', app
                     <button
                       type="button"
                       onClick={generateCaptcha}
-                      className="p-2 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                      className="refresh-action-button p-2 border rounded-lg"
                       title="Refresh Verification"
                     >
-                      <RefreshCw size={14} className="text-gray-500" />
+                      <RefreshCw size={14} className="refresh-action-icon" />
                     </button>
                   </div>
                   <div className="mt-1.5">

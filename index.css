@@ -165,6 +165,83 @@ body {
   --hover-700: #1e293b;
 }
 
+/* Shared refresh button treatment: intentionally distinct from the app's
+   regular neutral/primary actions while still following Settings theme colors. */
+.refresh-action-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--hover-500) 42%, white);
+  background:
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--hover-300) 34%, transparent), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--hover-50) 88%, white), color-mix(in srgb, var(--hover-200) 52%, white));
+  color: var(--hover-800);
+  box-shadow: 0 12px 28px -22px var(--hover-700), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.refresh-action-button::after {
+  content: '';
+  position: absolute;
+  inset: -45% -30%;
+  z-index: -1;
+  background: conic-gradient(from 90deg, transparent, color-mix(in srgb, var(--hover-400) 30%, transparent), transparent 38%);
+  opacity: 0;
+  transform: rotate(0deg);
+  transition: opacity 180ms ease;
+}
+
+.refresh-action-button:hover:not(:disabled) {
+  border-color: var(--hover-500);
+  box-shadow: 0 18px 34px -22px var(--hover-700), 0 0 0 3px color-mix(in srgb, var(--hover-300) 24%, transparent);
+  filter: saturate(1.08);
+  transform: translateY(-1px) scale(1.015);
+}
+
+.refresh-action-button:hover:not(:disabled)::after {
+  opacity: 1;
+  animation: refresh-button-sweep 1100ms linear infinite;
+}
+
+.refresh-action-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+
+.refresh-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  filter: grayscale(0.2);
+}
+
+.refresh-action-icon {
+  color: var(--hover-700);
+  transition: transform 260ms ease, color 180ms ease;
+}
+
+.refresh-action-button:hover:not(:disabled) .refresh-action-icon {
+  color: var(--hover-800);
+  transform: rotate(180deg);
+}
+
+@keyframes refresh-button-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-action-button,
+  .refresh-action-button::after,
+  .refresh-action-icon {
+    transition: none;
+    animation: none !important;
+  }
+
+  .refresh-action-button:hover:not(:disabled) .refresh-action-icon {
+    transform: none;
+  }
+}
+
 /* Appointment action buttons follow the selected Settings theme while keeping
    each action visually distinct. */
 .appointment-action-button {

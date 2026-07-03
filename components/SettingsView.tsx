@@ -2175,10 +2175,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 .catch((error: any) => setActiveStaffError(error?.message || 'Failed to load active staff sessions.'))
                 .finally(() => setActiveStaffLoading(false));
             }}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-60"
+            className="refresh-action-button inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold"
             disabled={activeStaffLoading}
           >
-            <RefreshCw className={`w-4 h-4 ${activeStaffLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`refresh-action-icon w-4 h-4 ${activeStaffLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>

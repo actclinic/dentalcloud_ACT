@@ -546,9 +546,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           <button
             type="button"
             onClick={() => void onRefresh?.()}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 border border-gray-200 bg-white px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="refresh-action-button flex-1 sm:flex-initial flex items-center justify-center gap-2 border px-4 py-2 rounded-lg text-sm font-bold"
           >
-            <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
+            <RotateCw className="refresh-action-icon w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
           </button>
           <ExportMenu
             disabled={patients.length === 0 || exporting}

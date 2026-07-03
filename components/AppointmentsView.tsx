@@ -591,9 +591,9 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
         <button
           type="button"
           onClick={() => void onRefresh?.()}
-          className="flex-1 md:flex-initial flex items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+          className="refresh-action-button flex-1 md:flex-initial flex items-center justify-center gap-2 border px-4 py-2 rounded-lg text-sm font-bold"
         >
-          <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
+          <RotateCw className="refresh-action-icon w-4 h-4" /> <span className="hidden sm:inline">Refresh</span>
         </button>
         {onOpenAppointmentLog && (
           <button

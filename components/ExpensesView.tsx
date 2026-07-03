@@ -201,9 +201,9 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
             <button
               type="button"
               onClick={() => void onRefresh?.()}
-              className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 bg-white text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all duration-200"
+              className="refresh-action-button flex items-center gap-2 px-5 py-2.5 border rounded-xl text-sm font-bold"
             >
-              <RotateCw className="w-4 h-4" />
+              <RotateCw className="refresh-action-icon w-4 h-4" />
               Refresh
             </button>
             <ExportMenu

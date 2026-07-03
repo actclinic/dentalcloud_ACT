@@ -75,9 +75,9 @@ const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentType
               type="button"
               onClick={() => void onRefresh?.()}
               disabled={loading}
-              className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-700 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="refresh-action-button inline-flex items-center gap-2 border px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold"
             >
-              <RotateCw className="w-4 h-4 shrink-0" /> <span>Refresh</span>
+              <RotateCw className="refresh-action-icon w-4 h-4 shrink-0" /> <span>Refresh</span>
             </button>
             <button onClick={handleDownloadPDF} disabled={treatmentTypes.length === 0}
               className="inline-flex items-center gap-2 bg-green-600 text-white px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">

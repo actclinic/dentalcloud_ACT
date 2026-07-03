@@ -486,11 +486,11 @@ const PatientSelfRegistration: React.FC<PatientRegistrationProps> = ({
                     type="button"
                     onClick={handleResendEmail}
                     disabled={resending}
-                    className="text-indigo-600 hover:text-indigo-800 font-medium inline-flex items-center gap-1"
+                    className="refresh-action-button inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold disabled:opacity-60"
                   >
                     {resending ? (
                       <>
-                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        <RefreshCw className="refresh-action-icon w-3 h-3 animate-spin" />
                         Resending...
                       </>
                     ) : (

@@ -162,9 +162,9 @@ const UsersView: React.FC<UsersViewProps> = ({
               <button
                 type="button"
                 onClick={() => void onRefresh?.()}
-                className="flex flex-1 items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors sm:flex-initial"
+                className="refresh-action-button flex flex-1 items-center justify-center gap-2 border px-4 py-2 rounded-lg text-sm font-bold sm:flex-initial"
               >
-                <RotateCw className="w-4 h-4" /> Refresh
+                <RotateCw className="refresh-action-icon w-4 h-4" /> Refresh
               </button>
               <button
                 onClick={handleDownloadCSV}
