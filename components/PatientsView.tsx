@@ -76,6 +76,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [dateQuickFilter, setDateQuickFilter] = useState<'all' | 'today' | 'custom' | 'new'>('all');
   const [dateFilter, setDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
+  const [visitDateQuickFilter, setVisitDateQuickFilter] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
+  const [visitDateFilter, setVisitDateFilter] = useState('');
+  const [visitEndDateFilter, setVisitEndDateFilter] = useState('');
   const [doctorFilter, setDoctorFilter] = useState('');
   const [treatmentFilter, setTreatmentFilter] = useState('');
   const [authModal, setAuthModal] = useState<{ open: boolean, patient: Patient | null }>({ open: false, patient: null });
@@ -152,6 +155,18 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   };
 
   const todayISO = useMemo(() => toLocalISODate(new Date()), []);
+
+  const todayVisitStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const weekAgoStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const monthAgoStr = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().slice(0, 10);
+  }, []);
 
   const isNewPatientToday = (patient: Patient) => {
     if (!patient.created_at) return false;
@@ -238,6 +253,24 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     return map;
   }, [treatmentRecords]);
 
+  // Compute last visit date per patient from appointments
+  const patientLastVisitMap = useMemo(() => {
+    const map = new Map<string, string>();
+    appointments.forEach((apt) => {
+      if (!apt.patient_id || !apt.date) return;
+      const existing = map.get(apt.patient_id);
+      if (!existing || apt.date > existing) {
+        map.set(apt.patient_id, apt.date);
+      }
+    });
+    return map;
+  }, [appointments]);
+
+  const formatDate = (dateStr: string): string => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   const makeUniqueSortedOptions = (values: string[]) => {
     return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b));
@@ -305,6 +338,26 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       });
     }
 
+    // Apply visit date filter
+    if (visitDateQuickFilter !== 'all' || visitDateFilter || visitEndDateFilter) {
+      const visitRangeStart = visitDateQuickFilter === 'today' ? todayVisitStr
+        : visitDateQuickFilter === 'week' ? weekAgoStr
+        : visitDateQuickFilter === 'month' ? monthAgoStr
+        : (visitDateFilter && visitEndDateFilter && visitDateFilter > visitEndDateFilter ? visitEndDateFilter : visitDateFilter);
+      const visitRangeEnd = visitDateQuickFilter === 'today' ? todayVisitStr
+        : visitDateQuickFilter === 'week' ? todayVisitStr
+        : visitDateQuickFilter === 'month' ? todayVisitStr
+        : (visitDateFilter && visitEndDateFilter && visitDateFilter > visitEndDateFilter ? visitDateFilter : visitEndDateFilter);
+
+      scopedPatients = scopedPatients.filter((patient) => {
+        const lastVisit = patientLastVisitMap.get(patient.id);
+        if (!lastVisit) return false;
+        if (visitRangeStart && lastVisit < visitRangeStart) return false;
+        if (visitRangeEnd && lastVisit > visitRangeEnd) return false;
+        return true;
+      });
+    }
+
     // Apply doctor filter
     if (doctorFilter) {
       const patientIdsWithDoctor = new Set<string>();
@@ -357,7 +410,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         searchableRawCreatedDate.includes(term)
       );
     });
-  }, [patients, searchTerm, dateQuickFilter, dateFilter, endDateFilter, doctorFilter, treatmentFilter, todayISO, treatmentRecords, doctorNameById]);
+  }, [patients, searchTerm, dateQuickFilter, dateFilter, endDateFilter, visitDateQuickFilter, visitDateFilter, visitEndDateFilter, doctorFilter, treatmentFilter, todayISO, treatmentRecords, doctorNameById, patientLastVisitMap, todayVisitStr, weekAgoStr, monthAgoStr]);
 
   const cityOptions = useMemo(
     () => getMyanmarCities().map((city) => ({ value: city, label: city })),
@@ -417,7 +470,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   // Reset to first page when patients change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [patients, dateQuickFilter, dateFilter, endDateFilter, doctorFilter, treatmentFilter]);
+  }, [patients, dateQuickFilter, dateFilter, endDateFilter, visitDateQuickFilter, visitDateFilter, visitEndDateFilter, doctorFilter, treatmentFilter]);
 
   const [exporting, setExporting] = useState(false);
 
@@ -625,6 +678,32 @@ const PatientsView: React.FC<PatientsViewProps> = ({
             className="h-7 w-[132px] border-0 px-1 text-[11px] font-medium text-gray-700 focus:outline-none focus:ring-0 bg-transparent"
           />
         </div>
+        {/* Visit Date Filter */}
+        <select
+          value={visitDateQuickFilter}
+          onChange={(e) => {
+            const v = e.target.value as typeof visitDateQuickFilter;
+            setVisitDateQuickFilter(v);
+            setCurrentPage(1);
+            if (v !== 'custom') { setVisitDateFilter(''); setVisitEndDateFilter(''); }
+          }}
+          className="h-7 rounded-lg border border-teal-200 bg-teal-50/50 px-2 text-[11px] font-semibold text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/30 cursor-pointer"
+        >
+          <option value="all">🦷 All Visits</option>
+          <option value="today">📅 Visited Today</option>
+          <option value="week">📆 This Week</option>
+          <option value="month">🗓️ This Month</option>
+          <option value="custom">📋 Custom Range</option>
+        </select>
+        {visitDateQuickFilter === 'custom' && (
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={visitDateFilter} onChange={(e) => { setVisitDateFilter(e.target.value); setCurrentPage(1); }}
+              className="h-7 rounded-lg border border-teal-200 bg-teal-50/50 px-2 text-[11px] font-semibold text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/30" />
+            <span className="text-[11px] text-gray-400">to</span>
+            <input type="date" value={visitEndDateFilter} onChange={(e) => { setVisitEndDateFilter(e.target.value); setCurrentPage(1); }}
+              className="h-7 rounded-lg border border-teal-200 bg-teal-50/50 px-2 text-[11px] font-semibold text-teal-700 outline-none focus:ring-2 focus:ring-teal-500/30" />
+          </div>
+        )}
         {/* Doctor */}
         <select
           value={doctorFilter}
@@ -648,9 +727,9 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           ))}
         </select>
         {/* Reset */}
-        {(dateQuickFilter !== 'all' || dateFilter || endDateFilter || doctorFilter || treatmentFilter) && (
+        {(dateQuickFilter !== 'all' || dateFilter || endDateFilter || visitDateQuickFilter !== 'all' || visitDateFilter || visitEndDateFilter || doctorFilter || treatmentFilter) && (
           <button
-            onClick={() => { setDateQuickFilter('all' as const); setDateFilter(''); setEndDateFilter(''); setDoctorFilter(''); setTreatmentFilter(''); setCurrentPage(1); }}
+            onClick={() => { setDateQuickFilter('all' as const); setDateFilter(''); setEndDateFilter(''); setVisitDateQuickFilter('all'); setVisitDateFilter(''); setVisitEndDateFilter(''); setDoctorFilter(''); setTreatmentFilter(''); setCurrentPage(1); }}
             className="h-7 px-2.5 rounded-lg border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 transition-colors bg-white"
           >
             Reset
@@ -792,6 +871,12 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[168px] min-w-[168px]">Name</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide text-teal-700">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar size={12} className="text-teal-500" />
+                        Last Visit
+                      </div>
+                    </th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Age</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Contact</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[140px] min-w-[140px]">Address</th>
@@ -846,6 +931,16 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       </td>
                       <td className="px-3 py-3 align-top text-gray-700 whitespace-nowrap">
                         {formatCreatedDate(patient.created_at)}
+                      </td>
+                      <td className="px-3 py-3 align-top whitespace-nowrap">
+                        {patientLastVisitMap.get(patient.id) ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                            <Calendar size={10} className="text-teal-500" />
+                            {formatDate(patientLastVisitMap.get(patient.id)!)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No visits</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 align-top text-gray-700">
                         {patient.age ?? 'N/A'}
@@ -1001,6 +1096,17 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     </div>
                     <div className="text-xs text-gray-500">{patient.phone}</div>
                     <div className="text-[11px] text-gray-400 mt-1">Date: {formatCreatedDate(patient.created_at)}</div>
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      Last Visit:{' '}
+                      {patientLastVisitMap.get(patient.id) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                          <Calendar size={9} className="text-teal-500" />
+                          {formatDate(patientLastVisitMap.get(patient.id)!)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 italic">No visits</span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
