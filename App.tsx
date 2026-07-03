@@ -3949,9 +3949,9 @@ const App: React.FC = () => {
       {/* Modals */}
       {showPatientModal && (
         <Modal title={convertingLeadAppointment ? "Register New Patient" : "Register Clinical Patient"} onClose={() => { setShowPatientModal(false); setConvertingLeadAppointment(null); setPatientDuplicateWarning(null); }}>
-          <form onSubmit={handleCreatePatient} className="space-y-5">
+          <form onSubmit={handleCreatePatient} className="space-y-6">
             {convertingLeadAppointment && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Linked Appointment</p>
                 <p className="mt-1 text-sm font-bold text-amber-900">
                   {convertingLeadAppointment.date} at {convertingLeadAppointment.time}
@@ -3961,68 +3961,118 @@ const App: React.FC = () => {
                 </p>
               </div>
             )}
-            <Input label="Full Patient Name" required value={newPatientData.name} onChange={(e: any) => { setNewPatientData({...newPatientData, name: e.target.value}); setPatientDuplicateWarning(null); }} />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-               <Input label="Primary Email" type="email" value={newPatientData.email} onChange={(e: any) => setNewPatientData({...newPatientData, email: e.target.value})} />
-               <Input label="Mobile Contact" required value={newPatientData.phone} onChange={(e: any) => { setNewPatientData({...newPatientData, phone: e.target.value}); setPatientDuplicateWarning(null); }} onBlur={() => { void validateNewPatientDuplicate(); }} />
-            </div>
-            
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Age</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="150"
-                  required
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  value={newPatientData.age ?? ''}
-                  onChange={(e) => { setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value, 10) : undefined}); setPatientDuplicateWarning(null); }}
-                  onBlur={() => { void validateNewPatientDuplicate(); }}
-                  placeholder="Enter age"
-                />
+
+            {/* ═══ PERSONAL INFORMATION ═══ */}
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Personal Information
+              </h3>
+              <Input label="Full Patient Name" required value={newPatientData.name} onChange={(e: any) => { setNewPatientData({...newPatientData, name: e.target.value}); setPatientDuplicateWarning(null); }} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Age</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="150"
+                    required
+                    className="w-full border-gray-200 border rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                    value={newPatientData.age ?? ''}
+                    onChange={(e) => { setNewPatientData({...newPatientData, age: e.target.value ? parseInt(e.target.value, 10) : undefined}); setPatientDuplicateWarning(null); }}
+                    onBlur={() => { void validateNewPatientDuplicate(); }}
+                    placeholder="Enter age"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient Type</label>
+                  <select
+                    className="w-full border-gray-200 border rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white"
+                    value={newPatientData.patient_type || activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME}
+                    onChange={(e) => setNewPatientData({...newPatientData, patient_type: e.target.value})}
+                  >
+                    {patientTypeOptionsForNewPatient.map((patientType) => (
+                      <option key={patientType} value={patientType}>{patientType}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient Type</label>
-                <select
-                  className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                  value={newPatientData.patient_type || activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME}
-                  onChange={(e) => setNewPatientData({...newPatientData, patient_type: e.target.value})}
-                >
-                  {patientTypeOptionsForNewPatient.map((patientType) => (
-                    <option key={patientType} value={patientType}>{patientType}</option>
-                  ))}
-                </select>
+            </div>
+
+            {/* ═══ CONTACT DETAILS ═══ */}
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Contact Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Primary Email" type="email" value={newPatientData.email} onChange={(e: any) => setNewPatientData({...newPatientData, email: e.target.value})} />
+                <Input label="Mobile Contact" required value={newPatientData.phone} onChange={(e: any) => { setNewPatientData({...newPatientData, phone: e.target.value}); setPatientDuplicateWarning(null); }} onBlur={() => { void validateNewPatientDuplicate(); }} />
               </div>
             </div>
+
             {isNewPatientAgeMissing && (
-              <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+              <div role="alert" className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                 <span>Please add the patient's age before finalizing registration.</span>
               </div>
             )}
             {patientDuplicateWarning && (
-              <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
+              <div role="alert" className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                 <span>{patientDuplicateWarning}</span>
               </div>
             )}
 
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Branch / Location</label>
-              <select
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
-                value={newPatientData.location_id || ''}
-                onChange={(e) => setNewPatientData({...newPatientData, location_id: e.target.value})}
-              >
-                <option value="">Select a branch...</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
+            {/* ═══ LOCATION ═══ */}
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Location
+              </h3>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Branch / Location</label>
+                <select
+                  className="w-full border-gray-200 border rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white"
+                  value={newPatientData.location_id || ''}
+                  onChange={(e) => setNewPatientData({...newPatientData, location_id: e.target.value})}
+                >
+                  <option value="">Select a branch...</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">City</label>
+                  <SearchableSelect
+                    value={newPatientData.city || ''}
+                    onChange={(selectedCity) => {
+                      const allowedTownships = getTownshipsForCity(selectedCity);
+                      const nextTownship = allowedTownships.includes(newPatientData.township || '') ? newPatientData.township : '';
+                      setNewPatientData({ ...newPatientData, city: selectedCity, township: nextTownship });
+                    }}
+                    options={cityOptions}
+                    placeholder="Select City"
+                    emptyMessage="No city found"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Township</label>
+                  <SearchableSelect
+                    value={newPatientData.township || ''}
+                    onChange={(selectedTownship) => setNewPatientData({ ...newPatientData, township: selectedTownship })}
+                    options={townshipOptionsForNewPatient}
+                    placeholder={newPatientData.city ? 'Select Township' : 'Select City first'}
+                    emptyMessage={newPatientData.city ? 'No township found for this city' : 'Choose city first'}
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
+            {/* ═══ CLINICAL FEE INFO ═══ */}
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5">
               <p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 mb-2">Patient Service Fee</p>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium text-gray-700">
@@ -4039,46 +4089,21 @@ const App: React.FC = () => {
               </p>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Address</label>
-              <input
-                type="text"
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                value={newPatientData.address || ''}
-                onChange={(e) => setNewPatientData({...newPatientData, address: e.target.value})}
-                placeholder="Street address"
-              />
+            {/* ═══ ADDRESS ═══ */}
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Address
+              </h3>
+              <Input label="Street Address" placeholder="Street address" value={newPatientData.address || ''} onChange={(e: any) => setNewPatientData({...newPatientData, address: e.target.value})} />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">City</label>
-                <SearchableSelect
-                  value={newPatientData.city || ''}
-                  onChange={(selectedCity) => {
-                    const allowedTownships = getTownshipsForCity(selectedCity);
-                    const nextTownship = allowedTownships.includes(newPatientData.township || '') ? newPatientData.township : '';
-                    setNewPatientData({ ...newPatientData, city: selectedCity, township: nextTownship });
-                  }}
-                  options={cityOptions}
-                  placeholder="Select City"
-                  emptyMessage="No city found"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Township</label>
-                <SearchableSelect
-                  value={newPatientData.township || ''}
-                  onChange={(selectedTownship) => setNewPatientData({ ...newPatientData, township: selectedTownship })}
-                  options={townshipOptionsForNewPatient}
-                  placeholder={newPatientData.city ? 'Select Township' : 'Select City first'}
-                  emptyMessage={newPatientData.city ? 'No township found for this city' : 'Choose city first'}
-                />
-              </div>
-            </div>
-            
-            <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-              <p className="text-[10px] font-black text-indigo-600 uppercase mb-2">Patient Portal Account (Optional)</p>
+            {/* ═══ PATIENT PORTAL ACCOUNT ═══ */}
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-5 space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Patient Portal Account (Optional)
+              </h3>
               <Input 
                 label="Set Password" 
                 type="password" 
@@ -4086,20 +4111,24 @@ const App: React.FC = () => {
                 value={newPatientData.password} 
                 onChange={(e: any) => setNewPatientData({...newPatientData, password: e.target.value})} 
               />
-              <p className="text-[10px] text-indigo-400 mt-2 italic">If set, patient can log in using their Name/Phone and this password.</p>
+              <p className="text-[11px] text-indigo-400">If set, patient can log in using their Name/Phone and this password.</p>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Relevant Medical History</label>
-              <textarea className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" rows={4}
+            {/* ═══ MEDICAL HISTORY ═══ */}
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Medical History
+              </h3>
+              <textarea className="w-full border-gray-200 border rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all min-h-[100px]" rows={4}
                 value={newPatientData.medicalHistory} onChange={e => setNewPatientData({...newPatientData, medicalHistory: e.target.value})} />
             </div>
             <button 
               type="submit" 
               disabled={isSubmitting}
-              className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-2xl font-semibold text-sm shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {isSubmitting ? 'Processing...' : 'Finalize Registration'}
+              {isSubmitting ? 'Registering...' : 'Register Patient'}
             </button>
           </form>
         </Modal>

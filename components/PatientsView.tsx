@@ -1188,117 +1188,140 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                          setIsSubmitting(false);
                        }
           }} 
-          className="space-y-5"
+          className="space-y-6"
         >
-          <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
-            <div className="theme-accent-soft-bg theme-accent-text w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
+          <div className="flex items-center gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
+            <div className="bg-indigo-100 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
               {editModal.patient.name.charAt(0)}
             </div>
             <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Editing Patient</p>
-              <h4 className="text-lg font-black text-gray-900">{editModal.patient.name}</h4>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Editing Patient</p>
+              <h4 className="text-lg font-bold text-gray-900">{editModal.patient.name}</h4>
             </div>
           </div>
 
-          <Input label="Full Patient Name" required value={editData.name} onChange={(e: any) => setEditData({...editData, name: e.target.value})} />
-          <div>
-            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Branch / Location</label>
-            <select
-              required
-              className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
-              value={editData.location_id}
-              onChange={(e) => setEditData({...editData, location_id: e.target.value})}
-            >
-              <option value="">Select a branch...</option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>{loc.name}</option>
-              ))}
-            </select>
-            {editModal.patient.location_id !== editData.location_id && editData.location_id && (
-              <p className="mt-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                Saving will transfer this patient profile and portal access to the selected branch.
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-             <Input label="Primary Email" type="email" value={editData.email} onChange={(e: any) => setEditData({...editData, email: e.target.value})} />
-             <Input label="Mobile Contact" required value={editData.phone} onChange={(e: any) => setEditData({...editData, phone: e.target.value})} />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Age</label>
-              <input
-                type="number"
-                min="0"
-                max="150"
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                value={editData.age}
-                onChange={(e) => setEditData({...editData, age: e.target.value})}
-                placeholder="Enter age"
-              />
+          {/* ═══ PERSONAL INFORMATION ═══ */}
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+              Personal Information
+            </h3>
+            <Input label="Full Patient Name" required value={editData.name} onChange={(e: any) => setEditData({...editData, name: e.target.value})} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Age</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="150"
+                  className="w-full border-gray-200 border rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                  value={editData.age}
+                  onChange={(e) => setEditData({...editData, age: e.target.value})}
+                  placeholder="Enter age"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Patient Type</label>
+                <select
+                  className="w-full border-gray-200 border rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white"
+                  value={editData.patient_type}
+                  onChange={(e) => setEditData({...editData, patient_type: e.target.value})}
+                >
+                  {patientTypeOptionsForEdit.map((patientType) => (
+                    <option key={patientType} value={patientType}>{patientType}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+          </div>
+
+          {/* ═══ CONTACT DETAILS ═══ */}
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+              Contact Details
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Primary Email" type="email" value={editData.email} onChange={(e: any) => setEditData({...editData, email: e.target.value})} />
+              <Input label="Mobile Contact" required value={editData.phone} onChange={(e: any) => setEditData({...editData, phone: e.target.value})} />
+            </div>
+          </div>
+
+          {/* ═══ LOCATION ═══ */}
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+              Location
+            </h3>
             <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Patient Type</label>
+              <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Branch / Location</label>
               <select
-                className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white"
-                value={editData.patient_type}
-                onChange={(e) => setEditData({...editData, patient_type: e.target.value})}
+                required
+                className="w-full border-gray-200 border rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white"
+                value={editData.location_id}
+                onChange={(e) => setEditData({...editData, location_id: e.target.value})}
               >
-                {patientTypeOptionsForEdit.map((patientType) => (
-                  <option key={patientType} value={patientType}>{patientType}</option>
+                <option value="">Select a branch...</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
                 ))}
               </select>
+              {editModal.patient.location_id !== editData.location_id && editData.location_id && (
+                <p className="mt-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  Saving will transfer this patient profile and portal access to the selected branch.
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">City</label>
+                <SearchableSelect
+                  value={editData.city || ''}
+                  onChange={(selectedCity) => {
+                    const allowedTownships = getTownshipsForCity(selectedCity);
+                    const nextTownship = allowedTownships.includes(editData.township || '') ? editData.township : '';
+                    setEditData({ ...editData, city: selectedCity, township: nextTownship });
+                  }}
+                  options={cityOptions}
+                  placeholder="Select City"
+                  emptyMessage="No city found"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1.5">Township</label>
+                <SearchableSelect
+                  value={editData.township || ''}
+                  onChange={(selectedTownship) => setEditData({ ...editData, township: selectedTownship })}
+                  options={townshipOptions}
+                  placeholder={editData.city ? 'Select Township' : 'Select City first'}
+                  emptyMessage={editData.city ? 'No township found for this city' : 'Choose city first'}
+                />
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Address</label>
-            <input
-              type="text"
-              className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-              value={editData.address}
-              onChange={(e) => setEditData({...editData, address: e.target.value})}
-              placeholder="Street address"
-            />
+          {/* ═══ ADDRESS ═══ */}
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+              Address
+            </h3>
+            <Input label="Street Address" placeholder="Street address" value={editData.address} onChange={(e: any) => setEditData({...editData, address: e.target.value})} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">City</label>
-              <SearchableSelect
-                value={editData.city || ''}
-                onChange={(selectedCity) => {
-                  const allowedTownships = getTownshipsForCity(selectedCity);
-                  const nextTownship = allowedTownships.includes(editData.township || '') ? editData.township : '';
-                  setEditData({ ...editData, city: selectedCity, township: nextTownship });
-                }}
-                options={cityOptions}
-                placeholder="Select City"
-                emptyMessage="No city found"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Township</label>
-              <SearchableSelect
-                value={editData.township || ''}
-                onChange={(selectedTownship) => setEditData({ ...editData, township: selectedTownship })}
-                options={townshipOptions}
-                placeholder={editData.city ? 'Select Township' : 'Select City first'}
-                emptyMessage={editData.city ? 'No township found for this city' : 'Choose city first'}
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Relevant Medical History</label>
-            <textarea className="w-full border-gray-200 border rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" rows={4}
+          {/* ═══ MEDICAL HISTORY ═══ */}
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+              Medical History
+            </h3>
+            <textarea className="w-full border-gray-200 border rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all min-h-[100px]" rows={4}
               value={editData.medicalHistory} onChange={e => setEditData({...editData, medicalHistory: e.target.value})} />
           </div>
           <button 
             type="submit" 
             disabled={isSubmitting}
-            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-all mt-2"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-2xl font-semibold text-sm shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {isSubmitting ? 'Saving Changes...' : 'Save Changes'}
           </button>
