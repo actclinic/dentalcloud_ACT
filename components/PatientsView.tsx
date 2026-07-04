@@ -839,7 +839,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       <p className="font-semibold text-gray-900">{detailPatient.age ?? 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Date</p>
+                      <p className="text-gray-500">Created Date</p>
                       <p className="font-semibold text-gray-900">{formatCreatedDate(detailPatient.created_at)}</p>
                     </div>
                     <div>
@@ -870,7 +870,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   <tr className="text-indigo-700">
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">No</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide w-[168px] min-w-[168px]">Name</th>
-                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Date</th>
+                    <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide">Created Date</th>
                     <th className="sticky top-0 z-20 bg-indigo-50 px-3 py-3 text-left font-bold uppercase text-xs tracking-wide text-teal-700">
                       <div className="flex items-center gap-1.5">
                         <Calendar size={12} className="text-teal-500" />
@@ -1095,7 +1095,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       Next : {formatAppointmentDate(nextAppointment?.date)}
                     </div>
                     <div className="text-xs text-gray-500">{patient.phone}</div>
-                    <div className="text-[11px] text-gray-400 mt-1">Date: {formatCreatedDate(patient.created_at)}</div>
+                    <div className="text-[11px] text-gray-400 mt-1">Created Date: {formatCreatedDate(patient.created_at)}</div>
                     <div className="text-[11px] text-gray-400 mt-1">
                       Last Visit:{' '}
                       {patientLastVisitMap.get(patient.id) ? (
