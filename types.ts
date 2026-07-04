@@ -99,6 +99,20 @@ export interface PaymentRecord {
   createdAt?: string;
   createdByUserId?: string | null;
   createdByUserName?: string | null;
+  corrections?: PaymentCorrection[];
+}
+
+export interface PaymentCorrection {
+  id: string;
+  paymentId: string;
+  oldAmount: number;
+  newAmount: number;
+  oldMethod?: PaymentMethod | null;
+  newMethod?: PaymentMethod | null;
+  reason: string;
+  editedBy: string;
+  editedAt: string;
+  editorName?: string | null;
 }
 
 export interface PaymentReceiptTreatmentLine {

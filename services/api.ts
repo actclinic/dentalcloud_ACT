@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection } from '../types';
 import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -51,6 +51,43 @@ const isMissingFunctionError = (error: any, functionName: string): boolean => {
     ))
   );
 };
+
+const mapPaymentCorrectionRow = (row: any): PaymentCorrection => ({
+  id: row.id,
+  paymentId: row.payment_id,
+  oldAmount: Number(row.old_amount || 0),
+  newAmount: Number(row.new_amount || 0),
+  oldMethod: normalizePaymentMethod(row.old_method),
+  newMethod: normalizePaymentMethod(row.new_method),
+  reason: row.reason || '',
+  editedBy: row.edited_by,
+  editedAt: row.edited_at,
+  editorName: row.editor?.username || null
+});
+
+const mapPaymentRow = (row: any): PaymentRecord => ({
+  id: row.id,
+  location_id: row.location_id,
+  patientId: row.patient_id,
+  patient_name: row.patients?.name || row.patient_name,
+  amount: Number(row.amount || 0),
+  originalAmount: Number(row.original_amount ?? row.amount ?? 0),
+  clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
+  treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
+  date: row.payment_date || row.created_at?.slice(0, 10) || '',
+  type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
+  balanceBefore: Number(row.balance_before ?? (Number(row.remaining_balance || 0) + Number(row.amount || 0))),
+  remainingBalance: Number(row.remaining_balance || 0),
+  paymentMethod: normalizePaymentMethod(row.payment_method),
+  receiptNumber: row.receipt_number,
+  receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
+  createdAt: row.created_at,
+  createdByUserId: row.created_by_user_id,
+  createdByUserName: row.created_by_user_name,
+  corrections: Array.isArray(row.payment_corrections)
+    ? row.payment_corrections.map(mapPaymentCorrectionRow)
+    : []
+});
 
 const detectUsersAllowedTabsSupport = async (): Promise<boolean> => {
   if (usersAllowedTabsSupport !== null) {
@@ -3023,12 +3060,40 @@ export const api = {
     getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
       let query = supabase
         .from('payments')
-        .select('*, patients(name)')
+        .select(`
+          *,
+          patients(name),
+          payment_corrections (
+            id,
+            payment_id,
+            old_amount,
+            new_amount,
+            old_method,
+            new_method,
+            reason,
+            edited_by,
+            edited_at,
+            editor:users!payment_corrections_edited_by_fkey (
+              username
+            )
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (locationId) query = query.eq('location_id', locationId);
 
-      const { data, error } = await query;
+      let { data, error } = await query;
+      if (error && isMissingRelationError(error, 'payment_corrections')) {
+        let fallbackQuery = supabase
+          .from('payments')
+          .select('*, patients(name)')
+          .order('created_at', { ascending: false });
+        if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        const fallback = await fallbackQuery;
+        data = fallback.data;
+        error = fallback.error;
+      }
+
       if (error) {
         if (isMissingRelationError(error, 'payments')) {
           console.warn('Payment storage is not installed yet. Payment history will remain unavailable until the migration is applied.');
@@ -3037,26 +3102,7 @@ export const api = {
         throw new Error(error.message);
       }
 
-      return (data || []).map((row: any): PaymentRecord => ({
-        id: row.id,
-        location_id: row.location_id,
-        patientId: row.patient_id,
-        patient_name: row.patients?.name,
-        amount: Number(row.amount || 0),
-        originalAmount: Number(row.original_amount ?? row.amount ?? 0),
-        clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
-        treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
-        date: row.payment_date || row.created_at?.slice(0, 10) || '',
-        type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
-        balanceBefore: Number(row.balance_before ?? (Number(row.remaining_balance || 0) + Number(row.amount || 0))),
-        remainingBalance: Number(row.remaining_balance || 0),
-        paymentMethod: normalizePaymentMethod(row.payment_method),
-        receiptNumber: row.receipt_number,
-        receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
-        createdAt: row.created_at,
-        createdByUserId: row.created_by_user_id,
-        createdByUserName: row.created_by_user_name
-      }));
+      return (data || []).map(mapPaymentRow);
     },
     processPayment: async (input: {
       patientId: string;
@@ -3105,26 +3151,7 @@ export const api = {
         const retryRow = Array.isArray(retry.data) ? retry.data[0] : retry.data;
         if (!retryRow) throw new Error('Payment was not recorded.');
 
-        const payment: PaymentRecord = {
-          id: retryRow.id,
-          location_id: retryRow.location_id,
-          patientId: retryRow.patient_id,
-          patient_name: retryRow.patient_name,
-          amount: Number(retryRow.amount || 0),
-          originalAmount: Number(retryRow.original_amount ?? retryRow.amount ?? 0),
-          clearedAmount: Number(retryRow.cleared_amount ?? retryRow.amount ?? 0),
-          treatmentIds: Array.isArray(retryRow.treatment_ids) ? retryRow.treatment_ids : [],
-          date: retryRow.payment_date || retryRow.created_at?.slice(0, 10) || '',
-          type: retryRow.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
-          balanceBefore: Number(retryRow.balance_before ?? (Number(retryRow.remaining_balance || 0) + Number(retryRow.amount || 0))),
-          remainingBalance: Number(retryRow.remaining_balance || 0),
-          paymentMethod: normalizePaymentMethod(retryRow.payment_method),
-          receiptNumber: retryRow.receipt_number,
-          receiptSnapshot: normalizePaymentReceiptSnapshot(retryRow.receipt_snapshot),
-          createdAt: retryRow.created_at,
-          createdByUserId: retryRow.created_by_user_id,
-          createdByUserName: retryRow.created_by_user_name
-        };
+        const payment: PaymentRecord = mapPaymentRow(retryRow);
 
         return {
           status: 'success',
@@ -3145,26 +3172,7 @@ export const api = {
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) throw new Error('Payment was not recorded.');
 
-      const payment: PaymentRecord = {
-        id: row.id,
-        location_id: row.location_id,
-        patientId: row.patient_id,
-        patient_name: row.patient_name,
-        amount: Number(row.amount || 0),
-        originalAmount: Number(row.original_amount ?? row.amount ?? 0),
-        clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
-        treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
-        date: row.payment_date || row.created_at?.slice(0, 10) || '',
-        type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
-        balanceBefore: Number(row.balance_before ?? (Number(row.remaining_balance || 0) + Number(row.amount || 0))),
-        remainingBalance: Number(row.remaining_balance || 0),
-        paymentMethod: normalizePaymentMethod(row.payment_method),
-        receiptNumber: row.receipt_number,
-        receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
-        createdAt: row.created_at,
-        createdByUserId: row.created_by_user_id,
-        createdByUserName: row.created_by_user_name
-      };
+      const payment: PaymentRecord = mapPaymentRow(row);
 
       return {
         status: 'success',
@@ -3219,25 +3227,87 @@ export const api = {
       if (error) throw new Error(error.message);
 
       return {
-        id: row.id,
-        location_id: row.location_id,
-        patientId: row.patient_id,
-        patient_name: row.patients?.name,
-        amount: Number(row.amount || 0),
-        originalAmount: Number(row.original_amount ?? row.amount ?? 0),
-        clearedAmount: Number(row.cleared_amount ?? row.amount ?? 0),
-        treatmentIds: Array.isArray(row.treatment_ids) ? row.treatment_ids : [],
-        date: row.payment_date || row.created_at?.slice(0, 10) || '',
-        type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
-        balanceBefore: Number(row.balance_before ?? (Number(row.remaining_balance || 0) + Number(row.amount || 0))),
-        remainingBalance: Number(row.remaining_balance || 0),
-        paymentMethod: normalizePaymentMethod(row.payment_method),
-        receiptNumber: row.receipt_number,
-        receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
-        createdAt: row.created_at,
-        createdByUserId: row.created_by_user_id,
-        createdByUserName: row.created_by_user_name
+        ...mapPaymentRow(row)
       };
+    },
+    correctPayment: async (
+      input: {
+        paymentId: string;
+        newAmount: number;
+        newMethod: PaymentMethod;
+        reason: string;
+        editedByUserId: string;
+      }
+    ): Promise<PaymentRecord> => {
+      const normalizedAmount = Number(input.newAmount || 0);
+      const normalizedMethod = normalizePaymentMethod(input.newMethod);
+      const normalizedReason = input.reason?.trim() || '';
+
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+        throw new Error('Amount must be greater than 0.');
+      }
+      if (normalizedMethod === 'UNKNOWN') {
+        throw new Error('Select a valid payment method.');
+      }
+      if (normalizedReason.length < 10) {
+        throw new Error('Correction reason must be at least 10 characters.');
+      }
+      if (!input.editedByUserId || !String(input.editedByUserId).trim()) {
+        throw new Error('Missing admin session. Please log in again.');
+      }
+
+      const { data: correctedPaymentId, error: rpcError } = await supabase.rpc('correct_payment_record', {
+        p_payment_id: input.paymentId,
+        p_new_amount: normalizedAmount,
+        p_new_method: normalizedMethod,
+        p_reason: normalizedReason,
+        p_edited_by_user_id: input.editedByUserId
+      });
+
+      if (rpcError) {
+        if (isMissingFunctionError(rpcError, 'correct_payment_record')) {
+          throw new Error('Payment correction flow is not installed. Run database/payment_corrections_migration.sql in Supabase.');
+        }
+        throw new Error(rpcError.message);
+      }
+
+      const { data: row, error } = await supabase
+        .from('payments')
+        .select(`
+          *,
+          patients(name),
+          payment_corrections (
+            id,
+            payment_id,
+            old_amount,
+            new_amount,
+            old_method,
+            new_method,
+            reason,
+            edited_by,
+            edited_at,
+            editor:users!payment_corrections_edited_by_fkey (
+              username
+            )
+          )
+        `)
+        .eq('id', correctedPaymentId)
+        .single();
+
+      if (error) {
+        if (isMissingRelationError(error, 'payment_corrections')) {
+          const fallback = await supabase
+            .from('payments')
+            .select('*, patients(name)')
+            .eq('id', correctedPaymentId)
+            .single();
+          if (fallback.error) throw new Error(fallback.error.message);
+          return mapPaymentRow(fallback.data);
+        }
+        throw new Error(error.message);
+      }
+
+      return mapPaymentRow(row);
     }
   },
 

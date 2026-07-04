@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards, Printer } from 'lucide-react';
+import { Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards, Printer, Pencil } from 'lucide-react';
 import { Appointment, AppointmentRescheduleLog, ClinicalRecord, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportClinicalRecordsToPDF } from '../utils/pdfExport';
@@ -12,6 +12,7 @@ import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow, ty
 import { buildRecordsViewFilterOptions } from '../utils/recordsViewFilterOptions';
 import { formatPaymentMethod } from '../utils/paymentMethods';
 import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
+import EditPaymentModal from './EditPaymentModal';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -25,13 +26,16 @@ interface RecordsViewProps {
   isDoctor?: boolean;
   initialFilter?: AuditFilter;
   onOpenPaymentReceipt?: (payment: PaymentRecord) => void;
+  canEditPayments?: boolean;
+  onPaymentCorrected?: (payment: PaymentRecord) => void | Promise<void>;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt }) => {
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [auditFilter, setAuditFilter] = useState<AuditFilter>(initialFilter);
+  const [editingPayment, setEditingPayment] = useState<PaymentRecord | null>(null);
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
   const [dateFrom, setDateFrom] = useState(todayKey);
   const [dateTo, setDateTo] = useState(todayKey);
@@ -85,6 +89,28 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
 
   const formatDoctorName = (doctorName?: string | null) => {
     return formatDisplayDoctorName(doctorName);
+  };
+
+  const renderPaymentCorrections = (payment: PaymentRecord) => {
+    if (!payment.corrections || payment.corrections.length === 0) return null;
+
+    return (
+      <div className="mt-2 space-y-2">
+        {payment.corrections.map((correction) => (
+          <div key={correction.id} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-bold">Warning: Corrected by Admin</span>{' '}
+            on {formatCreatedAt(correction.editedAt)}
+            {' | '}Reason: {correction.reason}
+            {' '}(
+            Changed from {formatCurrency(correction.oldAmount, currency)}
+            {' to '}
+            {formatCurrency(correction.newAmount, currency)}
+            )
+            {correction.editorName ? ` by ${correction.editorName}` : ''}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const renderTreatmentDescriptionList = (rec: ClinicalRecord) => {
@@ -366,17 +392,30 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           <td className="px-6 py-4 text-sm font-bold text-slate-800">
                             <div className="flex items-center justify-between gap-3">
                               <span>{formatPaymentMethod(payment.paymentMethod)}</span>
-                              {onOpenPaymentReceipt ? (
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenPaymentReceipt(payment)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700 hover:bg-violet-100"
-                                >
-                                  <Printer size={12} />
-                                  Receipt
-                                </button>
-                              ) : null}
+                              <div className="flex items-center gap-2">
+                                {canEditPayments ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPayment(payment)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-100"
+                                  >
+                                    <Pencil size={12} />
+                                    Edit
+                                  </button>
+                                ) : null}
+                                {onOpenPaymentReceipt ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenPaymentReceipt(payment)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700 hover:bg-violet-100"
+                                  >
+                                    <Printer size={12} />
+                                    Receipt
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
+                            {renderPaymentCorrections(payment)}
                           </td>
                           <td className="px-6 py-4 text-right text-sm text-slate-400">-</td>
                         </tr>
@@ -503,16 +542,29 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                       <p className="mt-3 text-xs text-slate-500">
                         {payment.receiptNumber || 'No receipt number'} · Recorded by {payment.createdByUserName || 'Unknown'}
                       </p>
-                      {onOpenPaymentReceipt ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenPaymentReceipt(payment)}
-                          className="mt-3 inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-100"
-                        >
-                          <Printer size={13} />
-                          Reprint Receipt
-                        </button>
-                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {canEditPayments ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingPayment(payment)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100"
+                          >
+                            <Pencil size={13} />
+                            Edit Payment
+                          </button>
+                        ) : null}
+                        {onOpenPaymentReceipt ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPaymentReceipt(payment)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-100"
+                          >
+                            <Printer size={13} />
+                            Reprint Receipt
+                          </button>
+                        ) : null}
+                      </div>
+                      {renderPaymentCorrections(payment)}
                     </div>
                   );
                 }
@@ -625,6 +677,15 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
           onToggleShowAll={() => setShowAll(!showAll)}
         />
       )}
+
+      <EditPaymentModal
+        isOpen={!!editingPayment}
+        payment={editingPayment}
+        onClose={() => setEditingPayment(null)}
+        onSaved={async (updatedPayment) => {
+          await onPaymentCorrected?.(updatedPayment);
+        }}
+      />
 
     </div>
   );

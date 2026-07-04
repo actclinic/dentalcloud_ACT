@@ -1873,6 +1873,34 @@ const App: React.FC = () => {
     }
   };
 
+  const handlePaymentCorrected = async (updatedPayment: PaymentRecord) => {
+    const applyPaymentUpdate = (items: PaymentRecord[]) => {
+      const nextItems = items.some((item) => item.id === updatedPayment.id)
+        ? items.map((item) => (item.id === updatedPayment.id ? updatedPayment : item))
+        : [updatedPayment, ...items];
+
+      return nextItems.sort((a, b) => (b.createdAt || b.date).localeCompare(a.createdAt || a.date));
+    };
+
+    setPaymentRecords((prev) => applyPaymentUpdate(prev));
+    setDashboardPayments((prev) => applyPaymentUpdate(prev));
+    setAssistantPaymentRecords((prev) => applyPaymentUpdate(prev));
+    setPatients((prev) => prev.map((patient) => (
+      patient.id === updatedPayment.patientId
+        ? { ...patient, balance: updatedPayment.remainingBalance }
+        : patient
+    )));
+    setDashboardPatients((prev) => prev.map((patient) => (
+      patient.id === updatedPayment.patientId
+        ? { ...patient, balance: updatedPayment.remainingBalance }
+        : patient
+    )));
+
+    if (selectedPatient?.id === updatedPayment.patientId) {
+      setSelectedPatient({ ...selectedPatient, balance: updatedPayment.remainingBalance });
+    }
+  };
+
   useEffect(() => {
     if (currentView === 'records') fetchGlobalRecords();
   }, [currentView, currentLocationId]);
@@ -3743,7 +3771,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
