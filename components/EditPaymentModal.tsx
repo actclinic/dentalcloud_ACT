@@ -165,7 +165,7 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
               className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-              Save Changes
+              {submitting ? 'Saving & Refreshing...' : 'Save Changes'}
             </button>
           </div>
         </form>

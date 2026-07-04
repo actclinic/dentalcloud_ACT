@@ -78,6 +78,9 @@ const mapPaymentRow = (row: any): PaymentRecord => ({
   type: row.payment_status === 'FULL' ? 'FULL' : 'PARTIAL',
   balanceBefore: Number(row.balance_before ?? (Number(row.remaining_balance || 0) + Number(row.amount || 0))),
   remainingBalance: Number(row.remaining_balance || 0),
+  patientCurrentBalance: row.patients?.balance !== undefined && row.patients?.balance !== null
+    ? Number(row.patients.balance || 0)
+    : undefined,
   paymentMethod: normalizePaymentMethod(row.payment_method),
   receiptNumber: row.receipt_number,
   receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
@@ -3062,7 +3065,7 @@ export const api = {
         .from('payments')
         .select(`
           *,
-          patients(name),
+          patients(name, balance),
           payment_corrections (
             id,
             payment_id,
@@ -3086,7 +3089,7 @@ export const api = {
       if (error && isMissingRelationError(error, 'payment_corrections')) {
         let fallbackQuery = supabase
           .from('payments')
-          .select('*, patients(name)')
+          .select('*, patients(name, balance)')
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
         const fallback = await fallbackQuery;
@@ -3207,28 +3210,9 @@ export const api = {
         receiptNumber?: string | null;
       }
     ): Promise<PaymentRecord> => {
-      const payload = {
-        payment_date: data.date,
-        payment_method: data.paymentMethod ? normalizePaymentMethod(data.paymentMethod) : undefined,
-        receipt_number: data.receiptNumber?.trim() || null
-      };
-
-      if (payload.payment_method === 'UNKNOWN') {
-        throw new Error('Select a valid payment method.');
-      }
-
-      const { data: row, error } = await supabase
-        .from('payments')
-        .update(payload)
-        .eq('id', id)
-        .select('*, patients(name)')
-        .single();
-
-      if (error) throw new Error(error.message);
-
-      return {
-        ...mapPaymentRow(row)
-      };
+      void id;
+      void data;
+      throw new Error('Direct payment audit edits are disabled. Use the admin payment correction flow so balance changes and correction history stay consistent.');
     },
     correctPayment: async (
       input: {
@@ -3275,7 +3259,7 @@ export const api = {
         .from('payments')
         .select(`
           *,
-          patients(name),
+          patients(name, balance),
           payment_corrections (
             id,
             payment_id,
@@ -3298,7 +3282,7 @@ export const api = {
         if (isMissingRelationError(error, 'payment_corrections')) {
           const fallback = await supabase
             .from('payments')
-            .select('*, patients(name)')
+            .select('*, patients(name, balance)')
             .eq('id', correctedPaymentId)
             .single();
           if (fallback.error) throw new Error(fallback.error.message);

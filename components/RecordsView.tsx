@@ -20,7 +20,7 @@ interface RecordsViewProps {
   rescheduleLogs?: AppointmentRescheduleLog[];
   payments?: PaymentRecord[];
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onDeleteAll: () => void;
   currency: Currency;
   isDoctor?: boolean;

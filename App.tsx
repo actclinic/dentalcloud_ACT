@@ -1874,6 +1874,7 @@ const App: React.FC = () => {
   };
 
   const handlePaymentCorrected = async (updatedPayment: PaymentRecord) => {
+    const updatedPatientBalance = updatedPayment.patientCurrentBalance ?? updatedPayment.remainingBalance;
     const applyPaymentUpdate = (items: PaymentRecord[]) => {
       const nextItems = items.some((item) => item.id === updatedPayment.id)
         ? items.map((item) => (item.id === updatedPayment.id ? updatedPayment : item))
@@ -1887,18 +1888,20 @@ const App: React.FC = () => {
     setAssistantPaymentRecords((prev) => applyPaymentUpdate(prev));
     setPatients((prev) => prev.map((patient) => (
       patient.id === updatedPayment.patientId
-        ? { ...patient, balance: updatedPayment.remainingBalance }
+        ? { ...patient, balance: updatedPatientBalance }
         : patient
     )));
     setDashboardPatients((prev) => prev.map((patient) => (
       patient.id === updatedPayment.patientId
-        ? { ...patient, balance: updatedPayment.remainingBalance }
+        ? { ...patient, balance: updatedPatientBalance }
         : patient
     )));
 
     if (selectedPatient?.id === updatedPayment.patientId) {
-      setSelectedPatient({ ...selectedPatient, balance: updatedPayment.remainingBalance });
+      setSelectedPatient({ ...selectedPatient, balance: updatedPatientBalance });
     }
+
+    await fetchGlobalRecords();
   };
 
   useEffect(() => {

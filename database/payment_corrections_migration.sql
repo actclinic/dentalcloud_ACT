@@ -87,8 +87,12 @@ DECLARE
   v_payment public.payments%ROWTYPE;
   v_new_amount NUMERIC(12,2);
   v_new_method TEXT;
+  v_effective_balance_before NUMERIC(12,2);
+  v_old_cleared_amount NUMERIC(12,2);
   v_delta NUMERIC(12,2);
   v_new_remaining NUMERIC(12,2);
+  v_patient_current_balance NUMERIC(12,2);
+  v_next_patient_balance NUMERIC(12,2);
   v_new_status TEXT;
   v_allowed_methods TEXT[] := ARRAY[
     'KPAY',
@@ -131,19 +135,46 @@ BEGIN
     RAISE EXCEPTION 'Payment not found';
   END IF;
 
-  IF v_new_amount > v_payment.balance_before THEN
-    RAISE EXCEPTION 'Corrected amount cannot be greater than balance_before (%)', v_payment.balance_before;
+  v_old_cleared_amount := round(COALESCE(v_payment.cleared_amount, v_payment.amount)::NUMERIC, 2);
+  v_effective_balance_before := round(COALESCE(
+    v_payment.balance_before,
+    v_payment.remaining_balance + v_old_cleared_amount,
+    v_old_cleared_amount
+  )::NUMERIC, 2);
+
+  IF v_effective_balance_before <= 0 THEN
+    RAISE EXCEPTION 'Payment balance_before is invalid; refresh or repair this legacy payment before correcting it';
   END IF;
 
-  v_delta := v_new_amount - COALESCE(v_payment.cleared_amount, v_payment.amount);
-  v_new_remaining := greatest(v_payment.balance_before - v_new_amount, 0);
+  IF v_new_amount > v_effective_balance_before THEN
+    RAISE EXCEPTION 'Corrected amount cannot be greater than balance_before (%)', v_effective_balance_before;
+  END IF;
+
+  v_delta := v_new_amount - v_old_cleared_amount;
+  v_new_remaining := round((v_effective_balance_before - v_new_amount)::NUMERIC, 2);
   v_new_status := CASE
     WHEN v_new_remaining = 0 THEN 'FULL'
     ELSE 'PARTIAL'
   END;
 
+  SELECT COALESCE(balance, 0)
+  INTO v_patient_current_balance
+  FROM public.patients
+  WHERE id = v_payment.patient_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Payment patient not found';
+  END IF;
+
+  v_next_patient_balance := round((v_patient_current_balance - v_delta)::NUMERIC, 2);
+
+  IF v_next_patient_balance < 0 THEN
+    RAISE EXCEPTION 'Correction would make patient balance negative (%). Review later payments or repair the account ledger first.', v_next_patient_balance;
+  END IF;
+
   UPDATE public.patients
-  SET balance = greatest(balance - v_delta, 0)
+  SET balance = v_next_patient_balance
   WHERE id = v_payment.patient_id;
 
   UPDATE public.payments
@@ -159,21 +190,36 @@ BEGIN
         jsonb_set(
           jsonb_set(
             jsonb_set(
-              receipt_snapshot,
-              '{payment,amountPaid}',
-              to_jsonb(v_new_amount),
+              jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    receipt_snapshot,
+                    '{payment,amountPaid}',
+                    to_jsonb(v_new_amount),
+                    true
+                  ),
+                  '{payment,method}',
+                  to_jsonb(v_new_method),
+                  true
+                ),
+                '{payment,balanceBefore}',
+                to_jsonb(v_effective_balance_before),
+                true
+              ),
+              '{payment,balanceAfter}',
+              to_jsonb(v_new_remaining),
               true
             ),
-            '{payment,method}',
-            to_jsonb(v_new_method),
+            '{payment,status}',
+            to_jsonb(v_new_status),
             true
           ),
-          '{payment,balanceAfter}',
-          to_jsonb(v_new_remaining),
+          '{payment,correctedAt}',
+          to_jsonb(NOW()),
           true
         ),
-        '{payment,status}',
-        to_jsonb(v_new_status),
+        '{payment,correctionReason}',
+        to_jsonb(trim(p_reason)),
         true
       )
     END

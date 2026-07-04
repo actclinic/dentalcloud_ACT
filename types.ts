@@ -93,6 +93,7 @@ export interface PaymentRecord {
   type: 'FULL' | 'PARTIAL';
   balanceBefore?: number;
   remainingBalance: number;
+  patientCurrentBalance?: number;
   paymentMethod?: PaymentMethod;
   receiptNumber?: string;
   receiptSnapshot?: PaymentReceiptSnapshot | null;
