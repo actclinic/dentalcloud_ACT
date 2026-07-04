@@ -482,6 +482,15 @@ body {
   border-color: var(--hover-100) !important;
 }
 
+.patient-next-appointment-chip {
+  border: 1px solid color-mix(in srgb, var(--hover-500) 34%, white);
+  border-left: 4px solid var(--hover-600);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--hover-50) 86%, white), color-mix(in srgb, var(--hover-100) 78%, white));
+  color: var(--hover-800);
+  box-shadow: 0 10px 20px -18px var(--hover-700), inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
 /* Gradient utility remap so blue/indigo gradients follow selected theme */
 .from-indigo-50,
 .from-blue-50 {
