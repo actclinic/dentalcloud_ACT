@@ -2025,7 +2025,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         
         <p className="text-sm text-gray-600 mb-4">
-          Select the default receipt output format. A4 is suitable for standard document printing. 55mm Thermal is optimized for thermal receipt printers.
+          Select the default receipt output format. A4 is suitable for standard document printing. 55mm and 80mm thermal formats are optimized for thermal receipt printers.
         </p>
         
         <div className="space-y-3">
@@ -2068,11 +2068,31 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
             )}
           </label>
+
+          <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            style={{ borderColor: receiptSize === 'THERMAL_80MM' ? '#4F46E5' : '#E5E7EB' }}>
+            <input
+              type="radio"
+              name="receiptSize"
+              value="THERMAL_80MM"
+              checked={receiptSize === 'THERMAL_80MM'}
+              onChange={() => void handleSharedReceiptSizeChange('THERMAL_80MM')}
+              disabled={isSavingReceiptFormat}
+              className="w-5 h-5 text-indigo-600 focus:ring-indigo-500"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900">80mm Thermal Receipt</div>
+              <div className="text-sm text-gray-500">Optimized for 80mm thermal receipt printers with wider printable area</div>
+            </div>
+            {receiptSize === 'THERMAL_80MM' && (
+              <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+            )}
+          </label>
         </div>
 
         <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
           <p className="text-xs text-indigo-700">
-            <strong>Note:</strong> The selected format is saved centrally for all devices. Thermal format uses condensed layout, smaller fonts, and monospace styling suitable for thermal roll paper.
+            <strong>Note:</strong> The selected format is saved centrally for all devices. Thermal formats use condensed layout, smaller fonts, and monospace styling suitable for roll paper.
           </p>
           {receiptFormatMessage && (
             <p className={`mt-2 text-xs ${receiptFormatMessage.toLowerCase().includes('failed') ? 'text-red-600' : 'text-emerald-700'}`}>

@@ -1193,7 +1193,7 @@ const App: React.FC = () => {
           if (row?.currency_unit === 'USD' || row?.currency_unit === 'MMK') {
             setCurrency(row.currency_unit);
           }
-          if (row?.receipt_size === 'A4' || row?.receipt_size === 'THERMAL_55MM') {
+          if (row?.receipt_size === 'A4' || row?.receipt_size === 'THERMAL_55MM' || row?.receipt_size === 'THERMAL_80MM') {
             setReceiptSize(row.receipt_size);
           }
           if (typeof row?.clinical_fee_enabled === 'boolean') {

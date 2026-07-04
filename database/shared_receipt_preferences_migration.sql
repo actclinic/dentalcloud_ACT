@@ -20,7 +20,7 @@ ON CONFLICT (id) DO NOTHING;
 UPDATE app_settings
 SET
   currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
-  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END,
+  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM', 'THERMAL_80MM') THEN receipt_size ELSE 'A4' END,
   updated_at = NOW()
 WHERE id = 1;
 
@@ -42,7 +42,7 @@ ALTER TABLE app_settings
 
 ALTER TABLE app_settings
   ADD CONSTRAINT app_settings_receipt_size_check
-  CHECK (receipt_size IN ('A4', 'THERMAL_55MM'));
+  CHECK (receipt_size IN ('A4', 'THERMAL_55MM', 'THERMAL_80MM'));
 
 SELECT
   id,

@@ -3664,7 +3664,7 @@ export const api = {
         payload.currency_unit = preferences.currency;
       }
       if (preferences.receiptSize !== undefined) {
-        if (preferences.receiptSize !== 'A4' && preferences.receiptSize !== 'THERMAL_55MM') {
+        if (!['A4', 'THERMAL_55MM', 'THERMAL_80MM'].includes(preferences.receiptSize)) {
           throw new Error('Invalid receipt format.');
         }
         payload.receipt_size = preferences.receiptSize;

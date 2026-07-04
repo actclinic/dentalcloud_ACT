@@ -4,7 +4,7 @@ import PatientQRCode from './PatientQRCode';
 import { auth } from '../services/auth';
 import { api } from '../services/api';
 import { otpService } from '../services/otp';
-import { Patient, Appointment, ClinicalRecord, Doctor, PatientFile } from '../types';
+import { Patient, Appointment, ClinicalRecord, Doctor, PatientFile, ReceiptSize } from '../types';
 import { Modal, Input, TimeInput } from './Shared';
 import { SearchableSelect } from './SearchableSelect';
 import Receipt from './Receipt';
@@ -83,6 +83,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
   // State for receipts
   const [showReceipt, setShowReceipt] = useState(false);
   const [selectedTreatment, setSelectedTreatment] = useState<ClinicalRecord | null>(null);
+  const [receiptSize, setReceiptSize] = useState<ReceiptSize>('A4');
   
   // State for showing/hiding passwords
   const [showPasswords, setShowPasswords] = useState({
@@ -117,6 +118,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
         throw new Error('Patient data not found');
       }
       setPatient(patientData);
+
+      api.appSettings.getReceiptPreferences()
+        .then((preferences) => {
+          if (preferences) setReceiptSize(preferences.receiptSize);
+        })
+        .catch((settingsError) => {
+          console.warn('Failed to load receipt preferences:', settingsError);
+        });
       
       // Initialize profile changes with current values
       setProfileChanges({
@@ -1317,6 +1326,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, messaging
           patient={patient}
           treatments={[selectedTreatment]}
           currency={'MMK'}
+          receiptSize={receiptSize}
           onClose={() => setShowReceipt(false)}
         />
       )}

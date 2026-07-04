@@ -14,6 +14,18 @@ describe('receipt preferences', () => {
     });
   });
 
+  it('normalizes 80mm thermal receipt settings', () => {
+    expect(normalizeReceiptPreferences({
+      receipt_header_title: '80mm Receipt',
+      currency_unit: 'MMK',
+      receipt_size: 'THERMAL_80MM'
+    })).toEqual({
+      headerTitle: '80mm Receipt',
+      currency: 'MMK',
+      receiptSize: 'THERMAL_80MM'
+    });
+  });
+
   it('uses production-safe defaults for invalid database values', () => {
     expect(normalizeReceiptPreferences({
       receipt_header_title: null,

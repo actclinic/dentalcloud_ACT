@@ -15,7 +15,7 @@ PAYMENTS AND RECEIPTS:
 - Payment records have receipt numbers and can preserve an immutable receipt snapshot. A saved snapshot keeps the clinic heading/contact details, currency, patient details, amount paid, payment type, full/partial status, balance before and after, collector, and the treatment and medicine lines captured at payment time.
 - Reprinting a saved payment receipt must use its stored snapshot, so later edits to patient details, receipt settings, treatments, medicines, or balances do not rewrite the historical receipt.
 - The receipt item picker supports both treatments and standalone medicine sales. Its "Recent" / "NEW" marker means the item date is today in the clinic's local calendar, not "within the last several days."
-- Receipt header title, currency, and default output size (A4 or 55 mm thermal) are shared clinic settings across devices. Changes apply to new receipts; stored historical snapshots keep their original values.
+- Receipt header title, currency, and default output size (A4, 55 mm thermal, or 80 mm thermal) are shared clinic settings across devices. Changes apply to new receipts; stored historical snapshots keep their original values.
 
 CLINICAL FEES:
 - Clinical fees are not charged during patient registration. They are considered when a registered patient's appointment is completed.

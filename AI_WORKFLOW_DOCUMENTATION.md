@@ -208,7 +208,7 @@ The main component responsible for AI interactions, featuring:
 - Reprints use the stored snapshot so later profile, settings, treatment, medicine, or balance edits do not alter the original receipt.
 - Receipt selection supports treatments and standalone medicine sales.
 - A receipt item's **Recent / NEW** marker applies only when its item date is today in the clinic's local calendar.
-- Receipt header title, currency, and A4/55 mm thermal format are shared clinic settings across devices. New receipts use the current settings; old saved snapshots retain their original values.
+- Receipt header title, currency, and A4/55 mm/80 mm thermal format are shared clinic settings across devices. New receipts use the current settings; old saved snapshots retain their original values.
 
 ## Data Models & Relationships
 

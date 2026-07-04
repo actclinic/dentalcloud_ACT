@@ -92,7 +92,7 @@ CREATE TABLE app_settings (
   receipt_phone TEXT,
   receipt_header_title TEXT,
   currency_unit VARCHAR(3) NOT NULL DEFAULT 'USD' CHECK (currency_unit IN ('USD', 'MMK')),
-  receipt_size VARCHAR(20) NOT NULL DEFAULT 'A4' CHECK (receipt_size IN ('A4', 'THERMAL_55MM')),
+  receipt_size VARCHAR(20) NOT NULL DEFAULT 'A4' CHECK (receipt_size IN ('A4', 'THERMAL_55MM', 'THERMAL_80MM')),
 
   -- Shared Email Delivery settings (Settings > Email)
   -- Stored centrally so all devices use the same sender/delivery configuration.
@@ -805,7 +805,7 @@ ALTER TABLE appointments ADD COLUMN IF NOT EXISTS clinical_fee_applied_at TIMEST
 UPDATE app_settings
 SET
   currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
-  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END,
+  receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM', 'THERMAL_80MM') THEN receipt_size ELSE 'A4' END,
   clinical_fee_default_apply_on_registration = COALESCE(clinical_fee_default_apply_on_registration, clinical_fee_enabled, FALSE),
   clinical_fee_new_patient_amount = COALESCE(clinical_fee_new_patient_amount, clinical_fee_amount, 0),
   clinical_fee_returning_patient_amount = COALESCE(clinical_fee_returning_patient_amount, clinical_fee_amount, 0);
@@ -911,7 +911,7 @@ BEGIN
   ) THEN
     ALTER TABLE app_settings
     ADD CONSTRAINT app_settings_receipt_size_check
-    CHECK (receipt_size IN ('A4', 'THERMAL_55MM'));
+    CHECK (receipt_size IN ('A4', 'THERMAL_55MM', 'THERMAL_80MM'));
   END IF;
 END $$;
 
@@ -1464,7 +1464,7 @@ SET
     email_message_notifications_enabled = COALESCE(email_message_notifications_enabled, TRUE),
     email_settings_updated_at = COALESCE(email_settings_updated_at, NOW()),
     currency_unit = CASE WHEN currency_unit IN ('USD', 'MMK') THEN currency_unit ELSE 'USD' END,
-    receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM') THEN receipt_size ELSE 'A4' END,
+    receipt_size = CASE WHEN receipt_size IN ('A4', 'THERMAL_55MM', 'THERMAL_80MM') THEN receipt_size ELSE 'A4' END,
     clinical_fee_default_apply_on_registration = COALESCE(clinical_fee_default_apply_on_registration, clinical_fee_enabled, FALSE),
     clinical_fee_new_patient_amount = COALESCE(clinical_fee_new_patient_amount, clinical_fee_amount, 0),
     clinical_fee_returning_patient_amount = COALESCE(clinical_fee_returning_patient_amount, clinical_fee_amount, 0)

@@ -162,7 +162,16 @@ const Receipt: React.FC<ReceiptProps> = ({
     window.print();
   };
 
-  const isThermal = receiptSize === 'THERMAL_55MM';
+  const isThermal = receiptSize === 'THERMAL_55MM' || receiptSize === 'THERMAL_80MM';
+  const isThermal80 = receiptSize === 'THERMAL_80MM';
+  const thermalPaperWidth = isThermal80 ? '80mm' : '58mm';
+  const thermalPreviewWidth = isThermal80 ? '90mm' : '68mm';
+  const thermalContentPadding = isThermal80 ? '3mm 4mm' : '2mm 3mm';
+  const thermalBaseFontSize = isThermal80 ? '11px' : '10px';
+  const thermalLineFontSize = isThermal80 ? '10px' : '9px';
+  const thermalSmallFontSize = isThermal80 ? '8px' : '7px';
+  const thermalHeaderFontSize = isThermal80 ? '14px' : '12px';
+  const thermalAmountFontSize = isThermal80 ? '16px' : '14px';
 
   const renderServicesTable = (isPrint = false) => (
     <div className="mb-8">
@@ -273,10 +282,10 @@ const Receipt: React.FC<ReceiptProps> = ({
     </div>
   );
 
-  // ─── Thermal 55mm helpers ──────────────────────────────────────────────
+  // ─── Thermal helpers ───────────────────────────────────────────────────
 
   const thermalLine = (left: string, right: string, leftStyle?: React.CSSProperties, rightStyle?: React.CSSProperties) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '9px', lineHeight: '1.5' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: thermalLineFontSize, lineHeight: '1.5' }}>
       <span style={{ flex: 1, textAlign: 'left', ...leftStyle }}>{left}</span>
       <span style={{ textAlign: 'right', whiteSpace: 'nowrap', ...rightStyle }}>{right}</span>
     </div>
@@ -485,14 +494,14 @@ const Receipt: React.FC<ReceiptProps> = ({
     </div>
   );
 
-  // ─── Thermal 55mm Preview ──────────────────────────────────────────────
+  // ─── Thermal Preview ───────────────────────────────────────────────────
 
   const renderThermalPreview = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 print:hidden">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-auto" style={{ maxWidth: '380px' }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-auto" style={{ maxWidth: isThermal80 ? '520px' : '380px' }}>
         {/* Header with controls */}
         <div className="sticky top-0 bg-white border-b border-gray-200 p-3 flex justify-between items-center z-10">
-          <h2 className="text-sm font-bold text-gray-800">Thermal Receipt</h2>
+          <h2 className="text-sm font-bold text-gray-800">{isThermal80 ? '80mm Thermal Receipt' : '55mm Thermal Receipt'}</h2>
           <div className="flex gap-2">
             <button
               onClick={handlePrint}
@@ -509,22 +518,23 @@ const Receipt: React.FC<ReceiptProps> = ({
           </div>
         </div>
 
-        {/* Receipt Content - 58mm Thermal */}
+        {/* Receipt Content - Thermal */}
         <div className="thermal-receipt-preview" style={{
-          width: '58mm',
+          width: thermalPaperWidth,
+          boxSizing: 'border-box',
           margin: '0 auto',
           background: 'white',
-          padding: '3mm 3mm',
+          padding: thermalContentPadding,
           fontFamily: "'Courier New', Courier, monospace",
-          fontSize: '10px',
+          fontSize: thermalBaseFontSize,
           lineHeight: '1.3',
           color: '#222'
         }}>
           {/* Clinic Header */}
           <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
+            <div style={{ fontSize: thermalHeaderFontSize, fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
             <div style={{ fontSize: '8px', color: '#555' }}>Professional Dental Care Services</div>
-            <div style={{ fontSize: '7px', color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
+            <div style={{ fontSize: thermalSmallFontSize, color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
           </div>
 
           {thermalThickDivider()}
@@ -726,25 +736,26 @@ const Receipt: React.FC<ReceiptProps> = ({
     </div>
   );
 
-  // ─── Thermal 55mm Print Version ────────────────────────────────────────
+  // ─── Thermal Print Version ─────────────────────────────────────────────
 
   const renderThermalPrint = () => (
     <div className="receipt-print hidden print:block">
       <div className="thermal-receipt-content" style={{
-        width: '58mm',
+        width: thermalPaperWidth,
+        boxSizing: 'border-box',
         margin: '0 auto',
-        padding: '2mm 3mm',
+        padding: thermalContentPadding,
         background: 'white',
         fontFamily: "'Courier New', Courier, monospace",
-        fontSize: '10px',
+        fontSize: thermalBaseFontSize,
         lineHeight: '1.3',
         color: '#222'
       }}>
         {/* Clinic Header */}
         <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
+          <div style={{ fontSize: thermalHeaderFontSize, fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
           <div style={{ fontSize: '8px', color: '#555' }}>Professional Dental Care Services</div>
-          <div style={{ fontSize: '7px', color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
+          <div style={{ fontSize: thermalSmallFontSize, color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
         </div>
 
         <div style={{ borderTop: '2px solid #333', margin: '4px 0' }} />
@@ -986,20 +997,21 @@ const Receipt: React.FC<ReceiptProps> = ({
       <div
         className="thermal-receipt-content"
         style={{
-          width: '58mm',
+          width: thermalPaperWidth,
+          boxSizing: 'border-box',
           margin: '0 auto',
-          padding: '2mm 3mm',
+          padding: thermalContentPadding,
           background: 'white',
           fontFamily: "'Courier New', Courier, monospace",
-          fontSize: '10px',
+          fontSize: thermalBaseFontSize,
           lineHeight: '1.3',
           color: '#222'
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: '6px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
+          <div style={{ fontSize: thermalHeaderFontSize, fontWeight: 700, letterSpacing: '1px' }}>{displayHeaderTitle}</div>
           <div style={{ fontSize: '8px', color: '#555' }}>PAYMENT RECEIPT</div>
-          <div style={{ fontSize: '7px', color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
+          <div style={{ fontSize: thermalSmallFontSize, color: '#777', marginTop: '2px' }}>{receiptEmail} | {receiptPhone}</div>
         </div>
 
         {thermalThickDivider()}
@@ -1017,7 +1029,7 @@ const Receipt: React.FC<ReceiptProps> = ({
         {thermalDivider()}
         <div style={{ textAlign: 'center', margin: '6px 0' }}>
           <div style={{ fontSize: '8px', color: '#555' }}>AMOUNT RECEIVED</div>
-          <div style={{ fontSize: '14px', fontWeight: 700 }}>{formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}</div>
+          <div style={{ fontSize: thermalAmountFontSize, fontWeight: 700 }}>{formatCurrency(paymentSnapshot.payment.amountPaid, effectiveCurrency)}</div>
         </div>
 
         {thermalDivider()}
@@ -1105,9 +1117,9 @@ const Receipt: React.FC<ReceiptProps> = ({
 
   const renderPaymentThermalPreview = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 print:hidden">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-auto" style={{ maxWidth: '380px' }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-auto" style={{ maxWidth: isThermal80 ? '520px' : '380px' }}>
         <div className="sticky top-0 bg-white border-b border-gray-200 p-3 flex justify-between items-center z-10">
-          <h2 className="text-sm font-bold text-gray-800">Payment Receipt</h2>
+          <h2 className="text-sm font-bold text-gray-800">{isThermal80 ? '80mm Payment Receipt' : 'Payment Receipt'}</h2>
           <div className="flex gap-2">
             <button
               onClick={handlePrint}
@@ -1124,7 +1136,7 @@ const Receipt: React.FC<ReceiptProps> = ({
           </div>
         </div>
         <div className="p-4 bg-slate-100">
-          <div className="mx-auto rounded-lg bg-white p-4 shadow-sm" style={{ width: '68mm' }}>
+          <div className="mx-auto rounded-lg bg-white p-4 shadow-sm" style={{ width: thermalPreviewWidth }}>
             {renderPaymentThermalContent()}
           </div>
         </div>
@@ -1175,23 +1187,15 @@ const Receipt: React.FC<ReceiptProps> = ({
           }
         }
 
-        /* A4 page setup */
+        /* Page setup */
         @media print {
           @page {
-            size: A4;
+            size: ${isThermal ? `${isThermal80 ? '80mm' : '58mm'} 297mm` : 'A4'};
             margin: 0;
           }
           body {
             margin: 0;
             padding: 0;
-          }
-        }
-
-        /* Thermal 55mm page setup - overrides @page when thermal is selected */
-        @media print {
-          @page thermal {
-            size: 58mm 297mm;
-            margin: 0;
           }
         }
       `}</style>
