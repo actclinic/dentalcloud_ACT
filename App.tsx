@@ -1354,10 +1354,15 @@ const App: React.FC = () => {
     const session = auth.getSession();
     const restrictedLocationId = getSessionRestrictedLocationId(session);
     const availableLocations = knownLocations || locations;
-    const requestedScope = restrictedLocationId || scopeLocationId || currentLocationId || availableLocations[0]?.id || '';
+    const canUseAllBranchesScope = !restrictedLocationId && scopeLocationId === ALL_BRANCHES_VALUE;
+    const requestedScope = canUseAllBranchesScope
+      ? ALL_BRANCHES_VALUE
+      : restrictedLocationId || scopeLocationId || currentLocationId || availableLocations[0]?.id || '';
     const hasMatchingLocation = availableLocations.some(loc => loc.id === requestedScope);
-    const sanitizedScope = restrictedLocationId || (hasMatchingLocation ? requestedScope : (availableLocations[0]?.id || requestedScope));
-    const queryLocationId = sanitizedScope || undefined;
+    const sanitizedScope = canUseAllBranchesScope
+      ? ALL_BRANCHES_VALUE
+      : restrictedLocationId || (hasMatchingLocation ? requestedScope : (availableLocations[0]?.id || requestedScope));
+    const queryLocationId = sanitizedScope === ALL_BRANCHES_VALUE ? undefined : (sanitizedScope || undefined);
     // Use preloaded data when available; fetch missing dashboard datasets in parallel.
     const [patData, aptData, recordsData, expenseData, scopedPayments] = await Promise.all([
       preloaded?.patients ? Promise.resolve(preloaded.patients) : api.patients.getAll(queryLocationId),

@@ -37,6 +37,36 @@ const isMissingRelationError = (error: any, relationName: string): boolean => {
   );
 };
 
+const isOptionalRelationAccessError = (error: any, relationNames: string[]): boolean => {
+  const message = String(error?.message || '').toLowerCase();
+  const details = String(error?.details || '').toLowerCase();
+  const hint = String(error?.hint || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  const combined = `${message} ${details} ${hint}`;
+  const normalizedRelationNames = relationNames.map((name) => name.toLowerCase());
+
+  return normalizedRelationNames.some((relationName) => (
+    isMissingRelationError(error, relationName) ||
+    (
+      combined.includes(relationName) &&
+      (
+        combined.includes('permission denied') ||
+        combined.includes('not authorized') ||
+        combined.includes('not authorised') ||
+        combined.includes('permission') ||
+        combined.includes('privilege') ||
+        combined.includes('does not exist') ||
+        combined.includes('schema cache') ||
+        combined.includes('relationship')
+      )
+    ) ||
+    (
+      (code === '42501' || code === 'PGRST200' || code === 'PGRST201' || code === 'PGRST205') &&
+      combined.includes(relationName)
+    )
+  ));
+};
+
 const isMissingFunctionError = (error: any, functionName: string): boolean => {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '').toLowerCase();
@@ -819,7 +849,8 @@ export const api = {
     },
     getAll: async (locationId?: string): Promise<Patient[]> => {
       try {
-        const baseColumns = 'id, patient_unique_id, location_id, name, email, phone, age, address, city, patient_type, balance, loyalty_points, medical_history, created_at, patient_auth(id, username)';
+        const basePatientColumns = 'id, patient_unique_id, location_id, name, email, phone, age, address, city, patient_type, balance, loyalty_points, medical_history, created_at';
+        const baseColumns = `${basePatientColumns}, patient_auth(id, username)`;
         const buildQuery = (regionColumn: 'township' | 'state_region') => {
           let query = supabase
             .from('patients')
@@ -839,6 +870,31 @@ export const api = {
           const fallbackResult = await buildQuery('state_region');
           data = fallbackResult.data;
           error = fallbackResult.error;
+        }
+
+        if (error && isOptionalRelationAccessError(error, ['patient_auth'])) {
+          const buildPatientOnlyQuery = (regionColumn: 'township' | 'state_region') => {
+            let query = supabase
+              .from('patients')
+              .select(`${basePatientColumns}, ${regionColumn}`)
+              .order('created_at', { ascending: false });
+
+            if (locationId) {
+              query = query.eq('location_id', locationId);
+            }
+
+            return query;
+          };
+
+          const fallbackResult = await buildPatientOnlyQuery('township');
+          data = fallbackResult.data;
+          error = fallbackResult.error;
+
+          if (error && isMissingColumnError(error, 'township')) {
+            const legacyFallbackResult = await buildPatientOnlyQuery('state_region');
+            data = legacyFallbackResult.data;
+            error = legacyFallbackResult.error;
+          }
         }
 
         if (error) throw error;
@@ -1652,7 +1708,22 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        if (error && isOptionalRelationAccessError(error, ['patients', 'doctors'])) {
+          let fallbackQuery = supabase
+            .from('appointments')
+            .select('*')
+            .order('date');
+
+          if (locationId) {
+            fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          }
+
+          const fallback = await fallbackQuery;
+          data = fallback.data;
+          error = fallback.error;
+        }
 
         if (error) throw error;
 
@@ -1668,33 +1739,46 @@ export const api = {
           const dates = [...new Set(completedAppointments.map((apt: any) => apt.date).filter(Boolean))];
 
           if (patientIds.length > 0 && dates.length > 0) {
-            let treatmentsQuery = supabase
-              .from('treatments')
-              .select('patient_id, date, created_at, doctors(name)')
-              .in('patient_id', patientIds)
-              .in('date', dates)
-              .not('doctor_id', 'is', null)
-              .order('created_at', { ascending: false });
-
-            if (locationId) {
-              treatmentsQuery = treatmentsQuery.eq('location_id', locationId);
-            }
-
-            const { data: treatments, error: treatmentsError } = await treatmentsQuery;
-
-            if (treatmentsError) {
-              throw treatmentsError;
-            }
-
-            (treatments || []).forEach((record: any) => {
-              const doctorName = getTrimmedDoctorName(record.doctors?.name);
-              if (!doctorName) return;
-
-              const key = `${record.patient_id}::${record.date}`;
-              if (!treatmentDoctorByPatientAndDate.has(key)) {
-                treatmentDoctorByPatientAndDate.set(key, doctorName);
+            try {
+              const patientIdChunks: string[][] = [];
+              for (let i = 0; i < patientIds.length; i += 40) {
+                patientIdChunks.push(patientIds.slice(i, i + 40));
               }
-            });
+
+              const treatmentGroups = await Promise.all(patientIdChunks.map(async (patientIdChunk) => {
+                let treatmentsQuery = supabase
+                  .from('treatments')
+                  .select('patient_id, date, created_at, doctors(name)')
+                  .in('patient_id', patientIdChunk)
+                  .in('date', dates)
+                  .not('doctor_id', 'is', null)
+                  .order('created_at', { ascending: false });
+
+                if (locationId) {
+                  treatmentsQuery = treatmentsQuery.eq('location_id', locationId);
+                }
+
+                const { data: treatments, error: treatmentsError } = await treatmentsQuery;
+
+                if (treatmentsError) {
+                  throw treatmentsError;
+                }
+
+                return treatments || [];
+              }));
+
+              treatmentGroups.flat().forEach((record: any) => {
+                const doctorName = getTrimmedDoctorName(record.doctors?.name);
+                if (!doctorName) return;
+
+                const key = `${record.patient_id}::${record.date}`;
+                if (!treatmentDoctorByPatientAndDate.has(key)) {
+                  treatmentDoctorByPatientAndDate.set(key, doctorName);
+                }
+              });
+            } catch (treatmentsError) {
+              console.warn('Could not enrich completed appointments with treatment doctor names. Showing appointments without that enrichment.', treatmentsError);
+            }
           }
         }
 
@@ -2166,11 +2250,21 @@ export const api = {
 
     // Execution
     getHistory: async (patientId: string): Promise<ClinicalRecord[]> => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('treatments')
         .select('*, doctors(name)')
         .eq('patient_id', patientId)
         .order('date', { ascending: false });
+
+      if (error && isOptionalRelationAccessError(error, ['doctors'])) {
+        const fallback = await supabase
+          .from('treatments')
+          .select('*')
+          .eq('patient_id', patientId)
+          .order('date', { ascending: false });
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) throw new Error(error.message);
       return (data || []).map((rec: any) => ({
@@ -2198,7 +2292,26 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        if (error && isOptionalRelationAccessError(error, ['patients', 'doctors'])) {
+          let fallbackQuery = supabase
+            .from('treatments')
+            .select('*')
+            .order('date', { ascending: false });
+
+          if (typeof limit === 'number' && limit > 0) {
+            fallbackQuery = fallbackQuery.limit(limit);
+          }
+
+          if (locationId) {
+            fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          }
+
+          const fallback = await fallbackQuery;
+          data = fallback.data;
+          error = fallback.error;
+        }
 
         if (error) throw error;
 
@@ -2599,7 +2712,12 @@ export const api = {
     },
     getAll: async (locationId?: string): Promise<Doctor[]> => {
       try {
-        const supportsDoctorLocations = await detectDoctorLocationsSupport();
+        let supportsDoctorLocations = false;
+        try {
+          supportsDoctorLocations = await detectDoctorLocationsSupport();
+        } catch (supportError) {
+          console.warn('Could not check doctor branch assignments. Falling back to primary doctor locations.', supportError);
+        }
         let query = supabase
           .from('doctors')
           .select(`*, doctor_schedules(*)${supportsDoctorLocations ? ', doctor_locations(location_id)' : ''}`)
@@ -2609,7 +2727,23 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        if (error && isOptionalRelationAccessError(error, ['doctor_schedules', 'doctor_locations'])) {
+          let fallbackQuery = supabase
+            .from('doctors')
+            .select('*')
+            .order('name');
+
+          if (locationId) {
+            fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          }
+
+          const fallback = await fallbackQuery;
+          data = fallback.data;
+          error = fallback.error;
+          supportsDoctorLocations = false;
+        }
         
         if (error) throw error;
         
@@ -3090,6 +3224,17 @@ export const api = {
         let fallbackQuery = supabase
           .from('payments')
           .select('*, patients(name, balance)')
+          .order('created_at', { ascending: false });
+        if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        const fallback = await fallbackQuery;
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (error && isOptionalRelationAccessError(error, ['patients', 'payment_corrections', 'users'])) {
+        let fallbackQuery = supabase
+          .from('payments')
+          .select('*')
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
         const fallback = await fallbackQuery;
@@ -4872,7 +5017,25 @@ export const api = {
           query = query.eq('patient_id', patientId);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        if (error && isOptionalRelationAccessError(error, ['patients', 'medicines'])) {
+          let fallbackQuery = supabase
+            .from('medicine_sales')
+            .select('*')
+            .order('date', { ascending: false });
+
+          if (locationId) {
+            fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          }
+          if (patientId) {
+            fallbackQuery = fallbackQuery.eq('patient_id', patientId);
+          }
+
+          const fallback = await fallbackQuery;
+          data = fallback.data;
+          error = fallback.error;
+        }
 
         if (error) throw error;
 
@@ -4904,7 +5067,21 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        if (error && isOptionalRelationAccessError(error, ['medicines'])) {
+          let fallbackQuery = supabase
+            .from('medicine_sales')
+            .select('medicine_id, quantity, total_price');
+
+          if (locationId) {
+            fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          }
+
+          const fallback = await fallbackQuery;
+          data = fallback.data;
+          error = fallback.error;
+        }
 
         if (error) throw error;
 
