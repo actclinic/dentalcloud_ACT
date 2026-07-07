@@ -1194,23 +1194,9 @@ export const api = {
       return mapPatient(result);
     },
     delete: async (id: string): Promise<void> => {
-      // FIX: Before deleting the patient, we must handle appointments whose
-      // patient_id will become NULL due to ON DELETE SET NULL.
-      //
-      // The appointments table has this constraint:
-      //   CONSTRAINT appointments_registered_or_guest_check CHECK (
-      //     patient_id IS NOT NULL
-      //     OR (guest_name IS NOT NULL AND guest_phone IS NOT NULL)
-      //   )
-      //
-      // If a patient is deleted and an appointment has patient_id set but
-      // no guest info, ON DELETE SET NULL makes patient_id NULL, violating
-      // the constraint and causing the delete to fail.
-      //
-      // Fix: Populate guest_name / guest_phone from the patient record on
-      // any affected appointments BEFORE deleting the patient.
-
-      // 1. Fetch the patient to get their name and phone for guest fallback.
+      // Patient deletion intentionally removes patient-owned data. Keep
+      // appointments as guest/lead records where possible, then delete child
+      // rows that may otherwise block the final patient delete via RESTRICT FKs.
       const { data: patient, error: patientFetchError } = await supabase
         .from('patients')
         .select('name, phone')
@@ -1225,8 +1211,6 @@ export const api = {
         throw new Error('Patient not found.');
       }
 
-      // 2. Find appointments linked to this patient that are missing
-      //    guest info and would break the constraint after SET NULL.
       const { data: patientAppointments, error: fetchAppointmentsError } = await supabase
         .from('appointments')
         .select('id, guest_name, guest_phone')
@@ -1236,7 +1220,6 @@ export const api = {
         throw new Error(`Failed to check appointments before patient deletion: ${fetchAppointmentsError.message}`);
       }
 
-      // 3. Populate guest_name/guest_phone on appointments that lack them.
       const appointmentsNeedingFix = (patientAppointments || []).filter(
         (apt) => !apt.guest_name?.trim() || !apt.guest_phone?.trim()
       );
@@ -1260,8 +1243,32 @@ export const api = {
         }
       }
 
-      // 4. Now safe to delete — ON DELETE SET NULL leaves patient_id NULL,
-      //    but guest_name + guest_phone satisfy the constraint.
+      const deleteFromTable = async (table: string, column = 'patient_id') => {
+        const { error } = await supabase
+          .from(table)
+          .delete()
+          .eq(column, id);
+
+        if (error) {
+          if (isMissingRelationError(error, table)) {
+            return;
+          }
+          throw new Error(`Failed to delete related ${table.replace(/_/g, ' ')}: ${error.message}`);
+        }
+      };
+
+      // Delete restricted/dependent child rows first. This prevents failures
+      // such as payments.patient_id ON DELETE RESTRICT while preserving normal
+      // table-level RLS/security for each delete operation.
+      await deleteFromTable('patient_auth');
+      await deleteFromTable('payments');
+      await deleteFromTable('medicine_sales');
+      await deleteFromTable('loyalty_transactions');
+      await deleteFromTable('treatments');
+      await deleteFromTable('conversations');
+
+      // Now safe to delete — appointments can SET NULL without violating
+      // guest constraints, and patient-owned child rows are gone.
       const { error } = await supabase
         .from('patients')
         .delete()

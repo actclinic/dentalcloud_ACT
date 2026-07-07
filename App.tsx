@@ -2063,10 +2063,8 @@ const App: React.FC = () => {
       if (selectedPatient?.id === id) {
         handleClosePatient();
       }
-      fetchInitialData();
-      alert('Patient deleted successfully.');
+      await fetchInitialData();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete patient.');
       throw err;
     }
   };

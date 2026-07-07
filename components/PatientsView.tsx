@@ -1473,6 +1473,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         try {
           await onDeletePatient(patientId);
           setDeleteConfirmOpen(false);
+          alert('Patient deleted successfully.');
         } catch (err: any) {
           alert(err?.message || 'Failed to delete patient');
         } finally {
