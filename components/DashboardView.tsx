@@ -134,18 +134,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
   const recallsCancelsLists = useMemo(() => buildRecallsCancelsLists(appointments, todayKey), [appointments, todayKey]);
 
-  const nextSevenDaysKey = useMemo(() => {
-    const nextWeek = new Date(todayKey);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    return toLocalISODate(nextWeek);
-  }, [todayKey]);
-
-  const recallsCancelsSummary = useMemo(() => ({
-    total: recallsCancelsLists.recalls.length + recallsCancelsLists.late.length + recallsCancelsLists.cancelled.length,
-    nextSevenDays: recallsCancelsLists.recalls.filter(appointment => appointment.date <= nextSevenDaysKey).length,
-    leadFollowUps: [...recallsCancelsLists.late, ...recallsCancelsLists.cancelled].filter(appointment => !appointment.patient_id).length
-  }), [nextSevenDaysKey, recallsCancelsLists]);
-
   const formatAppointmentDate = (dateStr?: string) => {
     if (!dateStr) return 'No date';
     const date = new Date(`${dateStr}T00:00:00`);
@@ -168,37 +156,33 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
   const triageToneClasses = {
     recall: {
-      shell: 'border-emerald-100 bg-gradient-to-br from-emerald-50/80 via-white to-white',
-      rail: 'bg-emerald-500',
-      badge: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-      icon: 'bg-emerald-500 text-white shadow-emerald-200',
+      shell: 'border-emerald-100 bg-white',
+      accent: 'bg-emerald-500',
+      badge: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+      icon: 'bg-emerald-50 text-emerald-700',
       count: 'text-emerald-700',
-      row: 'hover:border-emerald-200 hover:bg-emerald-50/60',
-      dot: 'bg-emerald-500'
+      row: 'hover:bg-emerald-50/50'
     },
     late: {
-      shell: 'border-amber-100 bg-gradient-to-br from-amber-50/80 via-white to-white',
-      rail: 'bg-amber-500',
-      badge: 'bg-amber-100 text-amber-800 ring-amber-200',
-      icon: 'bg-amber-500 text-white shadow-amber-200',
+      shell: 'border-amber-100 bg-white',
+      accent: 'bg-amber-500',
+      badge: 'bg-amber-50 text-amber-800 ring-amber-100',
+      icon: 'bg-amber-50 text-amber-700',
       count: 'text-amber-700',
-      row: 'hover:border-amber-200 hover:bg-amber-50/60',
-      dot: 'bg-amber-500'
+      row: 'hover:bg-amber-50/50'
     },
     cancelled: {
-      shell: 'border-rose-100 bg-gradient-to-br from-rose-50/80 via-white to-white',
-      rail: 'bg-rose-500',
-      badge: 'bg-rose-100 text-rose-700 ring-rose-200',
-      icon: 'bg-rose-500 text-white shadow-rose-200',
+      shell: 'border-rose-100 bg-white',
+      accent: 'bg-rose-500',
+      badge: 'bg-rose-50 text-rose-700 ring-rose-100',
+      icon: 'bg-rose-50 text-rose-700',
       count: 'text-rose-700',
-      row: 'hover:border-rose-200 hover:bg-rose-50/60',
-      dot: 'bg-rose-500'
+      row: 'hover:bg-rose-50/50'
     }
   } as const;
 
   const renderTriagePanel = ({
     title,
-    eyebrow,
     description,
     rows,
     emptyMessage,
@@ -206,7 +190,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     icon
   }: {
     title: string;
-    eyebrow: string;
     description: string;
     rows: Appointment[];
     emptyMessage: string;
@@ -214,87 +197,52 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     icon: React.ReactNode;
   }) => {
     const classes = triageToneClasses[tone];
-    const leadCount = rows.filter(appointment => !appointment.patient_id).length;
-    const registeredCount = rows.length - leadCount;
 
     return (
-      <section className={`relative overflow-hidden rounded-2xl border p-4 shadow-sm ${classes.shell}`}>
-        <div className={`absolute inset-y-0 left-0 w-1.5 ${classes.rail}`} />
-        <div className="mb-4 flex items-start justify-between gap-4 pl-2">
-          <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2">
-              <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl shadow-lg ${classes.icon}`}>
-                {icon}
-              </span>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">{eyebrow}</p>
-                <h3 className="text-lg font-black tracking-tight text-slate-900">{title}</h3>
-              </div>
+      <section className={`overflow-hidden rounded-2xl border shadow-sm ${classes.shell}`}>
+        <div className={`h-1.5 ${classes.accent}`} />
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className={`inline-flex h-10 w-10 flex-none items-center justify-center rounded-xl ${classes.icon}`}>
+              {icon}
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-slate-900">{title}</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
             </div>
-            <p className="max-w-sm text-xs leading-5 text-slate-500">{description}</p>
           </div>
           <div className="text-right">
-            <p className={`font-mono text-4xl font-black leading-none tabular-nums ${classes.count}`}>{rows.length}</p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">records</p>
-          </div>
-        </div>
-
-        <div className="mb-3 grid grid-cols-2 gap-2 pl-2 text-[11px] font-bold text-slate-500">
-          <div className="rounded-xl border border-white/80 bg-white/70 px-3 py-2">
-            <span className="block font-mono text-base text-slate-900 tabular-nums">{registeredCount}</span>
-            Registered
-          </div>
-          <div className="rounded-xl border border-white/80 bg-white/70 px-3 py-2">
-            <span className="block font-mono text-base text-slate-900 tabular-nums">{leadCount}</span>
-            New patient leads
+            <p className={`font-mono text-3xl font-black leading-none tabular-nums ${classes.count}`}>{rows.length}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">total</p>
           </div>
         </div>
 
         {rows.length === 0 ? (
-          <div className="ml-2 rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-8 text-center">
-            <p className="text-sm font-bold text-slate-500">{emptyMessage}</p>
-            <p className="mt-1 text-xs text-slate-400">This lane is clear for the selected branch scope.</p>
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm font-medium text-slate-400">{emptyMessage}</p>
           </div>
         ) : (
-          <div className="ml-2 max-h-[520px] space-y-2 overflow-y-auto pr-1 [scrollbar-width:thin]">
+          <div className="max-h-[480px] divide-y divide-slate-100 overflow-y-auto [scrollbar-width:thin]">
             {rows.map((appointment) => {
               const patientName = appointmentPatientName(appointment);
-              const contact = appointment.guest_phone || (appointment.patient_id ? 'Patient profile' : 'No phone recorded');
-              const note = appointment.notes || appointment.guest_notes || '';
               const relativeLabel = getRelativeDayLabel(appointment.date);
 
               return (
                 <article
                   key={appointment.id}
-                  className={`group rounded-2xl border border-slate-100 bg-white/85 p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-all ${classes.row}`}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors ${classes.row}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 flex-none rounded-full ${classes.dot}`} />
-                        <h4 className="truncate text-sm font-black text-slate-900">{patientName}</h4>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                        <span className={`rounded-full px-2 py-0.5 ring-1 ${classes.badge}`}>{appointment.patient_id ? 'Registered' : 'Lead'}</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{appointment.type || 'No type'}</span>
-                        {appointment.doctor_name && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">Dr. {appointment.doctor_name}</span>}
-                      </div>
-                    </div>
-                    <div className="flex-none text-right">
-                      <p className="font-mono text-xs font-black text-slate-900 tabular-nums">{appointment.time || '--:--'}</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{relativeLabel}</p>
+                  <div className="min-w-0">
+                    <h4 className="truncate text-sm font-semibold text-slate-900">{patientName}</h4>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                      <span className={`rounded-full px-2 py-0.5 ring-1 ${classes.badge}`}>{appointment.patient_id ? 'Patient' : 'Lead'}</span>
+                      <span>{appointment.type || 'No type'}</span>
                     </div>
                   </div>
-
-                  <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-t border-slate-100 pt-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-700">{formatAppointmentDate(appointment.date)}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-slate-400">{contact}</p>
-                      {note && <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">{note}</p>}
-                    </div>
-                    <span className="rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-white">
-                      {appointment.status}
-                    </span>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-700">{formatAppointmentDate(appointment.date)}</p>
+                    <p className="mt-1 font-mono text-xs font-semibold text-slate-500 tabular-nums">{appointment.time || '--:--'}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{relativeLabel}</p>
                   </div>
                 </article>
               );
@@ -656,41 +604,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       {activeTab === 'recalls-cancels' ? (
         <div className="space-y-5">
-          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-xl">
-            <div className="relative p-5 sm:p-6">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(16,185,129,0.22),transparent_28%),radial-gradient(circle_at_78%_18%,rgba(244,63,94,0.18),transparent_24%),linear-gradient(135deg,rgba(15,23,42,0),rgba(30,41,59,0.78))]" />
-              <div className="relative grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-emerald-300">Appointment triage ledger</p>
-                  <h3 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Recalls & Cancels</h3>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-                    A scan-first operations board for follow-ups, missed visits, and cancellations across {selectedLocationName}. Rows are grouped by action priority so high-volume days stay readable.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-2 backdrop-blur sm:min-w-[420px]">
-                  <div className="rounded-xl bg-white/10 px-3 py-3">
-                    <p className="font-mono text-2xl font-black text-white tabular-nums">{recallsCancelsSummary.total}</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-300">Total rows</p>
-                  </div>
-                  <div className="rounded-xl bg-emerald-400/15 px-3 py-3">
-                    <p className="font-mono text-2xl font-black text-emerald-200 tabular-nums">{recallsCancelsSummary.nextSevenDays}</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-emerald-100">Due in 7d</p>
-                  </div>
-                  <div className="rounded-xl bg-rose-400/15 px-3 py-3">
-                    <p className="font-mono text-2xl font-black text-rose-200 tabular-nums">{recallsCancelsSummary.leadFollowUps}</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-rose-100">Lead follow-ups</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-900">Recalls & Cancels</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Follow-up appointments for {selectedLocationName}, grouped by status for quick review.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             {renderTriagePanel({
               title: 'Upcoming Recalls',
-              eyebrow: 'Preventive follow-up',
-              description: 'Future scheduled registered-patient appointments from Clinical Focus next appointment.',
+              description: 'Scheduled patient follow-ups.',
               rows: recallsCancelsLists.recalls,
               emptyMessage: 'No upcoming recalls.',
               tone: 'recall',
@@ -699,8 +623,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
             {renderTriagePanel({
               title: 'Late / No-show',
-              eyebrow: 'Needs contact',
-              description: 'Past scheduled appointments, including new-patient leads that still need follow-up.',
+              description: 'Past scheduled visits to review.',
               rows: recallsCancelsLists.late,
               emptyMessage: 'No late or no-show appointments.',
               tone: 'late',
@@ -709,8 +632,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
             {renderTriagePanel({
               title: 'Cancelled Appointments',
-              eyebrow: 'Recovered capacity',
-              description: 'Cancelled visits with registered or lead patient names, sorted newest first.',
+              description: 'Cancelled visits, newest first.',
               rows: recallsCancelsLists.cancelled,
               emptyMessage: 'No cancelled appointments.',
               tone: 'cancelled',
