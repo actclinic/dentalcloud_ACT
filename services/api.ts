@@ -11,6 +11,7 @@ import { normalizePaymentMethod } from '../utils/paymentMethods';
 import { normalizePaymentReceiptSnapshot } from '../utils/paymentReceipt';
 import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../utils/receiptPreferences';
 import { calculateDoctorEarnings, usesFlatVisitCommission } from '../utils/doctorCommission';
+import { enumValue, finiteNumber, strictDateString, trimOptional, trimRequired } from '../utils/validation';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -18,8 +19,81 @@ let doctorLocationsSupport: boolean | null = null;
 let conversationsDoctorUserSupport: boolean | null = null;
 let storageConfigVersion = 0;
 
+const MEDICINE_ITEM_TYPES = ['Medicine', 'Retail', 'Supply', 'Other'] as const;
+
 const isMissingColumnError = (error: any, columnName: string): boolean => {
   return typeof error?.message === 'string' && error.message.toLowerCase().includes(columnName.toLowerCase());
+};
+
+const buildExpensePayload = (data: Partial<Expense>, existing?: Partial<Expense>): Partial<Expense> => {
+  const payload: Partial<Expense> = {};
+
+  if (data.location_id !== undefined) {
+    payload.location_id = trimRequired(data.location_id, 'Location');
+  } else if (!existing) {
+    payload.location_id = trimRequired(data.location_id, 'Location');
+  }
+
+  if (data.description !== undefined) {
+    payload.description = trimRequired(data.description, 'Expense description', { maxLength: 500 });
+  } else if (!existing) {
+    payload.description = trimRequired(data.description, 'Expense description', { maxLength: 500 });
+  }
+
+  if (data.amount !== undefined) {
+    payload.amount = finiteNumber(data.amount, 'Expense amount', { min: 0.01 });
+  } else if (!existing) {
+    payload.amount = finiteNumber(data.amount, 'Expense amount', { min: 0.01 });
+  }
+
+  if (data.category !== undefined) {
+    payload.category = trimRequired(data.category, 'Expense category', { maxLength: 100 });
+  } else if (!existing) {
+    payload.category = trimRequired(data.category, 'Expense category', { maxLength: 100 });
+  }
+
+  if (data.date !== undefined) {
+    payload.date = strictDateString(data.date, 'Expense date');
+  } else if (!existing) {
+    payload.date = strictDateString(data.date, 'Expense date');
+  }
+
+  return payload;
+};
+
+const buildMedicinePayload = (data: Partial<Medicine>, existing?: Partial<Medicine>): Partial<Medicine> => {
+  const payload: Partial<Medicine> = {};
+
+  if (data.location_id !== undefined) {
+    payload.location_id = trimRequired(data.location_id, 'Location');
+  } else if (!existing) {
+    payload.location_id = trimRequired(data.location_id, 'Location');
+  }
+
+  if (data.name !== undefined) {
+    payload.name = trimRequired(data.name, 'Medicine name', { maxLength: 200 });
+  } else if (!existing) {
+    payload.name = trimRequired(data.name, 'Medicine name', { maxLength: 200 });
+  }
+
+  if (data.description !== undefined) payload.description = trimOptional(data.description, 'Medicine description', { maxLength: 1000 }) || undefined;
+  if (data.unit !== undefined) payload.unit = trimRequired(data.unit, 'Medicine unit', { maxLength: 50 });
+  else if (!existing) payload.unit = 'pack';
+  if (data.item_type !== undefined) {
+    payload.item_type = enumValue(trimRequired(data.item_type, 'Item type', { maxLength: 100 }), MEDICINE_ITEM_TYPES, 'Item type');
+  }
+  else if (!existing) payload.item_type = 'Medicine';
+  if (data.price !== undefined) payload.price = finiteNumber(data.price, 'Medicine price', { min: 0 });
+  else if (!existing) payload.price = 0;
+  if (data.stock !== undefined) payload.stock = finiteNumber(data.stock, 'Medicine stock', { min: 0 });
+  else if (!existing) payload.stock = 0;
+  if (data.min_stock !== undefined) payload.min_stock = finiteNumber(data.min_stock, 'Minimum stock', { min: 0 });
+  else if (!existing) payload.min_stock = 0;
+  if (data.quantity_step !== undefined) payload.quantity_step = finiteNumber(data.quantity_step, 'Quantity step', { min: 0.000001 });
+  else if (!existing) payload.quantity_step = 1;
+  if (data.category !== undefined) payload.category = trimOptional(data.category, 'Medicine category', { maxLength: 100 }) || undefined;
+
+  return payload;
 };
 
 const isMissingRelationError = (error: any, relationName: string): boolean => {
@@ -903,7 +977,9 @@ export const api = {
           return query;
         };
 
-        let { data, error } = await buildQuery('township');
+        const initialResult = await buildQuery('township');
+        let data: any[] | null = initialResult.data;
+        let error: any = initialResult.error;
 
         if (error && isMissingColumnError(error, 'township')) {
           const fallbackResult = await buildQuery('state_region');
@@ -1754,7 +1830,9 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        let { data, error } = await query;
+        const initialResult = await query;
+        let data: any[] | null = initialResult.data;
+        let error: any = initialResult.error;
 
         if (error && isOptionalRelationAccessError(error, ['patients', 'doctors'])) {
           let fallbackQuery = supabase
@@ -2330,7 +2408,9 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        let { data, error } = await query;
+        const initialResult = await query;
+        let data: any[] | null = initialResult.data;
+        let error: any = initialResult.error;
 
         if (error && isOptionalRelationAccessError(error, ['patients', 'doctors'])) {
           let fallbackQuery = supabase
@@ -4422,18 +4502,20 @@ export const api = {
       }
     },
     create: async (data: Partial<Expense>): Promise<Expense> => {
+      const payload = buildExpensePayload(data);
       const { data: result, error } = await supabase
         .from('expenses')
-        .insert(data)
+        .insert(payload)
         .select()
         .single();
       if (error) throw new Error(error.message);
       return result;
     },
     update: async (id: string, data: Partial<Expense>): Promise<Expense> => {
+      const payload = buildExpensePayload(data, {});
       const { data: result, error } = await supabase
         .from('expenses')
-        .update(data)
+        .update(payload)
         .eq('id', id)
         .select()
         .single();
@@ -4855,18 +4937,7 @@ export const api = {
       }
     },
     create: async (data: Partial<Medicine>): Promise<Medicine> => {
-      const payload = {
-        location_id: data.location_id,
-        name: data.name,
-        description: data.description || null,
-        unit: data.unit || 'pack',
-        item_type: data.item_type || 'Medicine',
-        price: data.price || 0,
-        stock: data.stock || 0,
-        min_stock: data.min_stock || 0,
-        quantity_step: Number(data.quantity_step || 1),
-        category: data.category || null
-      };
+      const payload = buildMedicinePayload(data);
 
       const { data: result, error } = await supabase
         .from('medicines')
@@ -4892,17 +4963,7 @@ export const api = {
       };
     },
     update: async (id: string, data: Partial<Medicine>): Promise<Medicine> => {
-      const payload: any = {};
-      
-      if (data.name !== undefined) payload.name = data.name;
-      if (data.description !== undefined) payload.description = data.description;
-      if (data.unit !== undefined) payload.unit = data.unit;
-      if (data.item_type !== undefined) payload.item_type = data.item_type;
-      if (data.price !== undefined) payload.price = data.price;
-      if (data.stock !== undefined) payload.stock = data.stock;
-      if (data.min_stock !== undefined) payload.min_stock = data.min_stock;
-      if (data.quantity_step !== undefined) payload.quantity_step = data.quantity_step;
-      if (data.category !== undefined) payload.category = data.category;
+      const payload: any = buildMedicinePayload(data, {});
       
       payload.updated_at = new Date().toISOString();
 
@@ -5113,7 +5174,9 @@ export const api = {
           query = query.eq('location_id', locationId);
         }
 
-        let { data, error } = await query;
+        const initialResult = await query;
+        let data: any[] | null = initialResult.data;
+        let error: any = initialResult.error;
 
         if (error && isOptionalRelationAccessError(error, ['medicines'])) {
           let fallbackQuery = supabase
