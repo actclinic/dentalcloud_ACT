@@ -86,7 +86,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [appointmentToDelete, setAppointmentToDelete] = useState<string | null>(null);
-  const itemsPerPage = 10;
+  const itemsPerPage = 100;
 
   const toLocalISODate = (date: Date) => {
     const year = date.getFullYear();

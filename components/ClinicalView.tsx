@@ -8,6 +8,7 @@ import { formatTeethArray, formatTeethWithPosition, getTeethInQuadrant } from '.
 import { Modal, Input, TimeInput } from './Shared';
 import { SearchableSelect } from './SearchableSelect';
 import PatientQRScanButton from './PatientQRScanButton';
+import { calculateAppointmentShortcutDate, type AppointmentDateShortcut } from '../utils/appointmentDateShortcuts';
 
 export interface UploadProgress {
   fileName: string;
@@ -405,10 +406,11 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     }
   };
 
-  const handleQuickDateApply = (daysAhead: number) => {
-    const date = new Date();
-    date.setDate(date.getDate() + daysAhead);
-    setNextAppointmentForm((prev) => ({ ...prev, date: date.toISOString().split('T')[0] }));
+  const handleQuickDateApply = (shortcut: AppointmentDateShortcut) => {
+    setNextAppointmentForm((prev) => ({
+      ...prev,
+      date: calculateAppointmentShortcutDate(shortcut)
+    }));
   };
 
   const handleCreateNextAppointment = async (e: React.FormEvent) => {
@@ -1624,10 +1626,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => handleQuickDateApply(7)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Week</button>
-              <button type="button" onClick={() => handleQuickDateApply(14)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+2 Weeks</button>
-              <button type="button" onClick={() => handleQuickDateApply(30)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Month</button>
-              <button type="button" onClick={() => handleQuickDateApply(180)} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+6 Months</button>
+              <button type="button" onClick={() => handleQuickDateApply({ unit: 'weeks', amount: 1 })} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Week</button>
+              <button type="button" onClick={() => handleQuickDateApply({ unit: 'weeks', amount: 2 })} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+2 Weeks</button>
+              <button type="button" onClick={() => handleQuickDateApply({ unit: 'months', amount: 1 })} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+1 Month</button>
+              <button type="button" onClick={() => handleQuickDateApply({ unit: 'months', amount: 6 })} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100">+6 Months</button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

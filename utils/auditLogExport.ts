@@ -180,12 +180,21 @@ export const buildAuditLogRows = (
       }))
     : [];
 
+  const appointmentById = new Map(appointments.map((appointment) => [appointment.id, appointment]));
   const rescheduleRows: AuditExportRow[] = includeAppointments
-    ? rescheduleLogs.map((rescheduleLog) => ({
-        kind: 'reschedule',
-        sortDate: rescheduleLog.created_at || `${rescheduleLog.new_date || ''}T23:59:57`,
-        rescheduleLog
-      }))
+    ? rescheduleLogs.map((rescheduleLog) => {
+        const appointment = appointmentById.get(rescheduleLog.appointment_id);
+        const snapshotName = (rescheduleLog.patient_name || '').trim();
+        const resolvedPatientName = snapshotName && snapshotName.toLowerCase() !== 'unknown'
+          ? snapshotName
+          : appointment?.patient_name || appointment?.guest_name || 'Unknown';
+
+        return {
+          kind: 'reschedule',
+          sortDate: rescheduleLog.created_at || `${rescheduleLog.new_date || ''}T23:59:57`,
+          rescheduleLog: { ...rescheduleLog, patient_name: resolvedPatientName }
+        };
+      })
     : [];
 
   return [...treatmentRows, ...appointmentRows, ...paymentRows, ...rescheduleRows].sort((a, b) => b.sortDate.localeCompare(a.sortDate));

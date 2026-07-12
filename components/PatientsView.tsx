@@ -109,7 +109,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const deletePatientIdRef = useRef<string | null>(null);
   const deletePatientNameRef = useRef<string>('this patient');
-  const itemsPerPage = 10;
+  const itemsPerPage = 100;
   const [branchTransferBlockedOpen, setBranchTransferBlockedOpen] = useState(false);
   const [branchTransferBlockedRecords, setBranchTransferBlockedRecords] = useState<string[]>([]);
 

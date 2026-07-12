@@ -2055,7 +2055,7 @@ export const api = {
     ): Promise<Appointment> => {
       const { data: existingAppointment, error: existingAppointmentError } = await supabase
         .from('appointments')
-        .select('status, clinical_fee_status, patient_id, location_id, date, time, guest_name, doctor_id')
+        .select('status, clinical_fee_status, patient_id, location_id, date, time, guest_name, doctor_id, patients(name)')
         .eq('id', id)
         .single();
 
@@ -2132,6 +2132,7 @@ export const api = {
 
       if (shouldCreateRescheduleAudit) {
         const patientName =
+          getJoinedOne(existingAppointment.patients)?.name ||
           result.guest_name ||
           existingAppointment.guest_name ||
           'Unknown';

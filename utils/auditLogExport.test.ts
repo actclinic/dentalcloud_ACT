@@ -137,6 +137,22 @@ describe('audit log export rows', () => {
     }
   });
 
+  it('repairs legacy Unknown reschedule names from the matching appointment', () => {
+    const rows = buildAuditLogRows(records, appointments, true, [], [
+      {
+        ...rescheduleLogs[0],
+        appointment_id: 'apt-1',
+        patient_name: 'Unknown'
+      }
+    ]);
+    const rescheduleRow = rows.find((row) => row.kind === 'reschedule');
+
+    expect(rescheduleRow?.kind).toBe('reschedule');
+    if (rescheduleRow?.kind === 'reschedule') {
+      expect(rescheduleRow.rescheduleLog.patient_name).toBe('Su Su');
+    }
+  });
+
   it('filters export rows by selected audit tab, date range, and search term', () => {
     const rows = buildAuditLogRows(records, appointments, true);
 
