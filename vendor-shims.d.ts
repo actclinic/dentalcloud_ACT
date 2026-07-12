@@ -51,6 +51,7 @@ declare module 'jspdf' {
     setFontSize(size: number): this;
     setTextColor(r: number, g?: number, b?: number): this;
     text(text: string | string[], x: number, y: number, options?: jsPDFTextOptions): this;
+    addPage(): this;
     setPage(pageNumber: number): this;
     save(filename: string): void;
   }

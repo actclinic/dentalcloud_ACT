@@ -4,6 +4,7 @@ import { usesFlatVisitCommission } from './doctorCommission';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 import { formatAppointmentNotesForDisplay } from './appointmentClinicalFocus';
 import { formatDoctorName, normalizeDoctorName } from './doctorName';
+import { buildRecallsCancelsExportRows, type RecallsCancelsExportRow } from './recallsCancels';
 
 type ExcelPrimitive = string | number;
 type ExcelRow = Record<string, ExcelPrimitive>;
@@ -189,6 +190,62 @@ export const exportAppointmentsToExcel = async (appointments: Appointment[]) => 
     }));
 
   await saveWorkbook(rows, columns, 'Appointments', `appointments-report-${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
+export const exportRecallsCancelsToExcel = async (
+  appointments: Appointment[],
+  todayKey: string,
+  locationName: string
+) => {
+  const XLSX = await import('xlsx');
+  const sections = buildRecallsCancelsExportRows(appointments, todayKey);
+  const workbook = XLSX.utils.book_new();
+  const generatedAt = new Date().toLocaleString();
+  const total = sections.recalls.length + sections.late.length + sections.cancelled.length;
+  const summarySheet = XLSX.utils.aoa_to_sheet([
+    ['Recalls & Cancels Report'],
+    ['Report Scope', locationName],
+    ['Generated', generatedAt],
+    ['Report Date', todayKey],
+    [],
+    ['Category', 'Count'],
+    ['Upcoming Recalls', sections.recalls.length],
+    ['Late / No-show', sections.late.length],
+    ['Cancelled Appointments', sections.cancelled.length],
+    ['Total', total]
+  ]);
+  summarySheet['!cols'] = [{ wch: 28 }, { wch: 34 }];
+  summarySheet['!merges'] = [XLSX.utils.decode_range('A1:B1')];
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+  const headers = ['Date', 'Time', 'Patient', 'Patient Type', 'Phone', 'Source', 'Appointment Type', 'Doctor', 'Clinical Focus', 'Notes'];
+  const appendSectionSheet = (sheetName: string, rows: RecallsCancelsExportRow[]) => {
+    const data = rows.map(row => ({
+      Date: row.date,
+      Time: row.time,
+      Patient: row.patient,
+      'Patient Type': row.patientType,
+      Phone: row.phone,
+      Source: row.source,
+      'Appointment Type': row.appointmentType,
+      Doctor: row.doctor,
+      'Clinical Focus': row.clinicalFocus,
+      Notes: row.notes
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(data, { header: headers });
+    worksheet['!cols'] = [
+      { wch: 14 }, { wch: 10 }, { wch: 26 }, { wch: 20 }, { wch: 18 },
+      { wch: 20 }, { wch: 22 }, { wch: 24 }, { wch: 36 }, { wch: 44 }
+    ];
+    worksheet['!autofilter'] = { ref: `A1:J${Math.max(rows.length + 1, 1)}` };
+    worksheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  };
+
+  appendSectionSheet('Upcoming Recalls', sections.recalls);
+  appendSectionSheet('Late-No-show', sections.late);
+  appendSectionSheet('Cancelled', sections.cancelled);
+  XLSX.writeFile(workbook, `recalls-cancels-${todayKey}.xlsx`);
 };
 
 interface ClinicalRecordsExcelExportOptions extends AuditLogFilterOptions {

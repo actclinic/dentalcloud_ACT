@@ -6,6 +6,7 @@ import { usesFlatVisitCommission } from './doctorCommission';
 import { formatTeethWithPosition } from './toothNumbering';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 import { formatDoctorName, normalizeDoctorName } from './doctorName';
+import { buildRecallsCancelsExportRows, type RecallsCancelsExportRow } from './recallsCancels';
 
 // Add type declaration for jsPDF with autoTable
 declare module 'jspdf' {
@@ -195,6 +196,91 @@ export const exportAppointmentsToPDF = (appointments: Appointment[]) => {
   }
   
   doc.save(`appointments-report-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+export const exportRecallsCancelsToPDF = (
+  appointments: Appointment[],
+  todayKey: string,
+  locationName: string
+) => {
+  const sections = buildRecallsCancelsExportRows(appointments, todayKey);
+  const total = sections.recalls.length + sections.late.length + sections.cancelled.length;
+  const doc = new jsPDF('l', 'mm', 'a4');
+
+  doc.setFontSize(20);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Recalls & Cancels Report', 14, 18);
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Scope: ${locationName}`, 14, 26);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 32);
+  doc.text(
+    `Upcoming Recalls: ${sections.recalls.length}   |   Late / No-show: ${sections.late.length}   |   Cancelled: ${sections.cancelled.length}   |   Total: ${total}`,
+    14,
+    38
+  );
+
+  const tableHeaders = [['Date', 'Time', 'Patient', 'Patient Type', 'Phone', 'Source', 'Appointment', 'Doctor', 'Clinical Focus', 'Notes']];
+  const tableBody = (rows: RecallsCancelsExportRow[]) => rows.map(row => [
+    row.date,
+    row.time || '-',
+    row.patient,
+    row.patientType,
+    row.phone || '-',
+    row.source,
+    row.appointmentType,
+    row.doctor,
+    row.clinicalFocus || '-',
+    row.notes || '-'
+  ]);
+  const sectionDefinitions: Array<{
+    title: string;
+    rows: RecallsCancelsExportRow[];
+    color: [number, number, number];
+  }> = [
+    { title: 'Upcoming Recalls', rows: sections.recalls, color: [5, 150, 105] },
+    { title: 'Late / No-show', rows: sections.late, color: [217, 119, 6] },
+    { title: 'Cancelled Appointments', rows: sections.cancelled, color: [225, 29, 72] }
+  ];
+
+  let startY = 47;
+  sectionDefinitions.forEach((section, index) => {
+    if (index > 0 && startY > 165) {
+      doc.addPage();
+      startY = 18;
+    }
+
+    doc.setFontSize(12);
+    doc.setTextColor(...section.color);
+    doc.text(`${section.title} (${section.rows.length})`, 14, startY);
+    autoTable(doc, {
+      startY: startY + 4,
+      head: tableHeaders,
+      body: section.rows.length > 0 ? tableBody(section.rows) : [['No records', '', '', '', '', '', '', '', '', '']],
+      theme: 'grid',
+      headStyles: { fillColor: section.color, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 7, textColor: [51, 65, 85], cellPadding: 2, overflow: 'linebreak' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      margin: { left: 14, right: 14, bottom: 18 },
+      columnStyles: {
+        0: { cellWidth: 18 }, 1: { cellWidth: 13 }, 2: { cellWidth: 28 }, 3: { cellWidth: 22 },
+        4: { cellWidth: 20 }, 5: { cellWidth: 22 }, 6: { cellWidth: 25 }, 7: { cellWidth: 25 },
+        8: { cellWidth: 38 }, 9: { cellWidth: 42 }
+      }
+    });
+    startY = (doc as any).lastAutoTable.finalY + 10;
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Recalls & Cancels | ${locationName}`, 14, doc.internal.pageSize.height - 9);
+    doc.text(`Page ${page} of ${pageCount}`, doc.internal.pageSize.width - 14, doc.internal.pageSize.height - 9, { align: 'right' });
+  }
+
+  doc.save(`recalls-cancels-${todayKey}.pdf`);
 };
 
 interface ClinicalRecordsExportOptions extends AuditLogFilterOptions {

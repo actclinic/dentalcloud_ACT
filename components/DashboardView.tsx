@@ -5,6 +5,7 @@ import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord 
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
 import { appointmentPatientName, buildRecallsCancelsLists } from '../utils/recallsCancels';
+import ExportMenu from './ExportMenu';
 import {
   buildDailyAppointmentData,
   buildDailyFinancialData,
@@ -56,6 +57,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
   const [activeTab, setActiveTab] = useState<'overview' | 'recalls-cancels'>('overview');
+  const [exportingRecallsCancels, setExportingRecallsCancels] = useState(false);
   const [dateFrom, setDateFrom] = useState(todayKey);
   const [dateTo, setDateTo] = useState(todayKey);
 
@@ -133,6 +135,26 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   );
 
   const recallsCancelsLists = useMemo(() => buildRecallsCancelsLists(appointments, todayKey), [appointments, todayKey]);
+  const recallsCancelsTotal = recallsCancelsLists.recalls.length + recallsCancelsLists.late.length + recallsCancelsLists.cancelled.length;
+
+  const handleRecallsCancelsExport = async (format: 'pdf' | 'excel') => {
+    if (exportingRecallsCancels || recallsCancelsTotal === 0) return;
+    setExportingRecallsCancels(true);
+    try {
+      if (format === 'pdf') {
+        const { exportRecallsCancelsToPDF } = await import('../utils/pdfExport');
+        exportRecallsCancelsToPDF(appointments, todayKey, selectedLocationName);
+      } else {
+        const { exportRecallsCancelsToExcel } = await import('../utils/excelExport');
+        await exportRecallsCancelsToExcel(appointments, todayKey, selectedLocationName);
+      }
+    } catch (error) {
+      console.error(`Failed to export Recalls & Cancels as ${format}:`, error);
+      window.alert('The report could not be downloaded. Please try again.');
+    } finally {
+      setExportingRecallsCancels(false);
+    }
+  };
 
   const formatAppointmentDate = (dateStr?: string) => {
     if (!dateStr) return 'No date';
@@ -604,11 +626,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       {activeTab === 'recalls-cancels' ? (
         <div className="space-y-5">
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-900">Recalls & Cancels</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Follow-up appointments for {selectedLocationName}, grouped by status for quick review.
-            </p>
+          <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Recalls & Cancels</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Follow-up appointments for {selectedLocationName}, grouped by status for quick review.
+              </p>
+            </div>
+            <ExportMenu
+              disabled={loading || exportingRecallsCancels || recallsCancelsTotal === 0}
+              onExportPDF={() => void handleRecallsCancelsExport('pdf')}
+              onExportExcel={() => void handleRecallsCancelsExport('excel')}
+              className="h-11 w-full sm:w-auto"
+              buttonLabelClassName="inline"
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
