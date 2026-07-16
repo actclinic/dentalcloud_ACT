@@ -18,15 +18,16 @@ const treatment = (overrides: Partial<ClinicalRecord> = {}): ClinicalRecord => (
 });
 
 describe('material cost calculations', () => {
-  it('reduces percentage commission and net profit using the material-adjusted amount', () => {
+  it('uses persisted payment-based doctor earnings for material cost reporting', () => {
     const record = treatment({
       doctor_specialization: 'General',
-      doctor_commission_percentage: 40
+      doctor_commission_percentage: 40,
+      doctorEarnings: 18_000
     });
     const materialCost = () => 10_000;
 
-    expect(calculateMaterialAdjustedDoctorEarnings([record], materialCost)).toBe(36_000);
-    expect(calculateMaterialNetProfit([record], materialCost)).toBe(54_000);
+    expect(calculateMaterialAdjustedDoctorEarnings([record], materialCost)).toBe(18_000);
+    expect(calculateMaterialNetProfit([record], materialCost)).toBe(72_000);
   });
 
   it('keeps flat per-visit commission unchanged', () => {
@@ -36,21 +37,34 @@ describe('material cost calculations', () => {
       doctor_commission_per_visit: 15_000
     });
 
+    expect(calculateMaterialAdjustedDoctorEarnings([record], () => 10_000)).toBe(40_000);
+    expect(calculateMaterialNetProfit([record], () => 10_000)).toBe(50_000);
+  });
+
+  it('uses the stored flat earning after payment recalculation', () => {
+    const record = treatment({
+      doctor_specialization: 'Ortho',
+      doctor_commission_percentage: 40,
+      doctor_commission_per_visit: 15_000,
+      doctorEarnings: 15_000
+    });
+
     expect(calculateMaterialAdjustedDoctorEarnings([record], () => 10_000)).toBe(15_000);
     expect(calculateMaterialNetProfit([record], () => 10_000)).toBe(75_000);
   });
 
-  it('uses the stored earning proportion when commission settings are unavailable', () => {
+  it('uses stored earnings even when commission settings are unavailable', () => {
     const record = treatment({ doctor_commission_percentage: null });
 
-    expect(calculateMaterialAdjustedDoctorEarnings([record], () => 25_000)).toBe(30_000);
-    expect(calculateMaterialNetProfit([record], () => 25_000)).toBe(45_000);
+    expect(calculateMaterialAdjustedDoctorEarnings([record], () => 25_000)).toBe(40_000);
+    expect(calculateMaterialNetProfit([record], () => 25_000)).toBe(35_000);
   });
 
-  it('never calculates commission from a negative treatment balance', () => {
+  it('supports zero stored earnings after core recalculation clamps a negative commission base', () => {
     const record = treatment({
       doctor_specialization: 'General',
-      doctor_commission_percentage: 40
+      doctor_commission_percentage: 40,
+      doctorEarnings: 0
     });
 
     expect(calculateMaterialAdjustedDoctorEarnings([record], () => 120_000)).toBe(0);

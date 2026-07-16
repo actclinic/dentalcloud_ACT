@@ -281,7 +281,37 @@ describe('audit log export rows', () => {
 
     expect(treatmentRow?.kind).toBe('treatment');
     if (treatmentRow?.kind === 'treatment') {
-      expect(treatmentRow.record.serviceCharges).toBe(4500);
+      expect(treatmentRow.record.serviceCharges).toBe(3000);
+    }
+  });
+
+  it('does not double a per-visit service fee recorded on two matching payments', () => {
+    const duplicateFeePayment: PaymentRecord = {
+      ...payments[0],
+      id: 'pay-duplicate-service-fee',
+      receiptSnapshot: {
+        payment: {
+          ...payments[0].receiptSnapshot!.payment,
+          serviceFeeAmount: 10_000
+        }
+      }
+    };
+    const originalFeePayment: PaymentRecord = {
+      ...payments[0],
+      receiptSnapshot: {
+        payment: {
+          ...payments[0].receiptSnapshot!.payment,
+          serviceFeeAmount: 10_000
+        }
+      }
+    };
+
+    const rows = buildAuditLogRows([records[0]], [], true, [originalFeePayment, duplicateFeePayment]);
+    const treatmentRow = rows.find((row) => row.kind === 'treatment');
+
+    expect(treatmentRow?.kind).toBe('treatment');
+    if (treatmentRow?.kind === 'treatment') {
+      expect(treatmentRow.record.serviceCharges).toBe(10_000);
     }
   });
 

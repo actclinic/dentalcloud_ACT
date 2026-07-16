@@ -11,6 +11,17 @@ node_modules
 dist
 dist-ssr
 *.local
+# Public image assets and PWA manifest are deployment-specific.
+public/**/*.avif
+public/**/*.bmp
+public/**/*.gif
+public/**/*.ico
+public/**/*.jpeg
+public/**/*.jpg
+public/**/*.png
+public/**/*.svg
+public/**/*.webp
+public/manifest.webmanifest
 
 # Editor directories and files
 .vscode/*

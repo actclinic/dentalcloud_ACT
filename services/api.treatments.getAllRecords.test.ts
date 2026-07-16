@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const supabaseMock = vi.hoisted(() => {
-  const state: any = { calls: [], rows: [] };
+  const state: any = { calls: [], rows: [], commissionEntriesError: null as any };
 
   const createTreatmentQuery = () => {
     const query: any = {
@@ -22,10 +22,24 @@ const supabaseMock = vi.hoisted(() => {
     return query;
   };
 
+  const createCommissionEntriesQuery = () => {
+    const query: any = {
+      in: vi.fn((column: string, values: string[]) => {
+        state.calls.push({ table: 'doctor_commission_entries', action: 'in', column, values });
+        return Promise.resolve(
+          state.commissionEntriesError
+            ? { data: null, error: state.commissionEntriesError }
+            : { data: [], error: null }
+        );
+      })
+    };
+    return query;
+  };
+
   state.from = vi.fn((table: string) => ({
     select: vi.fn((columns: string) => {
       state.calls.push({ table, action: 'select', columns });
-      return createTreatmentQuery();
+      return table === 'doctor_commission_entries' ? createCommissionEntriesQuery() : createTreatmentQuery();
     })
   }));
 
@@ -44,6 +58,7 @@ describe('treatments.getAllRecords', () => {
   beforeEach(() => {
     supabaseMock.calls = [];
     supabaseMock.rows = [];
+    supabaseMock.commissionEntriesError = null;
     supabaseMock.from.mockClear();
   });
 
@@ -63,5 +78,28 @@ describe('treatments.getAllRecords', () => {
     });
     expect(supabaseMock.calls).not.toContainEqual({ action: 'limit', count: 50 });
     expect(supabaseMock.calls).toContainEqual({ action: 'eq', column: 'location_id', value: 'location-1' });
+  });
+
+  it('still returns treatment records when the commission-ledger enrichment query fails', async () => {
+    supabaseMock.rows = [
+      {
+        id: 'treatment-1',
+        location_id: 'location-1',
+        patient_id: 'patient-1',
+        doctor_id: 'doctor-1',
+        cost: 50000,
+        doctor_earnings: 5000,
+        date: '2026-07-16',
+        patients: { name: 'Aung Min', balance: 0, patient_type: 'Marketing' },
+        doctors: { name: 'Hnin', specialization: 'General', commission_percentage: 10, commission_per_visit: 0 }
+      }
+    ];
+    supabaseMock.commissionEntriesError = { message: 'canceling statement due to statement timeout', code: '57014' };
+
+    const records = await api.treatments.getAllRecords('location-1', { limit: null });
+
+    expect(records).toHaveLength(1);
+    expect(records[0].id).toBe('treatment-1');
+    expect(records[0].doctorEarnings).toBe(5000);
   });
 });

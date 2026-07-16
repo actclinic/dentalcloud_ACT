@@ -75,6 +75,7 @@ export interface ClinicalRecord {
   doctor_specialization?: string | null;
   doctor_commission_percentage?: number | null;
   doctor_commission_per_visit?: number | null;
+  treatment_type_id?: string | null;
   teeth: number[];
   description: string;
   cost: number;
@@ -82,7 +83,21 @@ export interface ClinicalRecord {
   discountAmount?: number;
   pricingNote?: 'FOC' | 'DISCOUNT' | null;
   doctorEarnings?: number; // Calculated commission for this treatment
+  doctorEarningEntries?: DoctorEarningEntry[];
   date: string;
+}
+
+export interface DoctorEarningEntry {
+  id?: string;
+  paymentId: string;
+  treatmentId: string;
+  doctorId: string;
+  paymentDate: string;
+  treatmentDate: string;
+  calculationMode: 'percentage' | 'flat_visit';
+  allocatedPayment: number;
+  commissionRate: number;
+  earnings: number;
 }
 
 export type AuditLogSourceType = 'treatment' | 'payment' | 'appointment' | 'reschedule';

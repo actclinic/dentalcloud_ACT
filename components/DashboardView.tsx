@@ -436,18 +436,43 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   }, [filteredTreatmentRecords]);
 
   const doctorEarningsData = useMemo(() => {
-    const map = new Map<string, { name: string; earnings: number; treatments: number }>();
-    filteredTreatmentRecords.forEach(record => {
-      if (!record.doctor_name || !record.doctorEarnings) return;
-      const doctorName = record.doctor_name;
-      const current = map.get(doctorName) || { name: doctorName, earnings: 0, treatments: 0 };
-      current.earnings += Number(record.doctorEarnings || 0);
-      current.treatments += 1;
-      map.set(doctorName, current);
+    const map = new Map<string, { name: string; earnings: number; treatmentIds: Set<string> }>();
+    treatmentRecords.forEach(record => {
+      (record.doctorEarningEntries || [])
+        .filter((entry) => isWithinRange(entry.paymentDate))
+        .forEach((entry) => {
+          const doctorId = entry.doctorId || record.doctor_id || record.doctor_name || 'unknown';
+          const current = map.get(doctorId) || {
+            name: record.doctor_name || 'Unknown',
+            earnings: 0,
+            treatmentIds: new Set<string>()
+          };
+          current.earnings += Number(entry.earnings || 0);
+          current.treatmentIds.add(record.id);
+          map.set(doctorId, current);
+        });
     });
     return Array.from(map.values())
+      .map((doctor) => ({
+        name: doctor.name,
+        earnings: doctor.earnings,
+        treatments: doctor.treatmentIds.size
+      }))
       .sort((a, b) => b.earnings - a.earnings);
-  }, [filteredTreatmentRecords]);
+  }, [treatmentRecords, dateFrom, dateTo]);
+
+  const doctorCommissionBreakdown = useMemo(() => treatmentRecords
+    .map((record) => {
+      const entries = (record.doctorEarningEntries || []).filter((entry) => isWithinRange(entry.paymentDate));
+      return {
+        record,
+        paymentDate: entries.reduce((latest, entry) => entry.paymentDate > latest ? entry.paymentDate : latest, ''),
+        earnings: entries.reduce((sum, entry) => sum + Number(entry.earnings || 0), 0)
+      };
+    })
+    .filter((row) => row.earnings > 0)
+    .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
+    .slice(0, 50), [treatmentRecords, dateFrom, dateTo]);
 
 
   const topAppointmentCreators = useMemo(() => {
@@ -905,14 +930,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             Treatment Commission
           </span>
         </div>
-        {filteredTreatmentRecords.filter(r => r.doctorEarnings).length === 0 ? (
+        {doctorCommissionBreakdown.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No treatment records with commission in this range.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs uppercase text-gray-400 border-b border-gray-100">
                 <tr>
-                  <th className="text-left py-2 pr-4">Date</th>
+                  <th className="text-left py-2 pr-4">Payment Date</th>
                   <th className="text-left py-2 pr-4">Patient</th>
                   <th className="text-left py-2 pr-4">Doctor</th>
                   <th className="text-left py-2 pr-4">Treatment</th>
@@ -921,14 +946,14 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredTreatmentRecords.filter(r => r.doctorEarnings).sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 50).map((record, index) => (
+                {doctorCommissionBreakdown.map(({ record, paymentDate, earnings }, index) => (
                   <tr key={record.id || index} className="text-gray-700">
-                    <td className="py-2 pr-4 whitespace-nowrap text-gray-500">{record.date}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap text-gray-500">{paymentDate}</td>
                     <td className="py-2 pr-4 font-medium text-gray-900">{record.patient_name || "Unknown"}</td>
                     <td className="py-2 pr-4 text-gray-700">{record.doctor_name || "-"}</td>
                     <td className="py-2 pr-4 text-gray-600">{record.description}</td>
                     <td className="py-2 pr-4 text-right font-medium text-gray-900">{formatCurrency(record.cost || 0, currency)}</td>
-                    <td className="py-2 text-right font-semibold text-emerald-700">{formatCurrency(record.doctorEarnings || 0, currency)}</td>
+                    <td className="py-2 text-right font-semibold text-emerald-700">{formatCurrency(earnings, currency)}</td>
                   </tr>
                 ))}
               </tbody>

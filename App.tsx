@@ -78,6 +78,7 @@ import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } fro
 import { dataCache } from './utils/dataCache';
 import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
+import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -2201,6 +2202,10 @@ const App: React.FC = () => {
     }
 
     const today = toLocalISODate(new Date());
+    if (hasRecordedServiceFeeForVisit(paymentRecords, selectedPatient.id, today)) {
+      return null;
+    }
+
     const hasPreviousCompletedAppointment = appointments.some((appointment) => {
       const patientId = (appointment.patient_id || '').trim();
       return (
@@ -2255,7 +2260,8 @@ const App: React.FC = () => {
       return;
     }
 
-    openPaymentModalWithCategory(preview.category, preview.feeAmount);
+    setPaymentServiceFeePreview(preview);
+    setShowPaymentCategoryModal(true);
   };
 
   const resetAppointmentForm = () => {
@@ -3844,7 +3850,7 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} loading={loading} currency={currency} canManageMaterials={isAdmin && !isDoctor} onRefresh={async () => { await fetchGlobalRecords(); await fetchExpenses(); await fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId); }} />}
+            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} loading={loading} currency={currency} canManageMaterials={isAdmin && !isDoctor} onRefresh={async () => { await fetchGlobalRecords(); await fetchExpenses(); await fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId); }} />}
             {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
@@ -5245,30 +5251,76 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="px-8 pb-8 flex gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPaymentCategoryModal(false);
-                  setPaymentServiceFeePreview(null);
-                  openPaymentModalWithCategory(null, 0);
-                }}
-                className="flex-1 px-6 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-700 transition-all active:scale-[0.98]"
-              >
-                Continue Without Service Fee
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const preview = paymentServiceFeePreview;
-                  setShowPaymentCategoryModal(false);
-                  setPaymentServiceFeePreview(null);
-                  openPaymentModalWithCategory(preview?.category || null, preview?.feeAmount || 0);
-                }}
-                className="flex-1 px-6 py-3.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.98]"
-              >
-                Continue With Service Fee
-              </button>
+            <div className="px-8 pb-8 space-y-3">
+              {paymentServiceFeePreview?.category === 'RETURNING' ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {Math.max(0, clinicalFeeNewPatientAmount) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentCategoryModal(false);
+                          setPaymentServiceFeePreview(null);
+                          openPaymentModalWithCategory('RETURNING', Math.max(0, clinicalFeeNewPatientAmount));
+                        }}
+                        className="w-full px-4 py-3.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.98]"
+                      >
+                        Use Patient Fee {formatCurrency(Math.max(0, clinicalFeeNewPatientAmount), currency)}
+                      </button>
+                    ) : null}
+                    {Math.max(0, clinicalFeeReturningPatientAmount) > 0 && Math.max(0, clinicalFeeReturningPatientAmount) !== Math.max(0, clinicalFeeNewPatientAmount) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentCategoryModal(false);
+                          setPaymentServiceFeePreview(null);
+                          openPaymentModalWithCategory('RETURNING', Math.max(0, clinicalFeeReturningPatientAmount));
+                        }}
+                        className="w-full px-4 py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-all active:scale-[0.98]"
+                      >
+                        Use Old Patient Fee {formatCurrency(Math.max(0, clinicalFeeReturningPatientAmount), currency)}
+                      </button>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPaymentCategoryModal(false);
+                      setPaymentServiceFeePreview(null);
+                      openPaymentModalWithCategory(null, 0);
+                    }}
+                    className="w-full px-6 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-700 transition-all active:scale-[0.98]"
+                  >
+                    Continue Without Service Fee
+                  </button>
+                </>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPaymentCategoryModal(false);
+                      setPaymentServiceFeePreview(null);
+                      openPaymentModalWithCategory(null, 0);
+                    }}
+                    className="flex-1 px-6 py-3.5 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 hover:text-gray-700 transition-all active:scale-[0.98]"
+                  >
+                    Continue Without Service Fee
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const preview = paymentServiceFeePreview;
+                      setShowPaymentCategoryModal(false);
+                      setPaymentServiceFeePreview(null);
+                      openPaymentModalWithCategory(preview?.category || null, preview?.feeAmount || 0);
+                    }}
+                    className="flex-1 px-6 py-3.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/25 transition-all active:scale-[0.98]"
+                  >
+                    Continue With Service Fee
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

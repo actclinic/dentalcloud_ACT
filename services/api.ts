@@ -10,7 +10,8 @@ import { findInvalidTeeth } from '../utils/toothNumbering';
 import { normalizePaymentMethod } from '../utils/paymentMethods';
 import { normalizePaymentReceiptSnapshot } from '../utils/paymentReceipt';
 import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../utils/receiptPreferences';
-import { calculateDoctorEarnings, usesFlatVisitCommission } from '../utils/doctorCommission';
+import { usesFlatVisitCommission } from '../utils/doctorCommission';
+import { allocateCommissionablePayments, calculateCommissionLedgerEntries } from '../utils/doctorCommissionLedger';
 import { enumValue, finiteNumber, strictDateString, trimOptional, trimRequired } from '../utils/validation';
 
 let usersAllowedTabsSupport: boolean | null = null;
@@ -75,6 +76,186 @@ const buildMaterialCostExpensePrefix = (treatment: Partial<ClinicalRecord>): str
   const patientName = (treatment.patient_name || 'Unknown patient').trim();
   const treatmentLabel = (treatment.description || 'Treatment').trim();
   return `Material cost - ${patientName} - ${treatmentLabel}`;
+};
+
+const roundMoney = (amount: number): number => Math.round(amount * 100) / 100;
+
+const getReceiptServiceFeeAmount = (receiptSnapshot: unknown): number => {
+  const snapshot = normalizePaymentReceiptSnapshot(receiptSnapshot);
+  return Math.max(0, Number(snapshot?.payment?.serviceFeeAmount || 0));
+};
+
+const getPaymentCommissionableAmount = (payment: any): number => {
+  const clearedAmount = Math.max(0, Number(payment.cleared_amount ?? payment.amount ?? 0));
+  return Math.max(0, clearedAmount - getReceiptServiceFeeAmount(payment.receipt_snapshot));
+};
+
+const getPaymentReceiptTreatmentIds = (payment: any): string[] => {
+  const snapshot = normalizePaymentReceiptSnapshot(payment.receipt_snapshot);
+  return (snapshot?.treatments || []).map((treatment) => treatment.id).filter(Boolean);
+};
+
+const recalculatePatientDoctorCommissions = async (patientId: string): Promise<void> => {
+  let { data: treatmentRows, error: treatmentError } = await supabase
+    .from('treatments')
+    .select('id, location_id, patient_id, doctor_id, treatment_type_id, date, cost, doctors(specialization, commission_percentage, commission_per_visit)')
+    .eq('patient_id', patientId);
+
+  if (treatmentError && isMissingColumnError(treatmentError, 'treatment_type_id')) {
+    const fallback = await supabase
+      .from('treatments')
+      .select('id, location_id, patient_id, doctor_id, date, cost, doctors(specialization, commission_percentage, commission_per_visit)')
+      .eq('patient_id', patientId);
+    treatmentRows = (fallback.data || []).map((row: any) => ({ ...row, treatment_type_id: null }));
+    treatmentError = fallback.error;
+  }
+  if (treatmentError) throw new Error(treatmentError.message);
+  if (!treatmentRows?.length) return;
+
+  const treatmentIds = treatmentRows.map((row: any) => row.id).filter(Boolean);
+  const doctorIds = Array.from(new Set(treatmentRows.map((row: any) => row.doctor_id).filter(Boolean)));
+  const [{ data: paymentRows, error: paymentError }, materialByTreatment] = await Promise.all([
+    supabase
+      .from('payments')
+      .select('id, patient_id, payment_date, created_at, amount, cleared_amount, treatment_ids, receipt_snapshot')
+      .eq('patient_id', patientId),
+    api.materialCosts.getTotalsByTreatmentIds(treatmentIds)
+  ]);
+  if (paymentError && !isMissingRelationError(paymentError, 'payments')) throw new Error(paymentError.message);
+
+  let customRows: any[] = [];
+  if (doctorIds.length > 0) {
+    const customResult = await supabase
+      .from('doctor_treatment_commissions')
+      .select('doctor_id, treatment_id, commission_rate')
+      .in('doctor_id', doctorIds);
+    if (customResult.error && !isMissingRelationError(customResult.error, 'doctor_treatment_commissions')) {
+      throw new Error(customResult.error.message);
+    }
+    customRows = customResult.data || [];
+  }
+  const customRateByDoctorAndType = new Map(
+    customRows.map((row: any) => [`${row.doctor_id}|${row.treatment_id}`, Number(row.commission_rate || 0)])
+  );
+
+  const existingResult = await supabase
+    .from('doctor_commission_entries')
+    .select('id, payment_id, treatment_id, commission_rate, calculation_mode, visit_key')
+    .eq('patient_id', patientId);
+  const ledgerInstalled = !existingResult.error;
+  if (existingResult.error && !isMissingRelationError(existingResult.error, 'doctor_commission_entries')) {
+    throw new Error(existingResult.error.message);
+  }
+
+  const treatments = treatmentRows.map((row: any) => ({
+    id: row.id,
+    patientId: row.patient_id,
+    doctorId: row.doctor_id,
+    treatmentTypeId: row.treatment_type_id,
+    date: row.date,
+    cost: Math.max(0, Number(row.cost || 0)),
+    materialCost: materialByTreatment[row.id]?.totalAmount || 0,
+    specialization: row.doctors?.specialization,
+    commissionPercentage: Number(row.doctors?.commission_percentage || 0),
+    commissionPerVisit: Number(row.doctors?.commission_per_visit || 0),
+    customCommissionPercentage: row.doctor_id && row.treatment_type_id
+      ? customRateByDoctorAndType.get(`${row.doctor_id}|${row.treatment_type_id}`)
+      : undefined
+  }));
+  const payments = (paymentRows || []).map((row: any) => ({
+    id: row.id,
+    patientId: row.patient_id,
+    date: row.payment_date || row.created_at?.slice(0, 10) || '',
+    createdAt: row.created_at,
+    commissionableAmount: getPaymentCommissionableAmount(row),
+    treatmentIds: Array.from(new Set([
+      ...(Array.isArray(row.treatment_ids) ? row.treatment_ids : []),
+      ...getPaymentReceiptTreatmentIds(row)
+    ]))
+  }));
+  const allocations = allocateCommissionablePayments(treatments, payments);
+  const existingEntries = (existingResult.data || []).map((row: any) => ({
+    id: row.id,
+    paymentId: row.payment_id,
+    treatmentId: row.treatment_id,
+    commissionRate: Number(row.commission_rate || 0),
+    calculationMode: row.calculation_mode,
+    visitKey: row.visit_key
+  }));
+  const calculatedEntries = calculateCommissionLedgerEntries(treatments, allocations, existingEntries);
+
+  if (ledgerInstalled) {
+    const treatmentById = new Map(treatmentRows.map((row: any) => [row.id, row]));
+    const desiredKeys = new Set(calculatedEntries.map((entry) => `${entry.paymentId}|${entry.treatmentId}`));
+    if (calculatedEntries.length > 0) {
+      const { error } = await supabase
+        .from('doctor_commission_entries')
+        .upsert(calculatedEntries.map((entry) => ({
+          payment_id: entry.paymentId,
+          treatment_id: entry.treatmentId,
+          doctor_id: entry.doctorId,
+          patient_id: entry.patientId,
+          location_id: treatmentById.get(entry.treatmentId)?.location_id,
+          payment_date: entry.paymentDate,
+          treatment_date: entry.treatmentDate,
+          visit_key: entry.visitKey,
+          calculation_mode: entry.calculationMode,
+          allocated_payment: entry.amount,
+          material_deduction: entry.materialDeduction,
+          commission_base: entry.commissionBase,
+          commission_rate: entry.commissionRate,
+          earnings: entry.earnings
+        })), { onConflict: 'payment_id,treatment_id' });
+      if (error) throw new Error(error.message);
+    }
+
+    const obsoleteIds = existingEntries
+      .filter((entry) => entry.id && !desiredKeys.has(`${entry.paymentId}|${entry.treatmentId}`))
+      .map((entry) => entry.id as string);
+    if (obsoleteIds.length > 0) {
+      const { error } = await supabase.from('doctor_commission_entries').delete().in('id', obsoleteIds);
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  const earningsByTreatment = calculatedEntries.reduce((summary, entry) => {
+    summary[entry.treatmentId] = roundMoney((summary[entry.treatmentId] || 0) + entry.earnings);
+    return summary;
+  }, {} as Record<string, number>);
+  await Promise.all(treatmentRows.map(async (treatment: any) => {
+    const { error } = await supabase
+      .from('treatments')
+      .update({ doctor_earnings: earningsByTreatment[treatment.id] || 0 })
+      .eq('id', treatment.id);
+    if (error) throw new Error(error.message);
+  }));
+};
+
+const recalculateDoctorEarningsForTreatments = async (treatmentIds: string[]): Promise<void> => {
+  const uniqueIds = Array.from(new Set(treatmentIds.filter(Boolean)));
+  if (uniqueIds.length === 0 || typeof (supabase as any).from !== 'function') return;
+  const { data, error } = await supabase
+    .from('treatments')
+    .select('patient_id')
+    .in('id', uniqueIds);
+  if (error) throw new Error(error.message);
+  const patientIds = Array.from(new Set((data || []).map((row: any) => row.patient_id).filter(Boolean)));
+  await Promise.all(patientIds.map((patientId) => recalculatePatientDoctorCommissions(String(patientId))));
+};
+
+const resolvePaymentCommissionTreatmentIds = async (payment: PaymentRecord): Promise<string[]> => {
+  const linkedTreatmentIds = Array.from(new Set((payment.treatmentIds || []).filter(Boolean)));
+  if (linkedTreatmentIds.length > 0) return linkedTreatmentIds;
+
+  if (!payment.patientId) return [];
+
+  const { data, error } = await supabase
+    .from('treatments')
+    .select('id')
+    .eq('patient_id', payment.patientId);
+
+  if (error) throw new Error(error.message);
+  return (data || []).map((treatment: any) => treatment.id).filter(Boolean);
 };
 
 const buildMedicinePayload = (data: Partial<Medicine>, existing?: Partial<Medicine>): Partial<Medicine> => {
@@ -155,6 +336,53 @@ const isOptionalRelationAccessError = (error: any, relationNames: string[]): boo
       combined.includes(relationName)
     )
   ));
+};
+
+const getDoctorEarningEntriesByTreatmentIds = async (treatmentIds: string[]) => {
+  const uniqueIds = Array.from(new Set(treatmentIds.filter(Boolean)));
+  const entriesByTreatment = new Map<string, any[]>();
+  if (uniqueIds.length === 0) return entriesByTreatment;
+  const rows: any[] = [];
+  // This lookup only enriches treatment rows with commission-ledger breakdown details.
+  // It must never block or blank out the primary treatments list (e.g. the Audit Log's
+  // Treatments filter), so any failure here is logged and treated as "no entries" rather
+  // than propagated to the caller's outer try/catch.
+  for (let index = 0; index < uniqueIds.length; index += 200) {
+    try {
+      const { data, error } = await supabase
+        .from('doctor_commission_entries')
+        .select('id, payment_id, treatment_id, doctor_id, payment_date, treatment_date, calculation_mode, allocated_payment, commission_rate, earnings')
+        .in('treatment_id', uniqueIds.slice(index, index + 200));
+
+      if (error) {
+        if (isOptionalRelationAccessError(error, ['doctor_commission_entries'])) return entriesByTreatment;
+        console.warn('Unable to load doctor commission entries; continuing without them:', error.message);
+        return entriesByTreatment;
+      }
+      rows.push(...(data || []));
+    } catch (err) {
+      console.warn('Unexpected error loading doctor commission entries; continuing without them:', err);
+      return entriesByTreatment;
+    }
+  }
+
+  rows.forEach((row: any) => {
+    const entries = entriesByTreatment.get(row.treatment_id) || [];
+    entries.push({
+      id: row.id,
+      paymentId: row.payment_id,
+      treatmentId: row.treatment_id,
+      doctorId: row.doctor_id,
+      paymentDate: row.payment_date,
+      treatmentDate: row.treatment_date,
+      calculationMode: row.calculation_mode,
+      allocatedPayment: Number(row.allocated_payment || 0),
+      commissionRate: Number(row.commission_rate || 0),
+      earnings: Number(row.earnings || 0)
+    });
+    entriesByTreatment.set(row.treatment_id, entries);
+  });
+  return entriesByTreatment;
 };
 
 const isMissingFunctionError = (error: any, functionName: string): boolean => {
@@ -2746,6 +2974,7 @@ export const api = {
             }
           }
 
+          await recalculateDoctorEarningsForTreatments([treatmentId]);
           return { auditLogId, items: [] };
         }
 
@@ -2813,6 +3042,8 @@ export const api = {
             throw new Error(expenseError.message);
           }
         }
+
+      await recalculateDoctorEarningsForTreatments([treatmentId]);
 
       return {
         auditLogId,
@@ -2892,12 +3123,28 @@ export const api = {
       }
 
       if (error) throw new Error(error.message);
+      const entriesByTreatment = await getDoctorEarningEntriesByTreatmentIds((data || []).map((rec: any) => rec.id));
       return (data || []).map((rec: any) => ({
         ...rec,
         standardCost: rec.standard_cost ?? null,
         discountAmount: Number(rec.discount_amount || 0),
         pricingNote: rec.pricing_note || null,
         doctorEarnings: Number(rec.doctor_earnings || 0),
+        doctorEarningEntries: entriesByTreatment.get(rec.id) || (
+          Number(rec.doctor_earnings || 0) > 0 && rec.doctor_id
+            ? [{
+                paymentId: `legacy-${rec.id}`,
+                treatmentId: rec.id,
+                doctorId: rec.doctor_id,
+                paymentDate: rec.date,
+                treatmentDate: rec.date,
+                calculationMode: usesFlatVisitCommission(rec.doctors?.specialization) ? 'flat_visit' : 'percentage',
+                allocatedPayment: Number(rec.cost || 0),
+                commissionRate: Number(rec.doctors?.commission_percentage || rec.doctors?.commission_per_visit || 0),
+                earnings: Number(rec.doctor_earnings || 0)
+              }]
+            : []
+        ),
         doctor_name: rec.doctors?.name || undefined,
         doctor_specialization: rec.doctors?.specialization || null,
         doctor_commission_percentage: rec.doctors?.commission_percentage !== undefined ? Number(rec.doctors.commission_percentage || 0) : null,
@@ -2945,12 +3192,29 @@ export const api = {
 
         if (error) throw error;
 
+        const entriesByTreatment = await getDoctorEarningEntriesByTreatmentIds((data || []).map((rec: any) => rec.id));
+
         return (data || []).map((rec: any) => ({
           ...rec,
           standardCost: rec.standard_cost ?? null,
           discountAmount: Number(rec.discount_amount || 0),
           pricingNote: rec.pricing_note || null,
           doctorEarnings: Number(rec.doctor_earnings || 0),
+          doctorEarningEntries: entriesByTreatment.get(rec.id) || (
+            Number(rec.doctor_earnings || 0) > 0 && rec.doctor_id
+              ? [{
+                  paymentId: `legacy-${rec.id}`,
+                  treatmentId: rec.id,
+                  doctorId: rec.doctor_id,
+                  paymentDate: rec.date,
+                  treatmentDate: rec.date,
+                  calculationMode: usesFlatVisitCommission(rec.doctors?.specialization) ? 'flat_visit' : 'percentage',
+                  allocatedPayment: Number(rec.cost || 0),
+                  commissionRate: Number(rec.doctors?.commission_percentage || rec.doctors?.commission_per_visit || 0),
+                  earnings: Number(rec.doctor_earnings || 0)
+                }]
+              : []
+          ),
           patient_name: rec.patients?.name || 'Unknown',
           patient_type: rec.patients?.patient_type || null,
           patient_balance: Number(rec.patients?.balance || 0),
@@ -2987,30 +3251,12 @@ export const api = {
         ? (data.doctor_id && String(data.doctor_id).trim() !== '' ? data.doctor_id : null)
         : existingRecord.doctor_id;
 
-      let doctorEarnings = 0;
-      if (nextDoctorId) {
-        const { data: doctorRow, error: doctorError } = await supabase
-          .from('doctors')
-          .select('specialization, commission_percentage, commission_per_visit')
-          .eq('id', nextDoctorId)
-          .maybeSingle();
-
-        if (doctorError) throw new Error(doctorError.message);
-
-        doctorEarnings = calculateDoctorEarnings({
-          cost: Number(existingRecord.cost || 0),
-          specialization: doctorRow?.specialization,
-          commissionRate: Number(doctorRow?.commission_percentage || 0),
-          commissionPerVisit: Number(doctorRow?.commission_per_visit || 0)
-        });
-      }
-
       const payload = {
         date: data.date,
         description: data.description,
         teeth: data.teeth,
         doctor_id: nextDoctorId,
-        doctor_earnings: doctorEarnings
+        doctor_earnings: 0
       };
 
       let { data: result, error } = await supabase
@@ -3021,6 +3267,17 @@ export const api = {
         .single();
 
       if (error) throw new Error(error.message);
+
+      await recalculateDoctorEarningsForTreatments([id]);
+
+      const { data: recalculatedRecord, error: recalculatedError } = await supabase
+        .from('treatments')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (recalculatedError) throw new Error(recalculatedError.message);
+      result = recalculatedRecord || result;
 
       return {
         ...result,
@@ -3111,48 +3368,12 @@ export const api = {
         cost: data.cost,
         date: treatmentDate
       };
-      // 4a. Calculate doctor earnings using custom treatment commission when configured,
-      //     otherwise fall back to the doctor's default commission percentage.
-      let doctorEarnings = 0;
-      if (data.doctor_id) {
-        let commissionRate = 0;
-
-        if (data.treatment_type_id) {
-          const { data: rpcRate, error: rpcError } = await supabase.rpc('get_applicable_commission_rate', {
-            p_doctor_id: data.doctor_id,
-            p_treatment_id: data.treatment_type_id
-          });
-
-          if (rpcError) {
-            throw new Error(`Failed to resolve doctor commission rate: ${rpcError.message}`);
-          }
-
-          commissionRate = Number(rpcRate || 0);
-        } else {
-          const { data: doctorRow } = await supabase
-            .from("doctors")
-            .select("commission_percentage")
-            .eq("id", data.doctor_id)
-            .maybeSingle();
-
-          commissionRate = Number(doctorRow?.commission_percentage || 0);
-        }
-
-        const { data: doctorRow } = await supabase
-          .from("doctors")
-          .select("specialization, commission_per_visit")
-          .eq("id", data.doctor_id)
-          .maybeSingle();
-
-        doctorEarnings = calculateDoctorEarnings({
-          cost: data.cost,
-          specialization: doctorRow?.specialization,
-          commissionRate,
-          commissionPerVisit: doctorRow?.commission_per_visit
-        });
-      }
+      // Doctor earnings are now payment-based, so a new unpaid treatment starts at 0.
+      // Payment collection and material-cost edits recalculate this persisted value.
+      const doctorEarnings = 0;
       const treatmentData = {
         ...legacyTreatmentData,
+        treatment_type_id: data.treatment_type_id || null,
         standard_cost: data.standardCost ?? data.cost,
         discount_amount: data.discountAmount ?? 0,
         pricing_note: data.pricingNote || null,
@@ -3165,7 +3386,7 @@ export const api = {
         .select()
         .single();
 
-      if (insertError && /standard_cost|discount_amount|pricing_note|schema cache/i.test(insertError.message || '')) {
+      if (insertError && /treatment_type_id|standard_cost|discount_amount|pricing_note|schema cache/i.test(insertError.message || '')) {
         const legacyInsert = await supabase
           .from('treatments')
           .insert(legacyTreatmentData)
@@ -3295,6 +3516,13 @@ export const api = {
         .eq('id', patientId);
 
       if (updateError) throw new Error(updateError.message);
+
+      const { data: remainingTreatments, error: remainingError } = await supabase
+        .from('treatments')
+        .select('id')
+        .eq('patient_id', patientId);
+      if (remainingError) throw new Error(remainingError.message);
+      await recalculateDoctorEarningsForTreatments((remainingTreatments || []).map((row: any) => row.id));
 
       return { status: "success", new_balance: newBalance };
     }
@@ -3942,6 +4170,7 @@ export const api = {
         if (!retryRow) throw new Error('Payment was not recorded.');
 
         const payment: PaymentRecord = mapPaymentRow(retryRow);
+        await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
 
         return {
           status: 'success',
@@ -3963,6 +4192,7 @@ export const api = {
       if (!row) throw new Error('Payment was not recorded.');
 
       const payment: PaymentRecord = mapPaymentRow(row);
+      await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
 
       return {
         status: 'success',
@@ -4073,12 +4303,16 @@ export const api = {
             .eq('id', correctedPaymentId)
             .single();
           if (fallback.error) throw new Error(fallback.error.message);
-          return mapPaymentRow(fallback.data);
+          const correctedPayment = mapPaymentRow(fallback.data);
+          await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(correctedPayment));
+          return correctedPayment;
         }
         throw new Error(error.message);
       }
 
-      return mapPaymentRow(row);
+      const correctedPayment = mapPaymentRow(row);
+      await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(correctedPayment));
+      return correctedPayment;
     }
   },
 
@@ -5106,16 +5340,30 @@ export const api = {
     authenticate: async (username: string, password: string): Promise<User | null> => {
       try {
         const trimmedUsername = username.trim();
+        const passwordMatches = (storedPassword?: string | null) => (
+          String(storedPassword || '') === password ||
+          String(storedPassword || '').trim() === password.trim()
+        );
         console.log('Attempting to authenticate user:', trimmedUsername);
         const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
         const supportsDoctorId = await detectUsersDoctorIdSupport();
+        const selectColumns = supportsAllowedTabs
+          ? `id, location_id, username, password, role, allowed_tabs${supportsDoctorId ? ', doctor_id' : ''}`
+          : `id, location_id, username, password, role${supportsDoctorId ? ', doctor_id' : ''}`;
+        const mapUserForSession = (user: User): User => ({
+          id: user.id,
+          location_id: user.location_id,
+          doctor_id: supportsDoctorId ? (user.doctor_id || null) : null,
+          username: user.username,
+          role: user.role,
+          allowed_tabs: resolveAllowedTabs(user.role, supportsAllowedTabs ? user.allowed_tabs : undefined)
+        });
   
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('users')
-          .select(supportsAllowedTabs
-            ? `id, location_id, username, password, role, allowed_tabs${supportsDoctorId ? ', doctor_id' : ''}`
-            : `id, location_id, username, password, role${supportsDoctorId ? ', doctor_id' : ''}`)
-          .eq('username', trimmedUsername) as { data: User[] | null, error: any };
+          .select(selectColumns)
+          .ilike('username', trimmedUsername)
+          .limit(2) as { data: User[] | null, error: any };
 
         console.log('Supabase response:', { data, error });
 
@@ -5124,27 +5372,75 @@ export const api = {
           return null;
         }
 
-        if (!data || data.length === 0) {
-          console.log('No user found with username:', trimmedUsername);
-          return null;
-        }
-
-        const user = data[0];
+        const user = (data || []).find((row) => row.username === trimmedUsername)
+          || (data || []).find((row) => row.username?.toLowerCase() === trimmedUsername.toLowerCase())
+          || (data || [])[0];
 
         // Simple password comparison (in production, use hashed passwords)
-        if (user.password === password) {
+        if (user && passwordMatches(user.password)) {
           console.log('Authentication successful for user:', trimmedUsername);
-          return {
-            id: user.id,
-            location_id: user.location_id,
-            doctor_id: supportsDoctorId ? (user.doctor_id || null) : null,
-            username: user.username,
-            role: user.role,
-            allowed_tabs: resolveAllowedTabs(user.role, supportsAllowedTabs ? user.allowed_tabs : undefined)
-          };
+          return mapUserForSession(user);
         }
 
-        console.log('Password mismatch for user:', trimmedUsername);
+        if (!user) {
+          console.log('No user found with username:', trimmedUsername);
+        } else {
+          console.log('Password mismatch for user:', trimmedUsername);
+        }
+
+        if (supportsDoctorId) {
+          const { data: doctorRows, error: doctorError } = await supabase
+            .from('doctors')
+            .select('id, location_id, email, password')
+            .ilike('email', trimmedUsername)
+            .limit(1);
+
+          if (doctorError) {
+            console.warn('Doctor email login fallback failed:', doctorError.message);
+            return null;
+          }
+
+          const doctor = doctorRows?.[0];
+          if (doctor && passwordMatches(doctor.password)) {
+            const { data: linkedUser, error: linkedUserError } = await supabase
+              .from('users')
+              .select(selectColumns)
+              .eq('doctor_id', doctor.id)
+              .maybeSingle() as { data: User | null, error: any };
+
+            if (linkedUserError) {
+              console.warn('Doctor email matched, but linked staff user lookup failed:', linkedUserError.message);
+              return {
+                id: doctor.id,
+                location_id: doctor.location_id || null,
+                doctor_id: doctor.id,
+                username: doctor.email,
+                role: 'normal',
+                allowed_tabs: DOCTOR_DASHBOARD_TABS
+              };
+            }
+
+            if (linkedUser) {
+              console.log('Authentication successful for doctor email:', trimmedUsername);
+              return {
+                ...mapUserForSession(linkedUser),
+                doctor_id: doctor.id,
+                allowed_tabs: DOCTOR_DASHBOARD_TABS
+              };
+            }
+
+            console.log('Authentication successful for doctor email without linked staff user:', trimmedUsername);
+            return {
+              id: doctor.id,
+              location_id: doctor.location_id || null,
+              doctor_id: doctor.id,
+              username: doctor.email,
+              role: 'normal',
+              allowed_tabs: DOCTOR_DASHBOARD_TABS
+            };
+          }
+        }
+
         return null;
       } catch (err) {
         console.error("Error authenticating user:", err);

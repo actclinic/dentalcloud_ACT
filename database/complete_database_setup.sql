@@ -258,6 +258,7 @@ CREATE TABLE treatments (
   location_id UUID REFERENCES locations(id),
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
   doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL,
+  treatment_type_id UUID REFERENCES treatment_types(id) ON DELETE SET NULL,
   teeth INTEGER[],
   description TEXT,
   cost DECIMAL(12,2),
@@ -319,6 +320,54 @@ CREATE INDEX idx_doctor_treatment_commissions_doctor_id
 
 CREATE INDEX idx_doctor_treatment_commissions_treatment_id
   ON doctor_treatment_commissions (treatment_id);
+
+-- Immutable-rate, payment-dated doctor commission ledger
+CREATE TABLE doctor_commission_entries (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+  treatment_id UUID NOT NULL REFERENCES treatments(id) ON DELETE CASCADE,
+  doctor_id UUID NOT NULL REFERENCES doctors(id) ON DELETE RESTRICT,
+  patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  payment_date DATE NOT NULL,
+  treatment_date DATE NOT NULL,
+  visit_key TEXT NOT NULL,
+  calculation_mode TEXT NOT NULL CHECK (calculation_mode IN ('percentage', 'flat_visit')),
+  allocated_payment DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (allocated_payment >= 0),
+  material_deduction DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (material_deduction >= 0),
+  commission_base DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (commission_base >= 0),
+  commission_rate DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (commission_rate >= 0),
+  earnings DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (earnings >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT doctor_commission_entries_payment_treatment_key UNIQUE (payment_id, treatment_id),
+  CONSTRAINT doctor_commission_entries_percentage_rate_check CHECK (calculation_mode <> 'percentage' OR commission_rate <= 100)
+);
+
+CREATE INDEX idx_doctor_commission_entries_doctor_payment_date
+  ON doctor_commission_entries (doctor_id, payment_date);
+CREATE INDEX idx_doctor_commission_entries_treatment_id
+  ON doctor_commission_entries (treatment_id);
+CREATE INDEX idx_doctor_commission_entries_patient_id
+  ON doctor_commission_entries (patient_id);
+CREATE INDEX idx_doctor_commission_entries_visit_key
+  ON doctor_commission_entries (visit_key);
+
+CREATE OR REPLACE FUNCTION set_doctor_commission_entries_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_doctor_commission_entries_updated_at
+BEFORE UPDATE ON doctor_commission_entries
+FOR EACH ROW
+EXECUTE FUNCTION set_doctor_commission_entries_updated_at();
 
 -- Appointments
 CREATE TABLE appointments (
@@ -1661,6 +1710,8 @@ WHERE id = 'fffda6dc-a75d-450c-bc96-94602c5d1194';
 -- ============================================================================
 
 -- Helper function to enable RLS and create a permissive policy for each table
+GRANT SELECT, INSERT, UPDATE, DELETE ON doctor_commission_entries TO anon, authenticated, service_role;
+
 DO $$
 DECLARE
   tbl TEXT;
@@ -1677,6 +1728,7 @@ DECLARE
     'doctor_schedules',
     'doctor_locations',
     'doctor_treatment_commissions',
+    'doctor_commission_entries',
     'treatment_types',
     'treatments',
     'payments',

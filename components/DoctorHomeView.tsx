@@ -156,18 +156,20 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
 
   const monthlyCommission = useMemo(() => {
     return treatmentRecords
-      .filter((record) => (record.date || '').slice(0, 7) === currentMonthKey)
-      .reduce((sum, record) => sum + Number(record.doctorEarnings || 0), 0);
+      .flatMap((record) => record.doctorEarningEntries || [])
+      .filter((entry) => (entry.paymentDate || '').slice(0, 7) === currentMonthKey)
+      .reduce((sum, entry) => sum + Number(entry.earnings || 0), 0);
   }, [treatmentRecords, currentMonthKey]);
 
   const weeklyCommission = useMemo(() => {
     return treatmentRecords
-      .filter((record) => {
-        if (!record.date) return false;
-        const recordDate = new Date(`${record.date}T00:00:00`);
-        return recordDate >= weekRange.weekStart && recordDate <= weekRange.weekEnd;
+      .flatMap((record) => record.doctorEarningEntries || [])
+      .filter((entry) => {
+        if (!entry.paymentDate) return false;
+        const paymentDate = new Date(`${entry.paymentDate}T00:00:00`);
+        return paymentDate >= weekRange.weekStart && paymentDate <= weekRange.weekEnd;
       })
-      .reduce((sum, record) => sum + Number(record.doctorEarnings || 0), 0);
+      .reduce((sum, entry) => sum + Number(entry.earnings || 0), 0);
   }, [treatmentRecords, weekRange]);
 
 

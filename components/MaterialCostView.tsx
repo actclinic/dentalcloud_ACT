@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Loader2, Package, Plus } from 'lucide-react';
-import type { ClinicalRecord } from '../types';
+import type { ClinicalRecord, PaymentRecord } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
 import { toLocalISODate } from '../utils/auditLogFilters';
@@ -16,6 +16,7 @@ import MaterialCostModal from './MaterialCostModal';
 
 interface MaterialCostViewProps {
   records: ClinicalRecord[];
+  paymentRecords: PaymentRecord[];
   loading: boolean;
   currency: Currency;
   canManageMaterials: boolean;
@@ -30,7 +31,18 @@ const getTreatmentRecordIds = (record: ClinicalRecord & { _groupedRecords?: Clin
   return groupedRecords.map((item) => item.id).filter(Boolean);
 };
 
-const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, currency, canManageMaterials, onRefresh }) => {
+const getPaymentCollectedAmount = (payment: PaymentRecord) => Math.max(0, Number(payment.clearedAmount ?? payment.amount ?? 0));
+
+const getReceiptTreatmentIds = (payment: PaymentRecord) => (
+  payment.receiptSnapshot?.treatments || []
+).map((treatment) => treatment.id).filter(Boolean);
+
+const paymentDedupeKey = (payment: PaymentRecord) => (
+  payment.receiptNumber ||
+  `${payment.patientId}|${payment.date}|${payment.amount}|${payment.createdAt || ''}|${payment.paymentMethod || ''}`
+);
+
+const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, loading, currency, canManageMaterials, onRefresh }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
@@ -52,6 +64,49 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
     buildAuditLogRows(records, [], false, [], [])
       .filter((row): row is TreatmentAuditRow => row.kind === 'treatment')
   ), [records]);
+
+  const collectedByTreatmentId = useMemo(() => {
+    const treatmentCostById = new Map<string, number>();
+    const treatmentIdsByPatientDate = new Map<string, string[]>();
+    const uniquePayments = Array.from(new Map(paymentRecords.map((payment) => [paymentDedupeKey(payment), payment])).values());
+
+    records.forEach((record) => {
+      if (!record.id) return;
+      treatmentCostById.set(record.id, Math.max(0, Number(record.cost || 0)));
+      if (record.patient_id && record.date) {
+        const key = `${record.patient_id}|${record.date}`;
+        const ids = treatmentIdsByPatientDate.get(key) || [];
+        ids.push(record.id);
+        treatmentIdsByPatientDate.set(key, ids);
+      }
+    });
+
+    return uniquePayments.reduce((summary, payment) => {
+      const explicitTreatmentIds = Array.from(new Set([
+        ...(payment.treatmentIds || []),
+        ...getReceiptTreatmentIds(payment)
+      ].filter(Boolean)));
+      const linkedTreatmentIds = explicitTreatmentIds.length > 0
+        ? explicitTreatmentIds
+        : treatmentIdsByPatientDate.get(`${payment.patientId}|${payment.date}`) || [];
+      const collectedAmount = getPaymentCollectedAmount(payment);
+
+      if (linkedTreatmentIds.length === 0 || collectedAmount <= 0) return summary;
+
+      const totalLinkedCost = linkedTreatmentIds.reduce((sum, treatmentId) => {
+        return sum + Math.max(0, Number(treatmentCostById.get(treatmentId) || 0));
+      }, 0);
+
+      linkedTreatmentIds.forEach((treatmentId) => {
+        const weight = totalLinkedCost > 0
+          ? Math.max(0, Number(treatmentCostById.get(treatmentId) || 0)) / totalLinkedCost
+          : 1 / linkedTreatmentIds.length;
+        summary[treatmentId] = (summary[treatmentId] || 0) + (collectedAmount * weight);
+      });
+
+      return summary;
+    }, {} as Record<string, number>);
+  }, [records, paymentRecords]);
 
   const baseFilteredRows = useMemo(() => {
     return filterAuditLogRowsForExport(treatmentRows, {
@@ -132,6 +187,12 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
   const getTreatmentAmount = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
     const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
     return groupedRecords.reduce((sum, item) => sum + Number(item.cost || 0), 0);
+  };
+
+  const getCollectedAmount = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
+    return getTreatmentRecordIds(record).reduce((sum, treatmentId) => {
+      return sum + Number(collectedByTreatmentId[treatmentId] || 0);
+    }, 0);
   };
 
   const getAdjustedDoctorEarned = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
@@ -321,7 +382,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full">
+          <table className="min-w-[1300px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
                 <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Date / Time</th>
@@ -330,6 +391,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
                 <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Clinical Activity</th>
                 <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Patient Balance</th>
                 <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Treatment Amount</th>
+                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Collected Payment</th>
                 <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Material Cost</th>
                 <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Doctor Earned</th>
                 <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Net Profit</th>
@@ -339,7 +401,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
             <tbody className="divide-y divide-slate-100 bg-white">
               {statusFilteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center">
+                  <td colSpan={11} className="px-6 py-12 text-center">
                     <div className="mx-auto max-w-sm rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
                       <p className="text-sm font-semibold text-slate-600">No treatment rows found</p>
                       <p className="mt-1 text-xs text-slate-400">Try another date range or clear the search field.</p>
@@ -350,6 +412,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
                 paginatedRows.map((row) => {
                   const record = row.record;
                   const treatmentAmount = getTreatmentAmount(record);
+                  const collectedAmount = getCollectedAmount(record);
                   const adjustedDoctorEarned = getAdjustedDoctorEarned(record);
                   const netProfit = getNetProfit(record);
                   return (
@@ -365,6 +428,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, loading, c
                       </td>
                       <td className="px-4 py-4 text-right text-sm xl:px-6">{renderPatientBalance(record.patient_balance)}</td>
                       <td className="px-4 py-4 text-right text-sm font-black text-slate-900 xl:px-6">{formatCurrency(treatmentAmount, currency)}</td>
+                      <td className="px-4 py-4 text-right text-sm font-black text-blue-700 xl:px-6">{collectedAmount > 0 ? formatCurrency(collectedAmount, currency) : '-'}</td>
                       <td className="px-4 py-4 text-right text-sm font-bold xl:px-6">{renderMaterialCost(record)}</td>
                       <td className="px-4 py-4 text-right text-sm font-bold text-emerald-700 xl:px-6">{adjustedDoctorEarned > 0 ? formatCurrency(adjustedDoctorEarned, currency) : '-'}</td>
                       <td className={`px-4 py-4 text-right text-sm font-black xl:px-6 ${netProfit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>{formatCurrency(netProfit, currency)}</td>
