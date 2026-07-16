@@ -350,8 +350,14 @@ const getDoctorEarningEntriesByTreatmentIds = async (treatmentIds: string[]) => 
       .in('treatment_id', uniqueIds.slice(index, index + 200));
 
     if (error) {
-      if (isOptionalRelationAccessError(error, ['doctor_commission_entries'])) return entriesByTreatment;
-      throw new Error(error.message);
+      // Commission entries enrich dashboard period totals, but they must never
+      // make core treatment/audit records disappear. Network/proxy failures and
+      // partially deployed schemas fall back to persisted treatments.doctor_earnings.
+      const errorSummary = String(error.message || error)
+        .replace(/\s+/g, ' ')
+        .slice(0, 240);
+      console.warn('Unable to load doctor commission ledger entries; using stored treatment earnings.', errorSummary);
+      return entriesByTreatment;
     }
     rows.push(...(data || []));
   }
@@ -5294,6 +5300,31 @@ export const api = {
   },
 
   users: {
+    getById: async (id: string): Promise<User | null> => {
+      const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
+      const supportsDoctorId = await detectUsersDoctorIdSupport();
+      const { data, error } = await supabase
+        .from('users')
+        .select(supportsAllowedTabs
+          ? `id, location_id, username, role, allowed_tabs, created_at, updated_at${supportsDoctorId ? ', doctor_id' : ''}`
+          : `id, location_id, username, role, created_at, updated_at${supportsDoctorId ? ', doctor_id' : ''}`)
+        .eq('id', id)
+        .maybeSingle() as { data: User | null, error: any };
+
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+
+      return {
+        id: data.id,
+        location_id: data.location_id,
+        doctor_id: supportsDoctorId ? (data.doctor_id || null) : null,
+        username: data.username,
+        role: data.role,
+        allowed_tabs: resolveAllowedTabs(data.role, supportsAllowedTabs ? data.allowed_tabs : undefined),
+        created_at: data.created_at,
+        updated_at: data.updated_at
+      };
+    },
     getAll: async (locationId?: string): Promise<User[]> => {
       try {
         const supportsAllowedTabs = await detectUsersAllowedTabsSupport();

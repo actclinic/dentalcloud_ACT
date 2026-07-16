@@ -222,6 +222,32 @@ export const auth = {
     return null;
   },
 
+  async refreshStaffSession(): Promise<AuthSession | null> {
+    const currentSession = this.getSession();
+    if (!currentSession || currentSession.role === 'patient') return currentSession;
+
+    const currentUser = await api.users.getById(currentSession.userId);
+    if (!currentUser) {
+      await this.logout();
+      return null;
+    }
+
+    const isDoctorUser = Boolean(currentUser.doctor_id);
+    const refreshedSession: AuthSession = {
+      ...currentSession,
+      username: currentUser.username,
+      role: isDoctorUser ? 'doctor' : currentUser.role,
+      allowed_tabs: isDoctorUser
+        ? [...DOCTOR_DASHBOARD_TABS]
+        : resolveAllowedTabs(currentUser.role, currentUser.allowed_tabs),
+      location_id: currentUser.location_id || null,
+      doctor_id: currentUser.doctor_id || null
+    };
+
+    this.setSession(refreshedSession);
+    return refreshedSession;
+  },
+
   // Patient/staff sessions are managed in localStorage; Supabase Auth is not used for app login.
   onAuthStateChange(_callback: (session: AuthSession | null) => void) {
     return {

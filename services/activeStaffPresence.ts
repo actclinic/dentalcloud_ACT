@@ -25,10 +25,15 @@ const toRpcPayload = (session: ActiveStaffPresenceSession) => ({
 });
 
 export const activeStaffPresence = {
-  async markActive(session: ActiveStaffPresenceSession): Promise<void> {
+  async markActive(session: ActiveStaffPresenceSession, activeLocationId?: string | null): Promise<void> {
     if (!isTrackableStaffSession(session)) return;
 
-    const { error } = await supabase.rpc('update_and_get_staff_presence', toRpcPayload(session));
+    const payload = toRpcPayload(session);
+    if (activeLocationId !== undefined) {
+      payload.p_location_id = activeLocationId || null;
+    }
+
+    const { error } = await supabase.rpc('update_and_get_staff_presence', payload);
     if (error) {
       throw new Error(error.message || 'Failed to mark active staff session.');
     }

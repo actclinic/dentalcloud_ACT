@@ -13,6 +13,7 @@ vi.mock('./api', () => ({
   api: {
     users: {
       getAll: vi.fn(),
+      getById: vi.fn(),
       create: vi.fn(),
       authenticate: vi.fn()
     }
@@ -20,6 +21,7 @@ vi.mock('./api', () => ({
 }));
 
 import { auth } from './auth';
+import { api } from './api';
 
 const createLocalStorageMock = () => {
   const store = new Map<string, string>();
@@ -78,5 +80,47 @@ describe('auth staff session presence resilience', () => {
 
     expect(auth.getSession()).toBeNull();
     expect(localStorage.removeItem).toHaveBeenCalledWith('dental_auth_session');
+  });
+
+  it('refreshes branch permission changes from the database without requiring a new login', async () => {
+    presenceMock.markActive.mockResolvedValueOnce(undefined);
+    await auth.createStaffSession({
+      id: '00000000-0000-0000-0000-000000000003',
+      username: 'marketing',
+      password: 'secret',
+      role: 'normal',
+      location_id: null,
+      allowed_tabs: ['dashboard']
+    });
+
+    vi.mocked(api.users.getById).mockResolvedValueOnce({
+      id: '00000000-0000-0000-0000-000000000003',
+      username: 'marketing',
+      password: '',
+      role: 'normal',
+      location_id: null,
+      allowed_tabs: ['dashboard', 'branch-switching']
+    });
+
+    const refreshed = await auth.refreshStaffSession();
+
+    expect(refreshed?.allowed_tabs).toContain('branch-switching');
+    expect(auth.getSession()?.allowed_tabs).toContain('branch-switching');
+  });
+
+  it('clears a cached session when the staff account was deleted', async () => {
+    presenceMock.markActive.mockResolvedValueOnce(undefined);
+    presenceMock.markInactive.mockResolvedValueOnce(undefined);
+    await auth.createStaffSession({
+      id: '00000000-0000-0000-0000-000000000004',
+      username: 'removed-user',
+      password: 'secret',
+      role: 'normal',
+      location_id: null
+    });
+    vi.mocked(api.users.getById).mockResolvedValueOnce(null);
+
+    await expect(auth.refreshStaffSession()).resolves.toBeNull();
+    expect(auth.getSession()).toBeNull();
   });
 });

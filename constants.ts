@@ -96,6 +96,11 @@ export const FLEXIBLE_STAFF_TABS = [
     key: 'ai-assistant',
     label: 'AI Assistant',
     description: 'Loli AI assistant workspace.'
+  },
+  {
+    key: 'branch-switching',
+    label: 'Branch Switching',
+    description: 'Switch the active branch without access to system settings.'
   }
 ] as const;
 
@@ -119,7 +124,9 @@ export const ALL_APP_TAB_PERMISSIONS: AppTabPermission[] = [
   ...MANAGER_ONLY_TABS
 ];
 
-export const FULL_ACCESS_TAB_PERMISSIONS: AppTabPermission[] = [...ALL_APP_TAB_PERMISSIONS];
+export const FULL_ACCESS_TAB_PERMISSIONS: AppTabPermission[] = ALL_APP_TAB_PERMISSIONS.filter(
+  (tab) => tab !== 'branch-switching'
+);
 
 export const DOCTOR_DASHBOARD_TABS: AppTabPermission[] = [
   'dashboard',

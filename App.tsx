@@ -70,6 +70,7 @@ import { formatCurrency, getCurrencySymbol, Currency } from './utils/currency';
 import { DOCTOR_SPECIALIZATIONS, usesFlatVisitCommission } from './utils/doctorCommission';
 import { buildFinancialReport, renderFinancialReportMarkdown } from './utils/aiReport';
 import { auth } from './services/auth';
+import { activeStaffPresence } from './services/activeStaffPresence';
 import { getMyanmarCities, getTownshipsForCity } from './utils/myanmarCities';
 import { supabase } from './services/supabase';
 import { resolveAllowedTabs } from './utils/permissions';
@@ -102,6 +103,7 @@ const PatientMessagingView = React.lazy(() => import('./components/PatientMessag
 const ExpensesView = React.lazy(() => import('./components/ExpensesView'));
 const DoctorProfileView = React.lazy(() => import('./components/DoctorProfileView'));
 const DoctorHomeView = React.lazy(() => import('./components/DoctorHomeView'));
+const BranchSwitcherView = React.lazy(() => import('./components/BranchSwitcherView'));
 
 const ALL_BRANCHES_VALUE = '__all_branches__';
 const PAYMENT_RECORDS_STORAGE_KEY = 'dentalcloud_payment_records_v1';
@@ -356,7 +358,10 @@ const App: React.FC = () => {
   const [currentLocationId, setCurrentLocationId] = useState<string>(() => readPersistedBranchId());
   const canUseSavedActiveBranch = (session: ReturnType<typeof auth.getSession>): boolean => {
     if (!session || session.role === 'patient' || session.role === 'doctor') return false;
-    return session.role === 'admin' || resolveAllowedTabs(session.role, session.allowed_tabs).includes('settings');
+    const sessionTabs = resolveAllowedTabs(session.role, session.allowed_tabs);
+    return session.role === 'admin' || sessionTabs.includes('settings') || (
+      !session.location_id && sessionTabs.includes('branch-switching')
+    );
   };
   const getSessionRestrictedLocationId = (session: ReturnType<typeof auth.getSession>): string => {
     if (!session) return '';
@@ -944,7 +949,9 @@ const App: React.FC = () => {
       return;
     }
 
-    const nextAllowedViews = resolveAllowedTabs(session.role, session.allowed_tabs) as ViewState[];
+    const nextAllowedViews = resolveAllowedTabs(session.role, session.allowed_tabs).filter((tab) => (
+      tab !== 'branch-switching' || !session.location_id
+    )) as ViewState[];
     setAllowedViews(nextAllowedViews);
   };
 
@@ -1071,8 +1078,21 @@ const App: React.FC = () => {
   // Check authentication on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const session = auth.getSession();
+      let session = auth.getSession();
       if (session) {
+        if (session.role !== 'patient') {
+          try {
+            session = await auth.refreshStaffSession();
+          } catch (refreshError) {
+            console.warn('Unable to refresh staff permissions. Using the cached session for now.', refreshError);
+          }
+        }
+
+        if (!session) {
+          resetStaffSession();
+          return;
+        }
+
         applySessionState(session);
         const preferredBranchId = getPreferredSessionBranchId(session);
         // Initialize default admin and fetch data
@@ -1105,6 +1125,42 @@ const App: React.FC = () => {
     });
     
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || auth.isPatient()) return;
+
+    let syncInProgress = false;
+    const refreshPermissions = async () => {
+      if (syncInProgress) return;
+      syncInProgress = true;
+      const previousSession = auth.getSession();
+
+      try {
+        const refreshedSession = await auth.refreshStaffSession();
+        if (!refreshedSession) {
+          resetStaffSession();
+          setCurrentView('dashboard');
+          return;
+        }
+
+        applySessionState(refreshedSession);
+        if (previousSession?.location_id !== refreshedSession.location_id) {
+          const preferredBranchId = getPreferredSessionBranchId(refreshedSession);
+          await fetchInitialData(preferredBranchId || undefined);
+        }
+      } catch (refreshError) {
+        console.warn('Unable to refresh staff permissions. The current session remains active.', refreshError);
+      } finally {
+        syncInProgress = false;
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void refreshPermissions();
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let mounted = true;
@@ -1454,7 +1510,10 @@ const App: React.FC = () => {
     setAssistantPaymentRecords(mergeLegacyPaymentRecords(paymentData, assistantLocationId));
   };
 
-  const fetchInitialData = async (overrideLocationId?: string) => {
+  const fetchInitialData = async (
+    overrideLocationId?: string,
+    options: { deferBranchCommit?: boolean; throwOnError?: boolean } = {}
+  ) => {
     const requestId = ++initialDataFetchRequestRef.current;
     try {
       setLoading(true);
@@ -1474,7 +1533,7 @@ const App: React.FC = () => {
       const restrictedLocationId = getSessionRestrictedLocationId(session);
       const storedLocationId = canUseSavedActiveBranch(session) ? readPersistedBranchId(session?.userId) : '';
 
-      if (restrictedLocationId && currentLocationId !== restrictedLocationId) {
+      if (!options.deferBranchCommit && restrictedLocationId && currentLocationId !== restrictedLocationId) {
         setCurrentLocationId(restrictedLocationId);
         persistActiveBranchId(restrictedLocationId, session?.userId);
       }
@@ -1488,8 +1547,10 @@ const App: React.FC = () => {
       // If no location selected but locations exist, select first one
       if (!locId && locData.length > 0) {
         locId = locData[0].id;
-        setCurrentLocationId(locId);
-        persistActiveBranchId(locId, session?.userId);
+        if (!options.deferBranchCommit) {
+          setCurrentLocationId(locId);
+          persistActiveBranchId(locId, session?.userId);
+        }
       }
       
       // If still no location, try to create a default one
@@ -1501,8 +1562,10 @@ const App: React.FC = () => {
             phone: '000-000-0000'
           });
           locId = defaultLocation.id;
-          setCurrentLocationId(locId);
-          persistActiveBranchId(locId, session?.userId);
+          if (!options.deferBranchCommit) {
+            setCurrentLocationId(locId);
+            persistActiveBranchId(locId, session?.userId);
+          }
           setLocations([defaultLocation]);
         } catch (createError) {
           console.error('Failed to create default location:', createError);
@@ -1511,7 +1574,7 @@ const App: React.FC = () => {
 
       // Keep branch selection sticky across refreshes:
       // whenever a location is resolved (stored/override/restricted/default), sync state + storage.
-      if (locId && currentLocationId !== locId) {
+      if (!options.deferBranchCommit && locId && currentLocationId !== locId) {
         setCurrentLocationId(locId);
         persistActiveBranchId(locId, session?.userId);
       }
@@ -1614,6 +1677,9 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (requestId !== initialDataFetchRequestRef.current) return;
       console.error('Error fetching initial data:', err);
+      if (options.throwOnError) {
+        throw err;
+      }
       setError(err.message || "Failed to connect to database. Please check your network.");
     } finally {
       if (requestId === initialDataFetchRequestRef.current) {
@@ -1625,10 +1691,6 @@ const App: React.FC = () => {
   const handleLocationChange = async (locId: string) => {
     const session = auth.getSession();
     treatmentHistoryRequestRef.current += 1;
-    setCurrentLocationId(locId);
-    persistActiveBranchId(locId, session?.userId);
-    setDashboardLocationId(locId);
-    localStorage.setItem('dashboardLocationId', locId);
     setSelectedPatient(null);
     setShowPatientModal(false);
     setShowAppointmentModal(false);
@@ -1649,7 +1711,20 @@ const App: React.FC = () => {
     setEditingTreatmentType(null);
     setConvertingLeadAppointment(null);
     dataCache.clear(); // Fresh branch = fresh data
-    await fetchInitialData(locId);
+    await fetchInitialData(locId, { deferBranchCommit: true, throwOnError: true });
+
+    setCurrentLocationId(locId);
+    persistActiveBranchId(locId, session?.userId);
+    setDashboardLocationId(locId);
+    localStorage.setItem('dashboardLocationId', locId);
+
+    if (session) {
+      try {
+        await activeStaffPresence.markActive(session, locId);
+      } catch (presenceError) {
+        console.warn('Branch changed, but active staff presence could not be refreshed.', presenceError);
+      }
+    }
   };
 
   const handleDashboardLocationChange = async (locId: string) => {
@@ -2702,7 +2777,9 @@ const App: React.FC = () => {
     const nextRole = userData.role || 'normal';
     const nextAllowedTabs = nextRole === 'admin'
       ? FULL_ACCESS_TAB_PERMISSIONS
-      : resolveAllowedTabs('normal', userData.allowed_tabs);
+      : resolveAllowedTabs('normal', userData.allowed_tabs).filter((tab) => (
+          tab !== 'branch-switching' || !userData.location_id
+        ));
 
     return {
       ...userData,
@@ -3501,7 +3578,9 @@ const App: React.FC = () => {
     : [];
   const shouldShowAdminBadge = isAdmin && currentUser.trim().toLowerCase() !== 'admin';
   const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging' || currentView === 'patients' || currentView === 'appointments';
-  const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs) as ViewState[];
+  const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs).filter((tab) => (
+    tab !== 'branch-switching' || !newUserData.location_id
+  )) as ViewState[];
   const doctorMobileTabs: { key: ViewState; label: string; icon: React.ReactNode; isActive: boolean }[] = [
     {
       key: 'dashboard',
@@ -3637,6 +3716,9 @@ const App: React.FC = () => {
              )}
              {canAccessView('settings') && (
                <NavItem icon={<Settings size={18} />} label={isDoctor ? 'Profile' : 'Settings'} active={currentView === 'settings'} onClick={() => { setCurrentView('settings'); setIsMobileMenuOpen(false); }} />
+             )}
+             {!isAdmin && !isDoctor && canAccessView('branch-switching') && (
+               <NavItem icon={<MapPin size={18} />} label="Change Branch" active={currentView === 'branch-switching'} onClick={() => { setCurrentView('branch-switching'); setIsMobileMenuOpen(false); }} />
              )}
           </div>
         </nav>
@@ -3941,6 +4023,13 @@ const App: React.FC = () => {
                     onHoverThemeChange={handleHoverThemeChange}
                 />
               )
+            )}
+            {currentView === 'branch-switching' && !isAdmin && !isDoctor && canAccessView('branch-switching') && (
+              <BranchSwitcherView
+                locations={locations}
+                currentLocationId={currentLocationId}
+                onLocationChange={handleLocationChange}
+              />
             )}
             {currentView === 'ai-assistant' && canAccessView('ai-assistant') && <AIAssistantView 
                 patients={assistantPatients} 
@@ -4959,7 +5048,17 @@ const App: React.FC = () => {
               <select 
                 className="w-full border-gray-200 border rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={newUserData.location_id || ''} 
-                onChange={(e: any) => {setUserFormError(null); setNewUserData({...newUserData, location_id: e.target.value || null});}}
+                onChange={(e: any) => {
+                  setUserFormError(null);
+                  const locationId = e.target.value || null;
+                  setNewUserData({
+                    ...newUserData,
+                    location_id: locationId,
+                    allowed_tabs: locationId
+                      ? resolveAllowedTabs('normal', newUserData.allowed_tabs).filter((tab) => tab !== 'branch-switching')
+                      : newUserData.allowed_tabs
+                  });
+                }}
               >
                 <option value="">{newUserData.role === 'admin' ? 'All Locations (Global Manager)' : 'All Assigned Locations'}</option>
                 {locations.map(loc => (
@@ -4996,11 +5095,13 @@ const App: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {FLEXIBLE_STAFF_TABS.map(tab => {
-                    const checked = editableAllowedTabs.includes(tab.key);
+                    const requiresAllLocations = tab.key === 'branch-switching';
+                    const disabled = requiresAllLocations && !!newUserData.location_id;
+                    const checked = editableAllowedTabs.includes(tab.key) && !disabled;
                     return (
                       <label
                         key={tab.key}
-                        className={`flex cursor-pointer gap-3 rounded-2xl border p-4 transition ${
+                        className={`flex gap-3 rounded-2xl border p-4 transition ${disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'} ${
                           checked ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'
                         }`}
                       >
@@ -5008,11 +5109,15 @@ const App: React.FC = () => {
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleUserTabAccess(tab.key)}
+                          disabled={disabled}
                           className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                         />
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{tab.label}</p>
                           <p className="mt-1 text-xs text-gray-500">{tab.description}</p>
+                          {requiresAllLocations && (
+                            <p className="mt-2 text-[11px] font-semibold text-indigo-700">Requires All Assigned Locations.</p>
+                          )}
                         </div>
                       </label>
                     );
