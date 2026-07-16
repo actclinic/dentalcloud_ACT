@@ -79,6 +79,7 @@ import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } fro
 import { dataCache } from './utils/dataCache';
 import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
+import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -2276,6 +2277,10 @@ const App: React.FC = () => {
     }
 
     const today = toLocalISODate(new Date());
+    if (hasRecordedServiceFeeForVisit(paymentRecords, selectedPatient.id, today)) {
+      return null;
+    }
+
     const hasPreviousCompletedAppointment = appointments.some((appointment) => {
       const patientId = (appointment.patient_id || '').trim();
       return (

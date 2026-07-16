@@ -57,7 +57,6 @@ const calculateTreatmentServiceCharges = (
   const patientId = treatmentRecords[0].patient_id;
   const treatmentDate = treatmentRecords[0].date;
   const treatmentIds = new Set(treatmentRecords.map((record) => record.id).filter(Boolean));
-  const matchedPaymentIds = new Set<string>();
   let serviceChargeTotal = 0;
 
   payments.forEach((payment) => {
@@ -70,15 +69,16 @@ const calculateTreatmentServiceCharges = (
     if (hasPaymentTreatmentIds ? !matchesTreatmentId : !matchesTreatmentVisitDate) return;
 
     const serviceFeeAmount = getPaymentServiceFeeAmount(payment);
-    if (serviceFeeAmount <= 0 || matchedPaymentIds.has(payment.id)) return;
+    if (serviceFeeAmount <= 0) return;
 
-    matchedPaymentIds.add(payment.id);
-    serviceChargeTotal += serviceFeeAmount;
+    // Service fees are configured once per patient visit. Multiple partial,
+    // retried, or legacy payment rows may contain the same fee snapshot, so
+    // summing every match can turn a 10,000 fee into 20,000 in the Audit Log.
+    serviceChargeTotal = Math.max(serviceChargeTotal, serviceFeeAmount);
   });
 
   if (serviceChargeTotal > 0) return serviceChargeTotal;
 
-  const matchedAppointmentIds = new Set<string>();
   appointments.forEach((appointment) => {
     if (appointment.patient_id !== patientId) return;
     if (appointment.status !== 'Completed') return;
@@ -86,10 +86,9 @@ const calculateTreatmentServiceCharges = (
     if (appointment.clinical_fee_status && appointment.clinical_fee_status !== 'APPLIED') return;
 
     const clinicalFeeAmount = getPositiveNumber(appointment.clinical_fee_amount);
-    if (clinicalFeeAmount <= 0 || matchedAppointmentIds.has(appointment.id)) return;
+    if (clinicalFeeAmount <= 0) return;
 
-    matchedAppointmentIds.add(appointment.id);
-    serviceChargeTotal += clinicalFeeAmount;
+    serviceChargeTotal = Math.max(serviceChargeTotal, clinicalFeeAmount);
   });
 
   return serviceChargeTotal;

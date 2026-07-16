@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const supabaseMock = vi.hoisted(() => {
-  const state: any = { calls: [], rows: [], ledgerError: null };
+  const state: any = { calls: [], rows: [], ledgerError: null, ledgerThrow: null };
 
   const createTreatmentQuery = (table: string) => {
     const query: any = {
@@ -21,11 +21,16 @@ const supabaseMock = vi.hoisted(() => {
         state.calls.push({ action: 'in', column, value });
         return query;
       }),
-      then: (resolve: any) => Promise.resolve(
-        table === 'doctor_commission_entries'
-          ? { data: null, error: state.ledgerError }
-          : { data: state.rows, error: null }
-      ).then(resolve)
+      then: (resolve: any, reject: any) => {
+        if (table === 'doctor_commission_entries' && state.ledgerThrow) {
+          return Promise.reject(state.ledgerThrow).then(resolve, reject);
+        }
+        return Promise.resolve(
+          table === 'doctor_commission_entries'
+            ? { data: [], error: state.ledgerError }
+            : { data: state.rows, error: null }
+        ).then(resolve, reject);
+      }
     };
     return query;
   };
@@ -53,6 +58,7 @@ describe('treatments.getAllRecords', () => {
     supabaseMock.calls = [];
     supabaseMock.rows = [];
     supabaseMock.ledgerError = null;
+    supabaseMock.ledgerThrow = null;
     supabaseMock.from.mockClear();
   });
 
@@ -103,6 +109,32 @@ describe('treatments.getAllRecords', () => {
     expect(warn).toHaveBeenCalledWith(
       'Unable to load doctor commission ledger entries; using stored treatment earnings.',
       '<!DOCTYPE html> 502 Bad gateway'
+    );
+    warn.mockRestore();
+  });
+
+  it('keeps audit treatments visible when commission ledger loading throws', async () => {
+    supabaseMock.rows = [{
+      id: 'treatment-2',
+      location_id: 'location-1',
+      patient_id: 'patient-2',
+      doctor_id: 'doctor-2',
+      cost: 50_000,
+      doctor_earnings: 5_000,
+      date: '2026-07-16',
+      patients: { name: 'Patient Two', balance: 0, patient_type: 'Marketing' },
+      doctors: { name: 'Doctor Two', specialization: 'General', commission_percentage: 10, commission_per_visit: 0 }
+    }];
+    supabaseMock.ledgerThrow = new TypeError('fetch failed');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const records = await api.treatments.getAllRecords('location-1', { limit: null });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ id: 'treatment-2', doctorEarnings: 5_000 });
+    expect(warn).toHaveBeenCalledWith(
+      'Unable to load doctor commission ledger entries; using stored treatment earnings.',
+      'fetch failed'
     );
     warn.mockRestore();
   });

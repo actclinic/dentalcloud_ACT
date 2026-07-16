@@ -343,23 +343,35 @@ const getDoctorEarningEntriesByTreatmentIds = async (treatmentIds: string[]) => 
   const entriesByTreatment = new Map<string, any[]>();
   if (uniqueIds.length === 0) return entriesByTreatment;
   const rows: any[] = [];
+  // This lookup only enriches treatment rows with commission-ledger breakdown details.
+  // It must never block or blank out the primary treatments list (e.g. the Audit Log's
+  // Treatments filter), so any failure here is logged and treated as "no entries" rather
+  // than propagated to the caller's outer try/catch.
   for (let index = 0; index < uniqueIds.length; index += 200) {
-    const { data, error } = await supabase
-      .from('doctor_commission_entries')
-      .select('id, payment_id, treatment_id, doctor_id, payment_date, treatment_date, calculation_mode, allocated_payment, commission_rate, earnings')
-      .in('treatment_id', uniqueIds.slice(index, index + 200));
+    try {
+      const { data, error } = await supabase
+        .from('doctor_commission_entries')
+        .select('id, payment_id, treatment_id, doctor_id, payment_date, treatment_date, calculation_mode, allocated_payment, commission_rate, earnings')
+        .in('treatment_id', uniqueIds.slice(index, index + 200));
 
-    if (error) {
-      // Commission entries enrich dashboard period totals, but they must never
-      // make core treatment/audit records disappear. Network/proxy failures and
-      // partially deployed schemas fall back to persisted treatments.doctor_earnings.
-      const errorSummary = String(error.message || error)
+      if (error) {
+        // Commission entries enrich dashboard period totals, but they must never
+        // make core treatment/audit records disappear. Network/proxy failures and
+        // partially deployed schemas fall back to persisted treatments.doctor_earnings.
+        const errorSummary = String(error.message || error)
+          .replace(/\s+/g, ' ')
+          .slice(0, 240);
+        console.warn('Unable to load doctor commission ledger entries; using stored treatment earnings.', errorSummary);
+        return entriesByTreatment;
+      }
+      rows.push(...(data || []));
+    } catch (err) {
+      const errorSummary = String((err as any)?.message || err)
         .replace(/\s+/g, ' ')
         .slice(0, 240);
       console.warn('Unable to load doctor commission ledger entries; using stored treatment earnings.', errorSummary);
       return entriesByTreatment;
     }
-    rows.push(...(data || []));
   }
 
   rows.forEach((row: any) => {
