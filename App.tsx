@@ -80,6 +80,7 @@ import { dataCache } from './utils/dataCache';
 import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
 import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
+import { toLocalDateInputValue } from './utils/patientCreationDate';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -735,6 +736,8 @@ const App: React.FC = () => {
       patient_type: DEFAULT_PATIENT_TYPE_NAME,
       location_id: ''
     });
+  const [showPatientCreationDate, setShowPatientCreationDate] = useState(false);
+  const [patientCreationDate, setPatientCreationDate] = useState(() => toLocalDateInputValue());
   const [clinicalFeeEnabled, setClinicalFeeEnabled] = useState(false);
   const [clinicalFeeNewPatientAmount, setClinicalFeeNewPatientAmount] = useState(0);
   const [clinicalFeeReturningPatientAmount, setClinicalFeeReturningPatientAmount] = useState(0);
@@ -2146,6 +2149,7 @@ const App: React.FC = () => {
         ...newPatientData,
         location_id: newPatientData.location_id,
         balance: 0,
+        ...(showPatientCreationDate ? { created_at: patientCreationDate } : {})
       } as Parameters<typeof api.patients.create>[0];
       const createdPatient = await api.patients.create(patientInput);
       if (convertingLeadAppointment) {
@@ -2170,6 +2174,8 @@ const App: React.FC = () => {
         location_id: ''
       });
       setPatientDuplicateWarning(null);
+      setShowPatientCreationDate(false);
+      setPatientCreationDate(toLocalDateInputValue());
       setConvertingLeadAppointment(null);
       const createdBranch = locations.find((loc) => loc.id === createdPatient.location_id);
       const viewingDifferentBranch = !!createdPatient.location_id && !!currentLocationId && createdPatient.location_id !== currentLocationId;
@@ -3459,6 +3465,8 @@ const App: React.FC = () => {
 
   const handleConvertLeadAppointment = (appointment: Appointment) => {
     setConvertingLeadAppointment(appointment);
+    setShowPatientCreationDate(false);
+    setPatientCreationDate(toLocalDateInputValue());
     setNewPatientData({
       name: appointment.guest_name || appointment.patient_name || '',
       email: '',
@@ -3873,6 +3881,7 @@ const App: React.FC = () => {
                   allBranchesValue={ALL_BRANCHES_VALUE}
                   canViewAllBranches={canAdminViewAllBranches}
                   onLocationChange={handleDashboardLocationChange}
+                  onSelectPatient={handlePatientSelect}
                   loading={loading}
                 />
               )
@@ -3905,6 +3914,8 @@ const App: React.FC = () => {
                     patient_type: activePatientTypeOptions[0] || DEFAULT_PATIENT_TYPE_NAME,
                     location_id: currentLocationId || ''
                   });
+                  setShowPatientCreationDate(false);
+                  setPatientCreationDate(toLocalDateInputValue());
                   setShowPatientModal(true);
                 }}
                 onExportPDF={async () => {
@@ -4242,7 +4253,7 @@ const App: React.FC = () => {
 
       {/* Modals */}
       {showPatientModal && (
-        <Modal title={convertingLeadAppointment ? "Register New Patient" : "Register Clinical Patient"} onClose={() => { setShowPatientModal(false); setConvertingLeadAppointment(null); setPatientDuplicateWarning(null); }}>
+        <Modal title={convertingLeadAppointment ? "Register New Patient" : "Register Clinical Patient"} onClose={() => { setShowPatientModal(false); setConvertingLeadAppointment(null); setPatientDuplicateWarning(null); setShowPatientCreationDate(false); setPatientCreationDate(toLocalDateInputValue()); }}>
           <form onSubmit={handleCreatePatient} className="space-y-6">
             {convertingLeadAppointment && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -4255,6 +4266,47 @@ const App: React.FC = () => {
                 </p>
               </div>
             )}
+
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-indigo-900">Account creation date</h3>
+                  <p className="mt-1 text-xs text-indigo-600">
+                    Defaults to today. Use a past date when entering an existing patient record.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPatientCreationDate(current => !current);
+                    setPatientCreationDate(current => current || toLocalDateInputValue());
+                  }}
+                  className="flex-none rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  aria-expanded={showPatientCreationDate}
+                  aria-controls="patient-creation-date-field"
+                >
+                  {showPatientCreationDate ? 'Use today' : 'Advanced'}
+                </button>
+              </div>
+              {showPatientCreationDate && (
+                <div id="patient-creation-date-field" className="mt-4">
+                  <label htmlFor="patient-creation-date" className="block text-[10px] font-black uppercase tracking-wider text-indigo-700">
+                    Creation date
+                  </label>
+                  <input
+                    id="patient-creation-date"
+                    type="date"
+                    required
+                    min="1900-01-01"
+                    max={toLocalDateInputValue()}
+                    value={patientCreationDate}
+                    onChange={(event) => setPatientCreationDate(event.target.value)}
+                    className="mt-1.5 w-full rounded-2xl border border-indigo-200 bg-white p-3 text-sm text-gray-900 transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
+                  />
+                  <p className="mt-2 text-[11px] text-indigo-500">Future dates are not allowed.</p>
+                </div>
+              )}
+            </div>
 
             {/* ═══ PERSONAL INFORMATION ═══ */}
             <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5 space-y-4">

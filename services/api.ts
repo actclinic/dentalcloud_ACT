@@ -13,6 +13,7 @@ import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../uti
 import { usesFlatVisitCommission } from '../utils/doctorCommission';
 import { allocateCommissionablePayments, calculateCommissionLedgerEntries } from '../utils/doctorCommissionLedger';
 import { enumValue, finiteNumber, strictDateString, trimOptional, trimRequired } from '../utils/validation';
+import { buildPatientCreatedAt } from '../utils/patientCreationDate';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -1610,7 +1611,8 @@ export const api = {
         patient_type: data.patient_type || DEFAULT_PATIENT_TYPE_NAME,
         balance: data.balance ?? 0,
         loyalty_points: 0,
-        medical_history: data.medicalHistory || null
+        medical_history: data.medicalHistory || null,
+        ...(data.created_at ? { created_at: buildPatientCreatedAt(data.created_at) } : {})
       };
 
       const { data: result, error } = await supabase

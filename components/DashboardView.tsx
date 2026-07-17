@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon, Trophy, AlertTriangle, Clock, XCircle } from 'lucide-react';
+import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon, Trophy, AlertTriangle, Clock, XCircle, ArrowUpRight } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
@@ -26,6 +26,7 @@ interface DashboardViewProps {
   allBranchesValue: string;
   canViewAllBranches: boolean;
   onLocationChange: (locationId: string) => void;
+  onSelectPatient: (patient: Patient) => void;
   loading?: boolean;
 }
 
@@ -48,6 +49,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   allBranchesValue,
   canViewAllBranches,
   onLocationChange,
+  onSelectPatient,
   loading = false
 }) => {
   const selectedLocationName = useMemo(() => {
@@ -248,24 +250,46 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             {rows.map((appointment) => {
               const patientName = appointmentPatientName(appointment);
               const relativeLabel = getRelativeDayLabel(appointment.date);
-
-              return (
-                <article
-                  key={appointment.id}
-                  className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors ${classes.row}`}
-                >
-                  <div className="min-w-0">
+              const patient = tone === 'cancelled' && appointment.patient_id
+                ? patients.find(candidate => candidate.id === appointment.patient_id)
+                : undefined;
+              const rowContent = (
+                <>
+                  <div className="min-w-0 text-left">
                     <h4 className="truncate text-sm font-semibold text-slate-900">{patientName}</h4>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500">
                       <span className={`rounded-full px-2 py-0.5 ring-1 ${classes.badge}`}>{appointment.patient_id ? 'Patient' : 'Lead'}</span>
                       <span>{appointment.type || 'No type'}</span>
+                      {patient && <span className="font-bold text-indigo-600">Open chart</span>}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-slate-700">{formatAppointmentDate(appointment.date)}</p>
-                    <p className="mt-1 font-mono text-xs font-semibold text-slate-500 tabular-nums">{appointment.time || '--:--'}</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{relativeLabel}</p>
+                  <div className="flex items-start gap-2 text-right">
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">{formatAppointmentDate(appointment.date)}</p>
+                      <p className="mt-1 font-mono text-xs font-semibold text-slate-500 tabular-nums">{appointment.time || '--:--'}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{relativeLabel}</p>
+                    </div>
+                    {patient && <ArrowUpRight className="mt-0.5 h-4 w-4 flex-none text-indigo-500" aria-hidden="true" />}
                   </div>
+                </>
+              );
+
+              return patient ? (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => onSelectPatient(patient)}
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${classes.row}`}
+                  aria-label={`Open clinical chart for ${patientName}`}
+                >
+                  {rowContent}
+                </button>
+              ) : (
+                <article
+                  key={appointment.id}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors ${classes.row}`}
+                >
+                  {rowContent}
                 </article>
               );
             })}
