@@ -440,6 +440,9 @@ const App: React.FC = () => {
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [medicineSales, setMedicineSales] = useState<MedicineSale[]>([]);
+  const [patientMedicineSales, setPatientMedicineSales] = useState<MedicineSale[]>([]);
+  const [patientMedicineHistoryLoading, setPatientMedicineHistoryLoading] = useState(false);
+  const [patientMedicineHistoryError, setPatientMedicineHistoryError] = useState<string | null>(null);
   const scheduledTaskProcessorRef = React.useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -450,6 +453,7 @@ const App: React.FC = () => {
   const dashboardFetchRequestRef = React.useRef(0);
   const initialDataFetchRequestRef = React.useRef(0);
   const treatmentHistoryRequestRef = React.useRef(0);
+  const medicineHistoryRequestRef = React.useRef(0);
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -1366,6 +1370,7 @@ const App: React.FC = () => {
     }
 
     treatmentHistoryRequestRef.current += 1;
+    medicineHistoryRequestRef.current += 1;
     resetStaffSession();
     setCurrentView('dashboard');
     localStorage.removeItem('currentView');
@@ -1385,6 +1390,9 @@ const App: React.FC = () => {
     setLoyaltyTransactions([]);
     setExpenses([]);
     setMedicineSales([]);
+    setPatientMedicineSales([]);
+    setPatientMedicineHistoryLoading(false);
+    setPatientMedicineHistoryError(null);
     setDashboardPatients([]);
     setDashboardAppointments([]);
     setDashboardRecords([]);
@@ -1692,7 +1700,11 @@ const App: React.FC = () => {
   const handleLocationChange = async (locId: string) => {
     const session = auth.getSession();
     treatmentHistoryRequestRef.current += 1;
+    medicineHistoryRequestRef.current += 1;
     setSelectedPatient(null);
+    setPatientMedicineSales([]);
+    setPatientMedicineHistoryLoading(false);
+    setPatientMedicineHistoryError(null);
     setShowPatientModal(false);
     setShowAppointmentModal(false);
     setShowPaymentModal(false);
@@ -1926,6 +1938,7 @@ const App: React.FC = () => {
 
   const handlePatientSelect = async (patient: Patient) => {
     const requestId = ++treatmentHistoryRequestRef.current;
+    const medicineRequestId = ++medicineHistoryRequestRef.current;
     setSelectedPatient(patient);
     setSelectedDoctorId('');
     setSelectedTeeth([]);
@@ -1933,8 +1946,11 @@ const App: React.FC = () => {
     setTreatmentHistory([]);
     setLoyaltyTransactions([]);
     setPatientFiles([]);
+    setPatientMedicineSales([]);
+    setPatientMedicineHistoryLoading(true);
+    setPatientMedicineHistoryError(null);
 
-    const locationId = currentLocationId || patient.location_id;
+    const locationId = patient.location_id || currentLocationId;
     void api.treatments.getHistory(patient.id)
       .then((history) => {
         if (requestId !== treatmentHistoryRequestRef.current) return;
@@ -1944,6 +1960,19 @@ const App: React.FC = () => {
         if (requestId !== treatmentHistoryRequestRef.current) return;
         console.warn('Error fetching treatment history:', err);
         setTreatmentHistory([]);
+      });
+
+    void api.medicines.getSales(locationId, patient.id, { throwOnError: true })
+      .then((patientSales) => {
+        if (medicineRequestId !== medicineHistoryRequestRef.current) return;
+        setPatientMedicineSales(patientSales);
+        setPatientMedicineHistoryLoading(false);
+      })
+      .catch((err: any) => {
+        if (medicineRequestId !== medicineHistoryRequestRef.current) return;
+        console.warn('Error fetching patient medicine history:', err);
+        setPatientMedicineHistoryLoading(false);
+        setPatientMedicineHistoryError(err?.message || 'Check the connection and reopen this patient to try again.');
       });
 
     void api.loyalty.getTransactions(patient.id, locationId)
@@ -3124,6 +3153,10 @@ const App: React.FC = () => {
 
   const handleMedicineSelectionConfirm = async (selectedMedicines: { medicine: Medicine; quantity: number }[]) => {
     if (!selectedPatient) return;
+    const salePatient = selectedPatient;
+    const salePatientRequestId = medicineHistoryRequestRef.current;
+    const saleLocationId = currentLocationId || salePatient.location_id;
+    let successfulSaleCount = 0;
     
     if (selectedMedicines.length === 0) {
       setShowMedicineSelectionModal(false);
@@ -3139,22 +3172,23 @@ const App: React.FC = () => {
       // Record medicine sales
       for (const item of selectedMedicines) {
         await api.medicines.sell(
-          selectedPatient.id,
+          salePatient.id,
           item.medicine.id,
           item.quantity,
-          currentLocationId
+          saleLocationId
         );
+        successfulSaleCount += 1;
       }
 
       // Update patient balance (medicines already updated it in the sell function)
       const { data: patient } = await supabase
         .from('patients')
         .select('balance')
-        .eq('id', selectedPatient.id)
+        .eq('id', salePatient.id)
         .single();
 
-      if (patient) {
-        setSelectedPatient({ ...selectedPatient, balance: patient.balance });
+      if (patient && salePatientRequestId === medicineHistoryRequestRef.current) {
+        setSelectedPatient({ ...salePatient, balance: patient.balance });
       }
       
       // Refresh medicines to update stock
@@ -3162,6 +3196,28 @@ const App: React.FC = () => {
         safeLoad('Refresh medicines after inventory sale', fetchMedicines(), undefined),
         safeLoad('Refresh medicine sales after inventory sale', fetchMedicineSales(), undefined)
       ]);
+
+      if (salePatientRequestId === medicineHistoryRequestRef.current) {
+        const medicineRequestId = ++medicineHistoryRequestRef.current;
+        setPatientMedicineHistoryLoading(true);
+        setPatientMedicineHistoryError(null);
+        try {
+          const refreshedPatientSales = await api.medicines.getSales(
+            salePatient.location_id || saleLocationId,
+            salePatient.id,
+            { throwOnError: true }
+          );
+          if (medicineRequestId === medicineHistoryRequestRef.current) {
+            setPatientMedicineSales(refreshedPatientSales);
+            setPatientMedicineHistoryLoading(false);
+          }
+        } catch (historyError: any) {
+          if (medicineRequestId === medicineHistoryRequestRef.current) {
+            setPatientMedicineHistoryLoading(false);
+            setPatientMedicineHistoryError(historyError?.message || 'The sale was saved, but medicine history could not be refreshed.');
+          }
+        }
+      }
       
       // Show success message
       setToast({
@@ -3170,6 +3226,33 @@ const App: React.FC = () => {
         show: true
       });
     } catch (err: any) {
+      if (successfulSaleCount > 0) {
+        await Promise.all([
+          safeLoad('Reconcile medicines after partial inventory sale', fetchMedicines(), undefined),
+          safeLoad('Reconcile medicine sales after partial inventory sale', fetchMedicineSales(), undefined)
+        ]);
+
+        if (salePatientRequestId === medicineHistoryRequestRef.current) {
+          try {
+            const [refreshedPatientSales, balanceResult] = await Promise.all([
+              api.medicines.getSales(salePatient.location_id || saleLocationId, salePatient.id, { throwOnError: true }),
+              supabase.from('patients').select('balance').eq('id', salePatient.id).single()
+            ]);
+            if (salePatientRequestId === medicineHistoryRequestRef.current) {
+              setPatientMedicineSales(refreshedPatientSales);
+              setPatientMedicineHistoryLoading(false);
+              if (balanceResult.data) {
+                setSelectedPatient({ ...salePatient, balance: balanceResult.data.balance });
+              }
+            }
+          } catch (refreshError: any) {
+            if (salePatientRequestId === medicineHistoryRequestRef.current) {
+              setPatientMedicineHistoryLoading(false);
+              setPatientMedicineHistoryError(refreshError?.message || 'Some items were saved, but medicine history could not be refreshed.');
+            }
+          }
+        }
+      }
       alert(err.message);
     }
   };
@@ -3485,7 +3568,11 @@ const App: React.FC = () => {
 
   const handleClosePatient = () => {
     treatmentHistoryRequestRef.current += 1;
+    medicineHistoryRequestRef.current += 1;
     setSelectedPatient(null);
+    setPatientMedicineSales([]);
+    setPatientMedicineHistoryLoading(false);
+    setPatientMedicineHistoryError(null);
     setSelectedDoctorId('');
     setSelectedTeeth([]);
     setTreatmentHistory([]);
@@ -4068,6 +4155,9 @@ const App: React.FC = () => {
                 selectedTeeth={selectedTeeth} 
                 treatmentTypes={treatmentTypes} 
                 treatmentHistory={treatmentHistory}
+                medicineSales={patientMedicineSales}
+                medicineHistoryLoading={patientMedicineHistoryLoading}
+                medicineHistoryError={patientMedicineHistoryError}
                 patientFiles={patientFiles}
                 uploadingFiles={uploading}
                 useFlatRate={useFlatRate}

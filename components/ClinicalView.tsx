@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2 } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
-import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location } from '../types';
+import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location, MedicineSale } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
 import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
 import { formatTeethArray, formatTeethWithPosition, getTeethInQuadrant } from '../utils/toothNumbering';
@@ -10,6 +10,7 @@ import { SearchableSelect } from './SearchableSelect';
 import PatientQRScanButton from './PatientQRScanButton';
 import { calculateAppointmentShortcutDate, type AppointmentDateShortcut } from '../utils/appointmentDateShortcuts';
 import { getNextTreatmentOptionIndex } from '../utils/treatmentSelectorKeyboard';
+import { formatMedicineQuantity, getPatientMedicineHistory } from '../utils/medicineHistory';
 
 export interface UploadProgress {
   fileName: string;
@@ -27,6 +28,9 @@ interface ClinicalViewProps {
   selectedTeeth: number[];
   treatmentTypes: TreatmentType[];
   treatmentHistory: ClinicalRecord[];
+  medicineSales: MedicineSale[];
+  medicineHistoryLoading?: boolean;
+  medicineHistoryError?: string | null;
   patientFiles: PatientFile[];
   uploadingFiles: boolean;
   useFlatRate: boolean;
@@ -70,6 +74,9 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   selectedTeeth,
   treatmentTypes,
   treatmentHistory,
+  medicineSales,
+  medicineHistoryLoading = false,
+  medicineHistoryError = null,
   patientFiles,
   uploadingFiles,
   useFlatRate,
@@ -103,6 +110,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   loyaltyRules = [],
   loyaltyTransactions = []
 }) => {
+  const medicineHistory = React.useMemo(
+    () => selectedPatient ? getPatientMedicineHistory(medicineSales, selectedPatient.id) : [],
+    [medicineSales, selectedPatient]
+  );
   const appointmentTypeOptions = React.useMemo(() => {
     const activeNames = appointmentTypes
       .filter((type) => type.is_active)
@@ -835,6 +846,77 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                     </tr>
                   ))
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {selectedPatient && (
+        <div className="overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-emerald-100 bg-emerald-50/70 px-5 py-5 sm:flex-row sm:items-center sm:justify-between md:px-7">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                <Package size={19} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-xl font-black text-gray-900">Medicine History</h3>
+                <p className="mt-0.5 text-sm text-emerald-800">Medicines and inventory items given to this patient.</p>
+              </div>
+            </div>
+            <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
+              {medicineHistory.length} {medicineHistory.length === 1 ? 'record' : 'records'}
+            </span>
+          </div>
+
+          <div className="max-h-[28rem] min-h-[12rem] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[42rem] text-left text-[15px]">
+              <thead className="sticky top-0 border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-5 py-4 md:px-7">Date</th>
+                  <th className="px-5 py-4">Medicine / Item</th>
+                  <th className="px-5 py-4">Quantity given</th>
+                  <th className="px-5 py-4 text-right">Unit price</th>
+                  <th className="px-5 py-4 text-right md:pr-7">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {medicineHistoryLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                      <Loader2 className="mx-auto mb-3 animate-spin text-emerald-500" size={30} aria-hidden="true" />
+                      <p className="font-semibold text-gray-500">Loading medicine history…</p>
+                    </td>
+                  </tr>
+                ) : medicineHistoryError ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                      <AlertCircle className="mx-auto mb-3 text-red-400" size={32} aria-hidden="true" />
+                      <p className="font-semibold text-red-700">Medicine history could not be loaded.</p>
+                      <p className="mt-1 text-sm text-gray-500">{medicineHistoryError}</p>
+                    </td>
+                  </tr>
+                ) : medicineHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                      <Package className="mx-auto mb-3 text-emerald-200" size={34} aria-hidden="true" />
+                      <p className="font-semibold text-gray-500">No medicine records for this patient yet.</p>
+                      <p className="mt-1 text-sm text-gray-400">Items added to the patient’s bill will appear here.</p>
+                    </td>
+                  </tr>
+                ) : medicineHistory.map((sale) => (
+                  <tr key={sale.id} className="transition-colors hover:bg-emerald-50/30">
+                    <td className="whitespace-nowrap px-5 py-4 text-gray-600 md:px-7">{sale.date}</td>
+                    <td className="px-5 py-4 font-semibold text-gray-900">{sale.medicine_name || 'Inventory item'}</td>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex rounded-lg bg-emerald-50 px-2.5 py-1 text-sm font-bold text-emerald-800">
+                        {formatMedicineQuantity(sale.quantity, sale.medicine_unit)}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-right text-gray-600">{formatCurrency(Number(sale.unit_price || 0), currency)}</td>
+                    <td className="whitespace-nowrap px-5 py-4 text-right font-black text-gray-900 md:pr-7">{formatCurrency(Number(sale.total_price || 0), currency)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

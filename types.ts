@@ -410,11 +410,13 @@ export interface MedicineSale {
   patient_name?: string;
   medicine_id: string;
   medicine_name?: string;
+  medicine_unit?: string;
   quantity: number;
   unit_price: number;
   total_price: number;
   date: string;
   treatment_id?: string; // Optional: link to treatment if sold with treatment
+  created_at?: string;
 }
 
 export interface ClinicSettings {

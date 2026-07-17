@@ -5965,23 +5965,25 @@ export const api = {
           id: saleResult.id,
           location_id: saleResult.location_id,
           patient_id: saleResult.patient_id,
-          patient_name: saleResult.patients?.name || 'Unknown',
+          patient_name: patient.name || 'Unknown',
           medicine_id: saleResult.medicine_id,
-          medicine_name: saleResult.medicines?.name || 'Unknown',
+          medicine_name: medicine.name || 'Unknown',
+          medicine_unit: medicine.unit || undefined,
           quantity: saleResult.quantity,
           unit_price: saleResult.unit_price,
           total_price: saleResult.total_price,
           date: saleResult.date,
-          treatment_id: saleResult.treatment_id
+          treatment_id: saleResult.treatment_id,
+          created_at: saleResult.created_at
         },
         new_stock: newStock
       };
     },
-    getSales: async (locationId?: string, patientId?: string): Promise<MedicineSale[]> => {
+    getSales: async (locationId?: string, patientId?: string, options?: { throwOnError?: boolean }): Promise<MedicineSale[]> => {
       try {
         let query = supabase
           .from('medicine_sales')
-          .select('*, patients(name), medicines(name)')
+          .select('*, patients(name), medicines(name, unit)')
           .order('date', { ascending: false });
 
         if (locationId) {
@@ -6020,14 +6022,17 @@ export const api = {
           patient_name: sale.patients?.name || 'Unknown',
           medicine_id: sale.medicine_id,
           medicine_name: sale.medicines?.name || 'Unknown',
+          medicine_unit: sale.medicines?.unit || undefined,
           quantity: sale.quantity,
           unit_price: sale.unit_price,
           total_price: sale.total_price,
           date: sale.date,
-          treatment_id: sale.treatment_id
+          treatment_id: sale.treatment_id,
+          created_at: sale.created_at
         }));
       } catch (err) {
         console.warn("Error fetching medicine sales:", err);
+        if (options?.throwOnError) throw err;
         return [];
       }
     },
