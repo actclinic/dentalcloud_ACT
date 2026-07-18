@@ -5,11 +5,12 @@ import type {
   PaymentRecord,
   PaymentReceiptSnapshot,
   PaymentMethod,
+  PaymentAllocation,
   PaymentReceiptMedicineLine,
   PaymentReceiptTreatmentLine
 } from '../types';
 import type { Currency } from './currency';
-import { normalizePaymentMethod } from './paymentMethods';
+import { getPaymentHeaderMethod, normalizePaymentAllocations, normalizePaymentMethod } from './paymentMethods';
 import { resolveReceiptHeaderTitle } from './receiptPreferences';
 
 type ReceiptClinicContext = {
@@ -98,12 +99,14 @@ export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptS
   const receiptDate = normalizeString(raw.receiptDate);
   const currency = raw.currency === 'MMK' ? 'MMK' : raw.currency === 'USD' ? 'USD' : null;
   const method = normalizePaymentMethodValue(raw.payment?.method);
+  const amountPaid = normalizeNumber(raw.payment?.amountPaid);
+  const allocations = normalizePaymentAllocations(raw.payment?.allocations, method, amountPaid);
   const status = raw.payment?.status === 'FULL' ? 'FULL' : raw.payment?.status === 'PARTIAL' ? 'PARTIAL' : null;
 
   if (!receiptNumber || !receiptDate || !currency || !status) return null;
 
   return {
-    version: 1,
+    version: allocations.length > 1 || raw.version === 2 ? 2 : 1,
     receiptType: 'PAYMENT',
     receiptNumber,
     receiptDate,
@@ -123,8 +126,9 @@ export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptS
       patientUniqueId: normalizeString(raw.patient?.patientUniqueId)
     },
     payment: {
-      amountPaid: normalizeNumber(raw.payment?.amountPaid),
-      method,
+      amountPaid,
+      method: allocations.length > 1 ? 'MIXED' : method,
+      ...(allocations.length > 1 || raw.version === 2 ? { allocations } : {}),
       status,
       balanceBefore: normalizeNumber(raw.payment?.balanceBefore),
       balanceAfter: normalizeNumber(raw.payment?.balanceAfter),
@@ -145,6 +149,7 @@ export const buildPaymentReceiptSnapshot = (params: {
   patient: Patient;
   amountPaid: number;
   paymentMethod: PaymentMethod;
+  allocations?: PaymentAllocation[];
   paymentDate: string;
   receiptNumber: string;
   balanceBefore: number;
@@ -162,8 +167,9 @@ export const buildPaymentReceiptSnapshot = (params: {
   const clinicPhone = normalizeString(params.clinic.receiptInfo?.phone);
   const normalizedAppName = normalizeString(params.clinic.appName) || 'DentalCloud Pro';
 
+  const allocations = normalizePaymentAllocations(params.allocations, params.paymentMethod, params.amountPaid);
   return {
-    version: 1,
+    version: allocations.length > 1 ? 2 : 1,
     receiptType: 'PAYMENT',
     receiptNumber: params.receiptNumber,
     receiptDate: params.paymentDate,
@@ -184,7 +190,8 @@ export const buildPaymentReceiptSnapshot = (params: {
     },
     payment: {
       amountPaid: Math.max(0, normalizeNumber(params.amountPaid)),
-      method: normalizePaymentMethodValue(params.paymentMethod),
+      method: getPaymentHeaderMethod(allocations),
+      ...(allocations.length > 1 ? { allocations } : {}),
       status: params.paymentStatus,
       balanceBefore: Math.max(0, normalizeNumber(params.balanceBefore)),
       balanceAfter: Math.max(0, normalizeNumber(params.balanceAfter)),
@@ -208,8 +215,9 @@ export const buildLegacyPaymentReceiptSnapshot = (
   const balanceAfter = Math.max(0, normalizeNumber(payment.remainingBalance));
   const balanceBefore = Math.max(balanceAfter, normalizeNumber(payment.balanceBefore ?? balanceAfter + normalizeNumber(payment.amount)));
 
+  const allocations = normalizePaymentAllocations(payment.allocations, payment.paymentMethod, payment.amount);
   return {
-    version: 1,
+    version: allocations.length > 1 ? 2 : 1,
     receiptType: 'PAYMENT',
     receiptNumber,
     receiptDate: paymentDate,
@@ -227,7 +235,8 @@ export const buildLegacyPaymentReceiptSnapshot = (
     },
     payment: {
       amountPaid: Math.max(0, normalizeNumber(payment.amount)),
-      method: normalizePaymentMethodValue(payment.paymentMethod),
+      method: getPaymentHeaderMethod(allocations),
+      ...(allocations.length > 1 ? { allocations } : {}),
       status: payment.type === 'FULL' ? 'FULL' : 'PARTIAL',
       balanceBefore,
       balanceAfter,

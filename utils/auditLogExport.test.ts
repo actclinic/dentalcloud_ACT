@@ -88,9 +88,14 @@ describe('audit log export rows', () => {
       paymentMethod: 'KPAY',
       receiptNumber: 'REC-20260530-000001',
       receiptSnapshot: {
+        version: 1,
+        receiptType: 'PAYMENT',
+        receiptNumber: 'REC-20260530-000001',
+        receiptDate: '2026-05-30',
+        currency: 'MMK',
+        clinic: { appName: 'My Dentist', headerTitle: 'Receipt', email: '', phone: '' },
+        patient: { id: 'pat-1', name: 'Aung Min' },
         payment: {
-          receiptNumber: 'REC-20260530-000001',
-          date: '2026-05-30',
           amountPaid: 10000,
           method: 'KPAY',
           status: 'PARTIAL',
@@ -258,6 +263,7 @@ describe('audit log export rows', () => {
           id: 'pay-unrelated-treatment-same-day',
           treatmentIds: ['different-treatment-id'],
           receiptSnapshot: {
+            ...payments[0].receiptSnapshot!,
             payment: {
               ...payments[0].receiptSnapshot!.payment,
               serviceFeeAmount: 7000
@@ -269,6 +275,7 @@ describe('audit log export rows', () => {
           id: 'pay-service-fee-only-same-day',
           treatmentIds: [],
           receiptSnapshot: {
+            ...payments[0].receiptSnapshot!,
             payment: {
               ...payments[0].receiptSnapshot!.payment,
               serviceFeeAmount: 1500
@@ -290,6 +297,7 @@ describe('audit log export rows', () => {
       ...payments[0],
       id: 'pay-duplicate-service-fee',
       receiptSnapshot: {
+        ...payments[0].receiptSnapshot!,
         payment: {
           ...payments[0].receiptSnapshot!.payment,
           serviceFeeAmount: 10_000
@@ -299,6 +307,7 @@ describe('audit log export rows', () => {
     const originalFeePayment: PaymentRecord = {
       ...payments[0],
       receiptSnapshot: {
+        ...payments[0].receiptSnapshot!,
         payment: {
           ...payments[0].receiptSnapshot!.payment,
           serviceFeeAmount: 10_000

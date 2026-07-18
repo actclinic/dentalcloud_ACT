@@ -1,9 +1,9 @@
 import React from 'react';
 import { AlertTriangle, Loader2, X } from 'lucide-react';
-import type { PaymentMethod, PaymentRecord } from '../types';
+import type { PaymentAllocation, PaymentMethod, PaymentRecord } from '../types';
 import { api } from '../services/api';
 import { auth } from '../services/auth';
-import { formatPaymentMethod, isSelectablePaymentMethod, PAYMENT_METHOD_OPTIONS } from '../utils/paymentMethods';
+import { formatPaymentAllocations, formatPaymentMethod, getPaymentHeaderMethod, normalizePaymentAllocations, PAYMENT_METHOD_OPTIONS, validatePaymentAllocations } from '../utils/paymentMethods';
 
 interface EditPaymentModalProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ interface EditPaymentModalProps {
 const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, onClose, onSaved }) => {
   const [amount, setAmount] = React.useState('');
   const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>('UNKNOWN');
+  const [allocations, setAllocations] = React.useState<PaymentAllocation[]>([]);
   const [reason, setReason] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -23,6 +24,7 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
     if (!isOpen || !payment) return;
     setAmount(String(payment.amount || ''));
     setPaymentMethod(payment.paymentMethod || 'UNKNOWN');
+    setAllocations(normalizePaymentAllocations(payment.allocations, payment.paymentMethod, payment.amount));
     setReason('');
     setError(null);
     setSubmitting(false);
@@ -33,9 +35,13 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
   const normalizedReason = reason.trim();
   const parsedAmount = Number(amount);
   const isAmountValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
-  const isMethodValid = isSelectablePaymentMethod(paymentMethod);
+  const isSplit = allocations.length > 1;
+  const effectiveAllocations = isSplit ? allocations : normalizePaymentAllocations(null, paymentMethod, parsedAmount);
+  const allocationError = validatePaymentAllocations(effectiveAllocations, parsedAmount);
+  const isMethodValid = !allocationError;
   const isReasonValid = normalizedReason.length >= 10;
-  const hasChanges = parsedAmount !== Number(payment.amount) || paymentMethod !== (payment.paymentMethod || 'UNKNOWN');
+  const originalAllocations = normalizePaymentAllocations(payment.allocations, payment.paymentMethod, payment.amount);
+  const hasChanges = parsedAmount !== Number(payment.amount) || JSON.stringify(effectiveAllocations) !== JSON.stringify(originalAllocations);
   const canSubmit = !submitting && isAmountValid && isMethodValid && isReasonValid && hasChanges;
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -53,7 +59,9 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
       const updatedPayment = await api.finance.correctPayment({
         paymentId: payment.id,
         newAmount: parsedAmount,
-        newMethod: paymentMethod,
+        newMethod: getPaymentHeaderMethod(effectiveAllocations),
+        allocations: effectiveAllocations,
+        wasSplitPayment: originalAllocations.length > 1,
         reason: normalizedReason,
         editedByUserId: session.userId
       });
@@ -108,23 +116,63 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
                 placeholder="Enter corrected amount"
               />
             </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Payment Method</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-              >
-                <option value="UNKNOWN">Select payment method</option>
-                {PAYMENT_METHOD_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {formatPaymentMethod(option.value)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isSplit ? (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+                >
+                  <option value="UNKNOWN">Select payment method</option>
+                  {PAYMENT_METHOD_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{formatPaymentMethod(option.value)}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
+
+          {isSplit ? (
+            <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-bold text-amber-900">Payment breakdown</p>
+              {allocations.map((allocation, index) => (
+                <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                  <select
+                    value={allocation.method}
+                    onChange={(event) => setAllocations((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, method: event.target.value as PaymentMethod } : item))}
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-semibold"
+                  >
+                    {PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <input
+                    type="number" min="0.01" step="0.01" value={allocation.amount || ''}
+                    onChange={(event) => setAllocations((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, amount: Math.max(0, Number(event.target.value || 0)) } : item))}
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-right font-bold"
+                  />
+                  <button type="button" disabled={allocations.length <= 2} onClick={() => setAllocations((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="px-2 font-bold text-rose-600 disabled:opacity-30">×</button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = PAYMENT_METHOD_OPTIONS.find((option) => !allocations.some((allocation) => allocation.method === option.value));
+                  if (next) setAllocations((current) => [...current, { method: next.value, amount: 0 }]);
+                }}
+                className="text-xs font-bold text-amber-700"
+              >+ Add method</button>
+              {allocationError ? <p className="text-xs font-semibold text-rose-700">{allocationError}</p> : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const firstAmount = Math.round(parsedAmount / 2 * 100) / 100;
+                setAllocations([{ method: paymentMethod === 'UNKNOWN' ? 'CASH' : paymentMethod, amount: firstAmount }, { method: paymentMethod === 'KPAY' ? 'CASH' : 'KPAY', amount: Math.round((parsedAmount - firstAmount) * 100) / 100 }]);
+              }}
+              className="text-left text-sm font-bold text-amber-700"
+            >+ Correct as split payment</button>
+          )}
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Reason for Correction</label>
@@ -141,7 +189,7 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
           </div>
 
           <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Previous value: {payment.amount.toFixed(2)} via {formatPaymentMethod(payment.paymentMethod)}
+            Previous value: {payment.amount.toFixed(2)} via {originalAllocations.length ? formatPaymentAllocations(originalAllocations) : formatPaymentMethod(payment.paymentMethod)}
           </div>
 
           {error ? (

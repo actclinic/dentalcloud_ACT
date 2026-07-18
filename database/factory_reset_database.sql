@@ -31,7 +31,13 @@ BEGIN;
 
 -- Drop app-specific RPC functions first to avoid signature drift.
 DROP FUNCTION IF EXISTS public.process_patient_payment(UUID, DECIMAL, TEXT, UUID[], DATE, JSONB, UUID, TEXT);
+DROP FUNCTION IF EXISTS public.process_patient_payment(UUID, NUMERIC, TEXT, UUID[], DATE, JSONB, TEXT, UUID, TEXT);
 DROP FUNCTION IF EXISTS public.process_patient_payment(UUID, NUMERIC, TEXT, UUID[], DATE, JSONB, NUMERIC, TEXT, UUID, TEXT);
+DROP FUNCTION IF EXISTS public.process_patient_split_payment(UUID, NUMERIC, JSONB, UUID[], DATE, JSONB, TEXT, UUID, TEXT);
+DROP FUNCTION IF EXISTS public.correct_split_payment_record(UUID, NUMERIC, JSONB, TEXT, UUID);
+DROP FUNCTION IF EXISTS public.assert_payment_allocation_total() CASCADE;
+DROP FUNCTION IF EXISTS public.sync_legacy_payment_allocation() CASCADE;
+DROP FUNCTION IF EXISTS public.create_legacy_payment_allocation() CASCADE;
 DROP FUNCTION IF EXISTS public.complete_appointment_with_clinical_fee(UUID, BOOLEAN);
 
 -- Drop app tables in dependency-safe order.
@@ -44,6 +50,7 @@ DROP TABLE IF EXISTS public.assistant_memory CASCADE;
 DROP TABLE IF EXISTS public.recalls CASCADE;
 DROP TABLE IF EXISTS public.otp_codes CASCADE;
 DROP TABLE IF EXISTS public.patient_auth CASCADE;
+DROP TABLE IF EXISTS public.payment_allocations CASCADE;
 DROP TABLE IF EXISTS public.payments CASCADE;
 DROP TABLE IF EXISTS public.treatments CASCADE;
 DROP TABLE IF EXISTS public.appointments CASCADE;

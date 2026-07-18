@@ -35,6 +35,7 @@ import {
   ClinicalRecord,
   PaymentRecord,
   PaymentMethod,
+  PaymentAllocation,
   PatientFile,
   Doctor,
   DoctorInput,
@@ -77,7 +78,7 @@ import { resolveAllowedTabs } from './utils/permissions';
 import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
-import { formatPaymentMethod, isSelectablePaymentMethod, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS } from './utils/paymentMethods';
+import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTotal, getPaymentHeaderMethod, isSelectablePaymentMethod, normalizePaymentAllocations, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS, validatePaymentAllocations } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
 import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 import { toLocalDateInputValue } from './utils/patientCreationDate';
@@ -120,6 +121,8 @@ type PaymentDraft = {
   serviceFeeAmount: number;
   serviceFeeCategory: 'NEW' | 'RETURNING' | null;
   paymentMethod: PaymentMethod;
+  splitPayment: boolean;
+  allocations: PaymentAllocation[];
 };
 
 type PaymentServiceFeePreview = {
@@ -470,6 +473,7 @@ const App: React.FC = () => {
   
   // -- Modals State --
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [splitPaymentsAvailable, setSplitPaymentsAvailable] = useState(false);
   const [showPaymentCategoryModal, setShowPaymentCategoryModal] = useState(false);
   const [paymentServiceFeePreview, setPaymentServiceFeePreview] = useState<PaymentServiceFeePreview>(null);
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -720,8 +724,17 @@ const App: React.FC = () => {
     currentTreatmentTotal: 0,
     serviceFeeAmount: 0,
     serviceFeeCategory: null,
-    paymentMethod: 'UNKNOWN'
+    paymentMethod: 'UNKNOWN',
+    splitPayment: false,
+    allocations: []
   });
+  useEffect(() => {
+    let active = true;
+    api.finance.supportsSplitPayments()
+      .then((supported) => { if (active) setSplitPaymentsAvailable(supported); })
+      .catch(() => { if (active) setSplitPaymentsAvailable(false); });
+    return () => { active = false; };
+  }, []);
   const [latestTreatmentBatch, setLatestTreatmentBatch] = useState<ClinicalRecord[]>([]);
   const [newPatientData, setNewPatientData] = useState<Partial<Patient> & { password?: string }>({
       name: '',
@@ -763,6 +776,11 @@ const App: React.FC = () => {
   const paymentCurrentTreatmentTotal = Math.max(0, Number(paymentDraft.currentTreatmentTotal || 0));
   const paymentAmountTendered = Math.min(paymentOriginalAmount, Math.max(0, Number(paymentDraft.amountTendered || 0)));
   const paymentClearedAmount = Math.min(paymentOriginalAmount, paymentAmountTendered);
+  const effectivePaymentAllocations = paymentDraft.splitPayment
+    ? paymentDraft.allocations
+    : normalizePaymentAllocations(null, paymentDraft.paymentMethod, paymentAmountTendered);
+  const paymentAllocationError = validatePaymentAllocations(effectivePaymentAllocations, paymentAmountTendered);
+  const paymentAllocatedTotal = getPaymentAllocationTotal(paymentDraft.allocations);
   const paymentServiceFeeLabel = paymentDraft.serviceFeeCategory === 'NEW'
     ? 'New patient service fee'
     : paymentDraft.serviceFeeCategory === 'RETURNING'
@@ -2296,7 +2314,9 @@ const App: React.FC = () => {
       currentTreatmentTotal,
       serviceFeeAmount,
       serviceFeeCategory: category,
-      paymentMethod: 'UNKNOWN'
+      paymentMethod: 'UNKNOWN',
+      splitPayment: false,
+      allocations: []
     });
     paymentSubmitInFlightRef.current = false;
     paymentSubmissionKeyRef.current = createPaymentSubmissionKey();
@@ -3275,8 +3295,8 @@ const App: React.FC = () => {
       alert('Amount tendered must be greater than 0.');
       return;
     }
-    if (!isSelectablePaymentMethod(paymentDraft.paymentMethod)) {
-      alert('Please select a payment type.');
+    if (paymentAllocationError) {
+      alert(paymentAllocationError);
       return;
     }
     paymentSubmitInFlightRef.current = true;
@@ -3302,7 +3322,8 @@ const App: React.FC = () => {
       const res = await api.finance.processPayment({
         patientId: selectedPatient.id,
         amount: paymentAmountTendered,
-        paymentMethod: paymentDraft.paymentMethod,
+        paymentMethod: getPaymentHeaderMethod(effectivePaymentAllocations),
+        allocations: effectivePaymentAllocations,
         treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
         paymentDate,
         submissionKey,
@@ -3317,7 +3338,8 @@ const App: React.FC = () => {
       const paymentSnapshot = buildPaymentReceiptSnapshot({
         patient: selectedPatient,
         amountPaid: paymentRecord.amount,
-        paymentMethod: paymentRecord.paymentMethod || paymentDraft.paymentMethod,
+        paymentMethod: paymentRecord.paymentMethod || getPaymentHeaderMethod(effectivePaymentAllocations),
+        allocations: paymentRecord.allocations || effectivePaymentAllocations,
         paymentDate: paymentRecord.date || paymentDate,
         receiptNumber: paymentRecord.receiptNumber || '',
         balanceBefore: paymentRecord.balanceBefore ?? paymentOriginalAmount,
@@ -3370,7 +3392,7 @@ const App: React.FC = () => {
       setShowPaymentModal(false);
       paymentSubmitInFlightRef.current = false;
       paymentSubmissionKeyRef.current = null;
-      setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN' });
+      setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN', splitPayment: false, allocations: [] });
       // Ask whether to generate a receipt after posting payment.
       setShowReceiptPrompt(true);
       fetchInitialData(); 
@@ -5583,7 +5605,7 @@ const App: React.FC = () => {
             setShowPaymentModal(false);
             paymentSubmitInFlightRef.current = false;
             paymentSubmissionKeyRef.current = null;
-            setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN' });
+            setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN', splitPayment: false, allocations: [] });
           }}
         >
           <form onSubmit={handlePaymentSubmit} className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
@@ -5666,7 +5688,10 @@ const App: React.FC = () => {
                     const normalizedValue = Number.isFinite(rawValue) ? rawValue : 0;
                     setPaymentDraft((prev) => ({
                       ...prev,
-                      amountTendered: Math.max(0, Math.min(paymentOriginalAmount, normalizedValue))
+                      amountTendered: Math.max(0, Math.min(paymentOriginalAmount, normalizedValue)),
+                      allocations: prev.splitPayment && prev.allocations.length === 2
+                        ? [prev.allocations[0], { ...prev.allocations[1], amount: Math.max(0, Math.min(paymentOriginalAmount, normalizedValue) - Number(prev.allocations[0].amount || 0)) }]
+                        : prev.allocations
                     }));
                   }}
                   className="payment-flat-number-input w-full rounded-2xl border border-slate-300 bg-white px-5 py-5 text-4xl font-black tracking-tight text-slate-950 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
@@ -5674,7 +5699,27 @@ const App: React.FC = () => {
               </label>
 
               <fieldset>
-                <legend className="mb-2 block text-sm font-bold text-slate-700">Payment type</legend>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <legend className="block text-sm font-bold text-slate-700">Payment type</legend>
+                  {splitPaymentsAvailable ? (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => setPaymentDraft((prev) => ({
+                      ...prev,
+                      splitPayment: !prev.splitPayment,
+                      paymentMethod: !prev.splitPayment ? 'MIXED' : 'UNKNOWN',
+                      allocations: !prev.splitPayment
+                        ? [{ method: 'CASH', amount: Math.round(prev.amountTendered / 2 * 100) / 100 }, { method: 'KPAY', amount: Math.round((prev.amountTendered - prev.amountTendered / 2) * 100) / 100 }]
+                        : []
+                    }))}
+                    className="text-sm font-bold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+                  >
+                    {paymentDraft.splitPayment ? 'Use single payment' : '+ Split payment'}
+                  </button>
+                  ) : null}
+                </div>
+                {!paymentDraft.splitPayment ? (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {PAYMENT_METHOD_OPTIONS.map((method) => {
                     const isSelected = paymentDraft.paymentMethod === method.value;
@@ -5696,6 +5741,71 @@ const App: React.FC = () => {
                     );
                   })}
                 </div>
+                ) : (
+                  <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4">
+                    {paymentDraft.allocations.map((allocation, index) => (
+                      <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <select
+                          aria-label={`Payment method ${index + 1}`}
+                          value={allocation.method}
+                          disabled={isSubmitting}
+                          onChange={(event) => setPaymentDraft((prev) => ({
+                            ...prev,
+                            allocations: prev.allocations.map((item, itemIndex) => itemIndex === index ? { ...item, method: event.target.value as PaymentMethod } : item)
+                          }))}
+                          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"
+                        >
+                          {PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                        <input
+                          aria-label={`Payment amount ${index + 1}`}
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={allocation.amount || ''}
+                          disabled={isSubmitting}
+                          onChange={(event) => {
+                            const amount = Math.max(0, Number(event.target.value || 0));
+                            setPaymentDraft((prev) => ({
+                              ...prev,
+                              allocations: prev.allocations.map((item, itemIndex) => {
+                                if (itemIndex === index) return { ...item, amount };
+                                if (itemIndex === prev.allocations.length - 1 && index !== prev.allocations.length - 1) {
+                                  const otherTotal = prev.allocations.reduce((sum, candidate, candidateIndex) => candidateIndex === index || candidateIndex === itemIndex ? sum : sum + Number(candidate.amount || 0), 0);
+                                  return { ...item, amount: Math.max(0, Math.round((prev.amountTendered - otherTotal - amount) * 100) / 100) };
+                                }
+                                return item;
+                              })
+                            }));
+                          }}
+                          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-right font-bold"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove payment allocation ${index + 1}`}
+                          disabled={isSubmitting || paymentDraft.allocations.length <= 2}
+                          onClick={() => setPaymentDraft((prev) => ({ ...prev, allocations: prev.allocations.filter((_, itemIndex) => itemIndex !== index) }))}
+                          className="rounded-xl px-3 text-lg font-bold text-rose-600 disabled:opacity-30"
+                        >×</button>
+                      </div>
+                    ))}
+                    {paymentDraft.allocations.length < PAYMENT_METHOD_OPTIONS.length && (
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() => setPaymentDraft((prev) => {
+                          const nextMethod = PAYMENT_METHOD_OPTIONS.find((option) => !prev.allocations.some((allocation) => allocation.method === option.value))?.value;
+                          return nextMethod ? { ...prev, allocations: [...prev.allocations, { method: nextMethod, amount: 0 }] } : prev;
+                        })}
+                        className="text-sm font-bold text-emerald-700"
+                      >+ Add another method</button>
+                    )}
+                    <div className={`flex justify-between border-t pt-3 text-sm font-bold ${paymentAllocationError ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      <span>Allocated {formatCurrency(paymentAllocatedTotal, currency)}</span>
+                      <span>{paymentAllocationError ? `Remaining ${formatCurrency(Math.abs(paymentAmountTendered - paymentAllocatedTotal), currency)}` : 'Ready'}</span>
+                    </div>
+                  </div>
+                )}
               </fieldset>
 
               <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
@@ -5707,8 +5817,8 @@ const App: React.FC = () => {
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-emerald-700">
-                    {isSelectablePaymentMethod(paymentDraft.paymentMethod)
-                      ? `${formatPaymentMethod(paymentDraft.paymentMethod)} · `
+                    {!paymentAllocationError
+                      ? `${paymentDraft.splitPayment ? formatPaymentAllocations(effectivePaymentAllocations) : formatPaymentMethod(paymentDraft.paymentMethod)} · `
                       : 'Select a payment type · '}
                     Balance reduces by {formatCurrency(paymentClearedAmount, currency)}
                   </p>
@@ -5717,7 +5827,7 @@ const App: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={isSubmitting || paymentAmountTendered <= 0 || paymentClearedAmount <= 0 || !isSelectablePaymentMethod(paymentDraft.paymentMethod)}
+                disabled={isSubmitting || paymentAmountTendered <= 0 || paymentClearedAmount <= 0 || !!paymentAllocationError}
                 className="w-full rounded-2xl py-5 text-lg font-black shadow-lg transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
                   backgroundColor: paymentThemeColors.primary,
@@ -5752,6 +5862,7 @@ const App: React.FC = () => {
             medicines={selectedMedicineSalesForReceipt}
             paymentAmount={lastPaymentAmount}
             paymentMethod={lastPaymentRecord?.paymentMethod}
+            paymentAllocations={lastPaymentRecord?.allocations}
             receiptNumber={lastPaymentRecord?.receiptNumber}
             paymentReceiptSnapshot={activePaymentReceiptSnapshot}
             treatmentTypes={treatmentTypes}
@@ -5791,7 +5902,7 @@ const App: React.FC = () => {
 
               <h3 className="text-2xl font-black text-gray-900 mb-2">Payment Collected!</h3>
               <p className="text-sm text-emerald-700 font-semibold bg-emerald-50 rounded-full px-4 py-1.5 inline-block">
-                {formatCurrency(lastPaymentAmount, currency)} received via {formatPaymentMethod(lastPaymentRecord?.paymentMethod)}
+                {formatCurrency(lastPaymentAmount, currency)} received via {lastPaymentRecord?.allocations?.length ? formatPaymentAllocations(lastPaymentRecord.allocations) : formatPaymentMethod(lastPaymentRecord?.paymentMethod)}
               </p>
             </div>
 

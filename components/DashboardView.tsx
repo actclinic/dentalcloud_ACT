@@ -421,11 +421,16 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const paymentMethodData = useMemo(() => {
     const totals = new Map<string, { value: number; count: number }>();
     filteredPaymentRecords.forEach((payment) => {
-      const name = formatPaymentMethod(payment.paymentMethod);
-      const current = totals.get(name) || { value: 0, count: 0 };
-      current.value += Number(payment.amount || 0);
-      current.count += 1;
-      totals.set(name, current);
+      const allocations = payment.allocations?.length
+        ? payment.allocations
+        : [{ method: payment.paymentMethod || 'UNKNOWN' as const, amount: payment.amount }];
+      allocations.forEach((allocation) => {
+        const name = formatPaymentMethod(allocation.method);
+        const current = totals.get(name) || { value: 0, count: 0 };
+        current.value += Number(allocation.amount || 0);
+        current.count += 1; // Tender-use count; parent payment count remains filteredPaymentRecords.length.
+        totals.set(name, current);
+      });
     });
 
     return Array.from(totals.entries())
@@ -769,7 +774,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                     <tr key={payment.id}>
                       <td className="whitespace-nowrap py-2 pr-4 text-gray-500">{payment.date}</td>
                       <td className="py-2 pr-4 font-medium text-gray-900">{payment.patient_name || 'Unknown'}</td>
-                      <td className="py-2 pr-4 font-semibold text-gray-700">{formatPaymentMethod(payment.paymentMethod)}</td>
+                      <td className="py-2 pr-4 font-semibold text-gray-700">{payment.allocations?.length > 1 ? payment.allocations.map((allocation) => formatPaymentMethod(allocation.method)).join(' + ') : formatPaymentMethod(payment.paymentMethod)}</td>
                       <td className="py-2 text-right font-bold text-violet-700">{formatCurrency(payment.amount, currency)}</td>
                     </tr>
                   ))}

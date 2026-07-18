@@ -8,6 +8,7 @@ import {
 
 const treatment = (overrides: Partial<ClinicalRecord> = {}): ClinicalRecord => ({
   id: 'treatment-1',
+  location_id: 'location-1',
   patient_id: 'patient-1',
   teeth: [],
   description: 'Scaling',

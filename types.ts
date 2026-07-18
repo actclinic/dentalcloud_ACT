@@ -148,6 +148,7 @@ export interface PaymentRecord {
   remainingBalance: number;
   patientCurrentBalance?: number;
   paymentMethod?: PaymentMethod;
+  allocations?: PaymentAllocation[];
   receiptNumber?: string;
   receiptSnapshot?: PaymentReceiptSnapshot | null;
   createdAt?: string;
@@ -163,10 +164,20 @@ export interface PaymentCorrection {
   newAmount: number;
   oldMethod?: PaymentMethod | null;
   newMethod?: PaymentMethod | null;
+  oldAllocations?: PaymentAllocation[];
+  newAllocations?: PaymentAllocation[];
   reason: string;
   editedBy: string;
   editedAt: string;
   editorName?: string | null;
+}
+
+export interface PaymentAllocation {
+  id?: string;
+  paymentId?: string;
+  method: PaymentMethod;
+  amount: number;
+  reference?: string | null;
 }
 
 export interface PaymentReceiptTreatmentLine {
@@ -190,7 +201,7 @@ export interface PaymentReceiptMedicineLine {
 }
 
 export interface PaymentReceiptSnapshot {
-  version: 1;
+  version: 1 | 2;
   receiptType: 'PAYMENT';
   receiptNumber: string;
   receiptDate: string;
@@ -212,6 +223,7 @@ export interface PaymentReceiptSnapshot {
   payment: {
     amountPaid: number;
     method: PaymentMethod;
+    allocations?: PaymentAllocation[];
     status: 'FULL' | 'PARTIAL';
     balanceBefore: number;
     balanceAfter: number;
@@ -232,6 +244,7 @@ export type PaymentMethod =
   | 'CREDIT_CARD'
   | 'AYA_PAY'
   | 'UAB_PAY'
+  | 'MIXED'
   | 'UNKNOWN';
 
 export interface DoctorSchedule {

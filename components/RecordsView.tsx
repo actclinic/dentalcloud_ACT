@@ -10,7 +10,7 @@ import ExportMenu from './ExportMenu';
 import { toLocalISODate } from '../utils/auditLogFilters';
 import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow, type AuditFilter } from '../utils/auditLogExport';
 import { buildRecordsViewFilterOptions } from '../utils/recordsViewFilterOptions';
-import { formatPaymentMethod } from '../utils/paymentMethods';
+import { formatPaymentAllocations, formatPaymentMethod } from '../utils/paymentMethods';
 import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
 import EditPaymentModal from './EditPaymentModal';
 import { api } from '../services/api';
@@ -110,6 +110,11 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
             {formatCurrency(correction.newAmount, currency)}
             )
             {correction.editorName ? ` by ${correction.editorName}` : ''}
+            {correction.oldAllocations?.length || correction.newAllocations?.length ? (
+              <span className="mt-1 block">
+                Tender: {formatPaymentAllocations(correction.oldAllocations)} → {formatPaymentAllocations(correction.newAllocations)}
+              </span>
+            ) : null}
           </div>
         ))}
       </div>
@@ -460,7 +465,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           <td className="px-4 py-4 text-right text-sm text-slate-400 xl:px-6">-</td>
                           <td className="px-4 py-4 text-sm font-bold text-slate-800 xl:px-6">
                             <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs font-semibold text-slate-500">{payment.createdByUserName || 'Unknown'} · {formatPaymentMethod(payment.paymentMethod)}</span>
+                              <span className="text-xs font-semibold text-slate-500">{payment.createdByUserName || 'Unknown'} · {payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)}</span>
                               <div className="flex items-center gap-2">
                                 {canEditPayments ? (
                                   <button
@@ -599,7 +604,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <div className="rounded-xl bg-violet-50 p-3">
                           <p className="text-[11px] font-semibold uppercase text-violet-600">Payment Type</p>
-                          <p className="mt-1 text-sm font-bold text-violet-900">{formatPaymentMethod(payment.paymentMethod)}</p>
+                          <p className="mt-1 text-sm font-bold text-violet-900">{payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)}</p>
                         </div>
                         <div className="rounded-xl bg-rose-50 p-3 text-right">
                           <p className="text-[11px] font-semibold uppercase text-rose-600">Balance</p>

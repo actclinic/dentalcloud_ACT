@@ -2,7 +2,7 @@ import type { Appointment, AppointmentRescheduleLog, ClinicalRecord, PaymentReco
 import { Currency, formatCurrency } from './currency';
 import { filterAuditRowsByDateRange } from './auditLogFilters';
 import { formatTeethArray, formatTeethWithPosition } from './toothNumbering';
-import { formatPaymentMethod } from './paymentMethods';
+import { formatPaymentAllocations, formatPaymentMethod } from './paymentMethods';
 import { formatDoctorName } from './doctorName';
 
 export type AuditFilter = 'all' | 'appointments' | 'reschedules' | 'treatments' | 'payments';
@@ -233,7 +233,7 @@ export const filterAuditLogRowsForExport = <T extends AuditExportRow>(rows: T[],
       return (
         (payment.patient_name || '').toLowerCase().includes(term) ||
         (payment.createdByUserName || '').toLowerCase().includes(term) ||
-        formatPaymentMethod(payment.paymentMethod).toLowerCase().includes(term) ||
+        (payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)).toLowerCase().includes(term) ||
         (payment.receiptNumber || '').toLowerCase().includes(term) ||
         (payment.date || '').toLowerCase().includes(term)
       );
@@ -318,7 +318,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         amount: payment.amount,
         serviceCharges: null,
         doctorEarned: null,
-        paymentMethod: formatPaymentMethod(payment.paymentMethod)
+        paymentMethod: payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)
       };
     }
 

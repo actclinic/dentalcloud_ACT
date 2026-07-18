@@ -1,13 +1,13 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput } from '../types';
 import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
 import { buildSupabasePublicUrl, deleteSupabaseStorageFile, isSupabaseStorageReady, listSupabaseStorageFiles, normalizeSupabaseStorageUrl, uploadSupabaseStorageFile } from '../utils/supabaseStorage';
 import { findInvalidTeeth } from '../utils/toothNumbering';
-import { normalizePaymentMethod } from '../utils/paymentMethods';
+import { getPaymentHeaderMethod, normalizePaymentAllocations, normalizePaymentMethod, validatePaymentAllocations } from '../utils/paymentMethods';
 import { normalizePaymentReceiptSnapshot } from '../utils/paymentReceipt';
 import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../utils/receiptPreferences';
 import { usesFlatVisitCommission } from '../utils/doctorCommission';
@@ -416,13 +416,17 @@ const mapPaymentCorrectionRow = (row: any): PaymentCorrection => ({
   newAmount: Number(row.new_amount || 0),
   oldMethod: normalizePaymentMethod(row.old_method),
   newMethod: normalizePaymentMethod(row.new_method),
+  oldAllocations: normalizePaymentAllocations(row.old_allocations),
+  newAllocations: normalizePaymentAllocations(row.new_allocations),
   reason: row.reason || '',
   editedBy: row.edited_by,
   editedAt: row.edited_at,
   editorName: row.editor?.username || null
 });
 
-const mapPaymentRow = (row: any): PaymentRecord => ({
+const mapPaymentRow = (row: any): PaymentRecord => {
+  const allocations = normalizePaymentAllocations(row.payment_allocations, normalizePaymentMethod(row.payment_method), Number(row.amount || 0));
+  return ({
   id: row.id,
   location_id: row.location_id,
   patientId: row.patient_id,
@@ -439,7 +443,8 @@ const mapPaymentRow = (row: any): PaymentRecord => ({
   patientCurrentBalance: row.patients?.balance !== undefined && row.patients?.balance !== null
     ? Number(row.patients.balance || 0)
     : undefined,
-  paymentMethod: normalizePaymentMethod(row.payment_method),
+  paymentMethod: getPaymentHeaderMethod(allocations),
+  allocations,
   receiptNumber: row.receipt_number,
   receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
   createdAt: row.created_at,
@@ -448,7 +453,8 @@ const mapPaymentRow = (row: any): PaymentRecord => ({
   corrections: Array.isArray(row.payment_corrections)
     ? row.payment_corrections.map(mapPaymentCorrectionRow)
     : []
-});
+  });
+};
 
 const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
   const costAmount = Number(row.cost_amount || 0);
@@ -4074,12 +4080,20 @@ export const api = {
   },
 
   finance: {
+    supportsSplitPayments: async (): Promise<boolean> => {
+      const { error } = await supabase
+        .from('payment_allocations')
+        .select('id')
+        .limit(1);
+      return !error;
+    },
     getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
       let query = supabase
         .from('payments')
         .select(`
           *,
           patients(name, balance, patient_type),
+          payment_allocations (id, payment_id, payment_method, amount, reference),
           payment_corrections (
             id,
             payment_id,
@@ -4087,6 +4101,8 @@ export const api = {
             new_amount,
             old_method,
             new_method,
+            old_allocations,
+            new_allocations,
             reason,
             edited_by,
             edited_at,
@@ -4100,6 +4116,16 @@ export const api = {
       if (locationId) query = query.eq('location_id', locationId);
 
       let { data, error } = await query;
+      if (error && isOptionalRelationAccessError(error, ['payment_allocations'])) {
+        let fallbackQuery = supabase
+          .from('payments')
+          .select('*, patients(name, balance, patient_type), payment_corrections(*, editor:users!payment_corrections_edited_by_fkey(username))')
+          .order('created_at', { ascending: false });
+        if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        const fallback = await fallbackQuery;
+        data = fallback.data;
+        error = fallback.error;
+      }
       if (error && isMissingRelationError(error, 'payment_corrections')) {
         let fallbackQuery = supabase
           .from('payments')
@@ -4111,7 +4137,7 @@ export const api = {
         error = fallback.error;
       }
 
-      if (error && isOptionalRelationAccessError(error, ['patients', 'payment_corrections', 'users'])) {
+      if (error && isOptionalRelationAccessError(error, ['patients', 'payment_allocations', 'payment_corrections', 'users'])) {
         let fallbackQuery = supabase
           .from('payments')
           .select('*')
@@ -4136,6 +4162,7 @@ export const api = {
       patientId: string;
       amount: number;
       paymentMethod: PaymentMethod;
+      allocations?: PaymentAllocation[];
       treatmentIds?: string[];
       paymentDate?: string;
       submissionKey?: string | null;
@@ -4149,6 +4176,40 @@ export const api = {
       }
       if (normalizePaymentMethod(input.paymentMethod) === 'UNKNOWN') {
         throw new Error('Select a valid payment method.');
+      }
+      const allocations = normalizePaymentAllocations(input.allocations, input.paymentMethod, normalizedAmount);
+      const allocationError = validatePaymentAllocations(allocations, normalizedAmount);
+      if (allocationError) throw new Error(allocationError);
+
+      if (allocations.length > 1) {
+        const { data, error } = await supabase.rpc('process_patient_split_payment', {
+          p_patient_id: input.patientId,
+          p_amount: normalizedAmount,
+          p_allocations: allocations.map(({ method, amount, reference }) => ({ method, amount, reference: reference || null })),
+          p_treatment_ids: input.treatmentIds || [],
+          p_payment_date: input.paymentDate || new Date().toISOString().slice(0, 10),
+          p_receipt_snapshot: input.receiptSnapshot || null,
+          p_submission_key: input.submissionKey?.trim() || null,
+          p_created_by_user_id: input.createdByUserId || null,
+          p_created_by_user_name: input.createdByUserName || null
+        });
+        if (error) {
+          if (isMissingFunctionError(error, 'process_patient_split_payment')) {
+            throw new Error('Split payment storage is not installed. Run database/split_payment_allocations_migration.sql in Supabase before collecting a split payment.');
+          }
+          throw new Error(error.message);
+        }
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new Error('Payment was not recorded.');
+        const payment = mapPaymentRow({ ...row, payment_allocations: allocations });
+        await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
+        return {
+          status: 'success',
+          new_balance: payment.remainingBalance,
+          amount_collected: payment.amount,
+          cleared_amount: payment.clearedAmount ?? payment.amount,
+          payment
+        };
       }
 
       const rpcPayload = {
@@ -4246,6 +4307,8 @@ export const api = {
         paymentId: string;
         newAmount: number;
         newMethod: PaymentMethod;
+        allocations?: PaymentAllocation[];
+        wasSplitPayment?: boolean;
         reason: string;
         editedByUserId: string;
       }
@@ -4253,6 +4316,8 @@ export const api = {
       const normalizedAmount = Number(input.newAmount || 0);
       const normalizedMethod = normalizePaymentMethod(input.newMethod);
       const normalizedReason = input.reason?.trim() || '';
+      const allocations = normalizePaymentAllocations(input.allocations, normalizedMethod, normalizedAmount);
+      const allocationError = validatePaymentAllocations(allocations, normalizedAmount);
 
       if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
         throw new Error('Amount must be greater than 0.');
@@ -4260,6 +4325,7 @@ export const api = {
       if (normalizedMethod === 'UNKNOWN') {
         throw new Error('Select a valid payment method.');
       }
+      if (allocationError) throw new Error(allocationError);
       if (normalizedReason.length < 10) {
         throw new Error('Correction reason must be at least 10 characters.');
       }
@@ -4267,17 +4333,29 @@ export const api = {
         throw new Error('Missing admin session. Please log in again.');
       }
 
-      const { data: correctedPaymentId, error: rpcError } = await supabase.rpc('correct_payment_record', {
-        p_payment_id: input.paymentId,
-        p_new_amount: normalizedAmount,
-        p_new_method: normalizedMethod,
-        p_reason: normalizedReason,
-        p_edited_by_user_id: input.editedByUserId
-      });
+      const isSplit = allocations.length > 1 || input.wasSplitPayment === true;
+      const { data: correctedPaymentId, error: rpcError } = await supabase.rpc(
+        isSplit ? 'correct_split_payment_record' : 'correct_payment_record',
+        isSplit ? {
+          p_payment_id: input.paymentId,
+          p_new_amount: normalizedAmount,
+          p_new_allocations: allocations.map(({ method, amount, reference }) => ({ method, amount, reference: reference || null })),
+          p_reason: normalizedReason,
+          p_edited_by_user_id: input.editedByUserId
+        } : {
+          p_payment_id: input.paymentId,
+          p_new_amount: normalizedAmount,
+          p_new_method: normalizedMethod,
+          p_reason: normalizedReason,
+          p_edited_by_user_id: input.editedByUserId
+        }
+      );
 
       if (rpcError) {
-        if (isMissingFunctionError(rpcError, 'correct_payment_record')) {
-          throw new Error('Payment correction flow is not installed. Run database/payment_corrections_migration.sql in Supabase.');
+        if (isMissingFunctionError(rpcError, isSplit ? 'correct_split_payment_record' : 'correct_payment_record')) {
+          throw new Error(isSplit
+            ? 'Split payment correction is not installed. Run database/split_payment_allocations_migration.sql in Supabase.'
+            : 'Payment correction flow is not installed. Run database/payment_corrections_migration.sql in Supabase.');
         }
         throw new Error(rpcError.message);
       }
@@ -4287,6 +4365,7 @@ export const api = {
         .select(`
           *,
           patients(name, balance),
+          payment_allocations (id, payment_id, payment_method, amount, reference),
           payment_corrections (
             id,
             payment_id,
@@ -4294,6 +4373,8 @@ export const api = {
             new_amount,
             old_method,
             new_method,
+            old_allocations,
+            new_allocations,
             reason,
             edited_by,
             edited_at,

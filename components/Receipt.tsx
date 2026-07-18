@@ -1,8 +1,9 @@
 import React from 'react';
 import { X, Printer } from 'lucide-react';
-import { Patient, ClinicalRecord, MedicineSale, PaymentMethod, PaymentReceiptSnapshot, ReceiptSize, TreatmentType } from '../types';
+import { Patient, ClinicalRecord, MedicineSale, PaymentAllocation, PaymentMethod, PaymentReceiptSnapshot, ReceiptSize, TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
+import { normalizePaymentAllocations } from '../utils/paymentMethods';
 import { resolveReceiptHeaderTitle } from '../utils/receiptPreferences';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
 
@@ -12,6 +13,7 @@ interface ReceiptProps {
   medicines?: MedicineSale[];
   paymentAmount?: number;
   paymentMethod?: PaymentMethod;
+  paymentAllocations?: PaymentAllocation[];
   receiptNumber?: string;
   paymentReceiptSnapshot?: PaymentReceiptSnapshot | null;
   treatmentTypes?: TreatmentType[];
@@ -29,6 +31,7 @@ const Receipt: React.FC<ReceiptProps> = ({
   medicines = [],
   paymentAmount,
   paymentMethod,
+  paymentAllocations,
   receiptNumber: persistedReceiptNumber,
   paymentReceiptSnapshot,
   treatmentTypes = [],
@@ -151,6 +154,22 @@ const Receipt: React.FC<ReceiptProps> = ({
       : 'Service Fee';
   const grandTotal = totalTreatmentCost + totalMedicineCost + paymentServiceFeeAmount;
   const totalPaid = paymentSnapshot?.payment.amountPaid || paymentAmount || 0;
+  const receiptPaymentAllocations = normalizePaymentAllocations(
+    paymentSnapshot?.payment.allocations || paymentAllocations,
+    paymentSnapshot?.payment.method || paymentMethod,
+    totalPaid
+  );
+  const renderPaymentAllocationRows = () => receiptPaymentAllocations.map((allocation) => (
+    <div key={allocation.method} className="flex justify-between text-sm mt-1">
+      <span className="text-gray-600">{formatPaymentMethod(allocation.method)}:</span>
+      <span className="font-semibold text-gray-900">{formatCurrency(allocation.amount, effectiveCurrency)}</span>
+    </div>
+  ));
+  const renderThermalPaymentAllocations = () => receiptPaymentAllocations.map((allocation) => (
+    <React.Fragment key={allocation.method}>
+      {thermalLine(`${formatPaymentMethod(allocation.method)}:`, formatCurrency(allocation.amount, effectiveCurrency))}
+    </React.Fragment>
+  ));
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
   // Otherwise, calculate balance based on selected treatments
@@ -466,10 +485,7 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <span className="text-gray-600">Payment Date:</span>
                 <span className="font-semibold text-gray-900">{today}</span>
               </div>
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-gray-600">Payment Type:</span>
-                <span className="font-semibold text-gray-900">{formatPaymentMethod(paymentMethod)}</span>
-              </div>
+              {renderPaymentAllocationRows()}
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-gray-600">Payment Status:</span>
                 <span className="font-semibold text-green-600">Paid</span>
@@ -591,7 +607,7 @@ const Receipt: React.FC<ReceiptProps> = ({
               <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
               {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
               {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
-              {thermalLine('Payment Type:', formatPaymentMethod(paymentMethod))}
+              {renderThermalPaymentAllocations()}
               {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
             </div>
           )}
@@ -709,10 +725,7 @@ const Receipt: React.FC<ReceiptProps> = ({
               <span className="text-gray-600">Payment Date:</span>
               <span className="font-semibold text-gray-900">{today}</span>
             </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">Payment Type:</span>
-              <span className="font-semibold text-gray-900">{formatPaymentMethod(paymentMethod)}</span>
-            </div>
+            {renderPaymentAllocationRows()}
             <div className="flex justify-between text-sm mt-1">
               <span className="text-gray-600">Payment Status:</span>
               <span className="font-semibold text-green-600">Paid</span>
@@ -812,7 +825,7 @@ const Receipt: React.FC<ReceiptProps> = ({
             <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
             {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
             {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
-            {thermalLine('Payment Type:', formatPaymentMethod(paymentMethod))}
+            {renderThermalPaymentAllocations()}
             {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
           </div>
         )}
