@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS public.patient_material_costs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   audit_log_id UUID NOT NULL REFERENCES public.audit_logs(id) ON DELETE CASCADE,
   material_name VARCHAR(255) NOT NULL,
+  cost_type VARCHAR(20) NOT NULL DEFAULT 'material' CHECK (cost_type IN ('material', 'lab')),
   cost_amount NUMERIC(12,2) NOT NULL CHECK (cost_amount >= 0),
   quantity NUMERIC(12,2) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   total_amount NUMERIC(12,2) GENERATED ALWAYS AS (cost_amount * quantity) STORED,
@@ -56,8 +57,7 @@ ADD COLUMN IF NOT EXISTS source_id UUID,
 ADD COLUMN IF NOT EXISTS is_system_generated BOOLEAN NOT NULL DEFAULT false;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_source_unique
-  ON public.expenses (source_type, source_id)
-  WHERE source_type IS NOT NULL AND source_id IS NOT NULL;
+  ON public.expenses (source_type, source_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_source
   ON public.audit_logs (source_type, source_id);
@@ -74,6 +74,9 @@ CREATE INDEX IF NOT EXISTS idx_patient_material_costs_audit_log
 CREATE INDEX IF NOT EXISTS idx_patient_material_costs_created_by
   ON public.patient_material_costs (created_by);
 
+CREATE INDEX IF NOT EXISTS idx_patient_material_costs_audit_type
+  ON public.patient_material_costs (audit_log_id, cost_type);
+
 CREATE INDEX IF NOT EXISTS idx_expenses_source
   ON public.expenses (source_type, source_id);
 
@@ -81,7 +84,7 @@ CREATE OR REPLACE FUNCTION public.delete_audit_log_material_expense()
 RETURNS TRIGGER AS $$
 BEGIN
   DELETE FROM public.expenses
-  WHERE source_type = 'material_cost'
+  WHERE source_type IN ('material_cost', 'lab_cost')
     AND source_id = OLD.id;
   RETURN OLD;
 END;

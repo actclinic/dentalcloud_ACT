@@ -1,6 +1,6 @@
 import React from 'react';
-import { Loader2, Package, Plus, Trash2 } from 'lucide-react';
-import type { ClinicalRecord, PatientMaterialCostInput } from '../types';
+import { Beaker, Loader2, Package, Plus, Trash2 } from 'lucide-react';
+import type { ClinicalRecord, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType } from '../types';
 import { api } from '../services/api';
 import { auth } from '../services/auth';
 import { formatCurrency, type Currency } from '../utils/currency';
@@ -12,259 +12,109 @@ interface MaterialCostModalProps {
   record: (ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) | null;
   currency: Currency;
   onClose: () => void;
-  onSaved: (summary: { treatmentId: string; auditLogId: string; totalAmount: number; itemCount: number }) => void | Promise<void>;
+  onSaved: (summary: TreatmentCostSummary & { treatmentId: string }) => void | Promise<void>;
 }
 
-type MaterialCostDraft = PatientMaterialCostInput & { localId: string };
-
-const createEmptyDraft = (): MaterialCostDraft => ({
-  localId: `material-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  materialName: '',
-  costAmount: 0,
-  quantity: 1
-});
-
-const getRecordActivity = (record: MaterialCostModalProps['record']): string => {
+type CostDraft = PatientMaterialCostInput & { localId: string };
+const createEmptyDraft = (costType: TreatmentCostType): CostDraft => ({ localId: `${costType}-${Date.now()}-${Math.random().toString(36).slice(2)}`, materialName: '', costType, costAmount: 0, quantity: 1 });
+const isVisible = (item: CostDraft) => item.materialName.trim() || item.costAmount > 0 || item.quantity !== 1;
+const getTotal = (items: CostDraft[]) => items.filter(isVisible).reduce((sum, item) => sum + Number(item.costAmount || 0) * Number(item.quantity || 0), 0);
+const getRecordActivity = (record: MaterialCostModalProps['record']) => {
   if (!record) return '-';
-  const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-  return groupedRecords
-    .map((item) => item.description)
-    .filter(Boolean)
-    .join(' + ') || 'Treatment record';
+  const rows = record._groupedRecords?.length ? record._groupedRecords : [record];
+  return rows.map((item) => item.description).filter(Boolean).join(' + ') || 'Treatment record';
 };
 
 const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, record, currency, onClose, onSaved }) => {
-  const [items, setItems] = React.useState<MaterialCostDraft[]>([createEmptyDraft()]);
+  const [items, setItems] = React.useState<CostDraft[]>([createEmptyDraft('material'), createEmptyDraft('lab')]);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+  const [adminPassword, setAdminPassword] = React.useState('');
 
   React.useEffect(() => {
     if (!isOpen || !record) return;
-
     let cancelled = false;
-    setLoading(true);
-    setSaving(false);
-    setError(null);
-
-    api.materialCosts.getByTreatmentId(record.id)
-      .then(({ items: existingItems }) => {
-        if (cancelled) return;
-        setItems(existingItems.length > 0
-          ? existingItems.map((item) => ({
-              localId: item.id,
-              materialName: item.materialName,
-              costAmount: item.costAmount,
-              quantity: item.quantity
-            }))
-          : [createEmptyDraft()]
-        );
-      })
-      .catch((err: any) => {
-        if (!cancelled) {
-          setError(err?.message || 'Failed to load material costs.');
-          setItems([createEmptyDraft()]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    setLoading(true); setSaving(false); setError(null); setLoadFailed(false); setAdminPassword('');
+    api.materialCosts.getByTreatmentId(record.id).then(({ items: saved }) => {
+      if (cancelled) return;
+      const drafts: CostDraft[] = saved.map((item) => ({ localId: item.id, materialName: item.materialName, costType: item.costType, costAmount: item.costAmount, quantity: item.quantity }));
+      if (!drafts.some((item) => item.costType === 'material')) drafts.push(createEmptyDraft('material'));
+      if (!drafts.some((item) => item.costType === 'lab')) drafts.push(createEmptyDraft('lab'));
+      setItems(drafts);
+    }).catch((err: any) => {
+      if (!cancelled) { setError(err?.message || 'Failed to load material and lab costs.'); setLoadFailed(true); setItems([createEmptyDraft('material'), createEmptyDraft('lab')]); }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [isOpen, record]);
 
   if (!isOpen || !record) return null;
-
-  const updateItem = (localId: string, patch: Partial<MaterialCostDraft>) => {
-    setItems((current) => current.map((item) => (
-      item.localId === localId ? { ...item, ...patch } : item
-    )));
-  };
-
-  const removeItem = (localId: string) => {
-    setItems((current) => current.length === 1 ? [createEmptyDraft()] : current.filter((item) => item.localId !== localId));
-  };
-
-  const visibleItems = items.filter((item) => (
-    item.materialName.trim() || item.costAmount > 0 || item.quantity !== 1
-  ));
-  const totalAmount = visibleItems.reduce((sum, item) => {
-    const cost = Number(item.costAmount || 0);
-    const quantity = Number(item.quantity || 0);
-    return sum + (Number.isFinite(cost) && Number.isFinite(quantity) ? cost * quantity : 0);
-  }, 0);
+  const updateItem = (id: string, patch: Partial<CostDraft>) => setItems((current) => current.map((item) => item.localId === id ? { ...item, ...patch } : item));
+  const removeItem = (id: string, type: TreatmentCostType) => setItems((current) => {
+    const remaining = current.filter((item) => item.localId !== id);
+    return remaining.some((item) => item.costType === type) ? remaining : [...remaining, createEmptyDraft(type)];
+  });
+  const visibleItems = items.filter(isVisible);
+  const materialTotal = getTotal(items.filter((item) => item.costType === 'material'));
+  const labTotal = getTotal(items.filter((item) => item.costType === 'lab'));
 
   const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setError(null);
-
+    event.preventDefault(); setSaving(true); setError(null);
     try {
       const session = auth.getSession();
-      if (!session?.userId || session.role !== 'admin') {
-        throw new Error('You do not have permission to update material costs.');
+      if (!session?.userId || session.role !== 'admin') throw new Error('You do not have permission to update material and lab costs.');
+      if (!adminPassword) throw new Error('Enter your administrator password to authorize this financial update.');
+      const incomplete = visibleItems.find((item) => !item.materialName.trim() || Number(item.costAmount) <= 0 || Number(item.quantity) <= 0);
+      if (incomplete) throw new Error(`Each ${incomplete.costType === 'lab' ? 'lab cost' : 'material'} needs a name, a cost greater than zero, and a quantity greater than zero.`);
+      const result = await api.materialCosts.upsertForTreatment(record, visibleItems.map((item) => ({ materialName: item.materialName.trim(), costType: item.costType, costAmount: Number(item.costAmount), quantity: Number(item.quantity) })), { userId: session.userId, username: session.username, password: adminPassword });
+      const materialRows = result.items.filter((item) => item.costType === 'material');
+      const labRows = result.items.filter((item) => item.costType === 'lab');
+      const savedMaterialTotal = materialRows.reduce((sum, item) => sum + item.totalAmount, 0);
+      const savedLabTotal = labRows.reduce((sum, item) => sum + item.totalAmount, 0);
+      const summary = { treatmentId: record.id, auditLogId: result.auditLogId, materialTotal: savedMaterialTotal, materialItemCount: materialRows.length, labTotal: savedLabTotal, labItemCount: labRows.length, totalAmount: savedMaterialTotal + savedLabTotal, itemCount: result.items.length };
+      if (result.commissionRefreshPending) {
+        setError('Material and lab costs were saved, but doctor commission refresh is still pending. Keep this window open and select Save Material & Lab again to retry.');
+        setAdminPassword('');
+        return;
       }
-
-      const incompleteItem = visibleItems.find((item) => (
-        !item.materialName.trim() || Number(item.costAmount) <= 0 || Number(item.quantity) <= 0
-      ));
-      if (incompleteItem) {
-        throw new Error('Each material needs a name, a cost greater than zero, and a quantity greater than zero.');
+      try {
+        await onSaved(summary);
+      } catch (refreshError) {
+        console.warn('Costs were saved, but the table refresh needs retry.', refreshError);
+        setError('Material and lab costs were saved, but some screens could not refresh. Close this window and reopen Material & Lab to refresh the latest totals.');
+        setAdminPassword('');
+        return;
       }
-
-      const cleanedItems = visibleItems
-        .filter((item) => item.materialName.trim())
-        .map((item) => ({
-          materialName: item.materialName,
-          costAmount: Number(item.costAmount || 0),
-          quantity: Number(item.quantity || 0)
-        }));
-
-      const result = await api.materialCosts.upsertForTreatment(record, cleanedItems, {
-        userId: session.userId,
-        username: session.username
-      });
-      await onSaved({
-        treatmentId: record.id,
-        auditLogId: result.auditLogId,
-        totalAmount: result.items.reduce((sum, item) => sum + item.totalAmount, 0),
-        itemCount: result.items.length
-      });
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save material costs.');
-    } finally {
-      setSaving(false);
-    }
+    } catch (err: any) { setError(err?.message || 'Failed to save material and lab costs.'); }
+    finally { setSaving(false); }
   };
 
-  return (
-    <Modal title="Material Cost" onClose={onClose} maxWidthClassName="max-w-4xl">
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid gap-3 rounded-2xl border border-[var(--hover-100)] bg-[var(--hover-50)]/70 p-4 sm:grid-cols-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--hover-700)]">Patient</p>
-            <p className="mt-1 text-sm font-bold text-slate-900">{record.patient_name || 'Unknown'}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--hover-700)]">Clinician</p>
-            <p className="mt-1 text-sm font-bold text-slate-900">{formatDoctorName(record.doctor_name)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--hover-700)]">Clinical Activity</p>
-            <p className="mt-1 text-sm font-bold text-slate-900">{getRecordActivity(record)}</p>
-          </div>
-        </div>
+  const renderSection = (costType: TreatmentCostType) => {
+    const lab = costType === 'lab';
+    const label = lab ? 'Lab Cost' : 'Material Cost';
+    return <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4" aria-labelledby={`${costType}-heading`}>
+      <div className="flex items-center justify-between gap-3"><div><h3 id={`${costType}-heading`} className="text-sm font-black text-slate-900">{label}</h3><p className="mt-0.5 text-xs text-slate-500">{lab ? 'External laboratory services and fabrication costs.' : 'Materials consumed for this treatment.'}</p></div><span className={`rounded-full px-3 py-1 text-xs font-black ${lab ? 'bg-violet-50 text-violet-700' : 'bg-cyan-50 text-cyan-700'}`}>{formatCurrency(lab ? labTotal : materialTotal, currency)}</span></div>
+      <div className="hidden grid-cols-[minmax(0,1fr)_150px_120px_44px] gap-3 px-1 text-[10px] font-black uppercase tracking-wider text-slate-400 sm:grid"><span>{lab ? 'Lab / Service' : 'Material'}</span><span>Unit Cost</span><span>Quantity</span><span /></div>
+      {items.filter((item) => item.costType === costType).map((item, index) => <div key={item.localId} className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-[minmax(0,1fr)_150px_120px_44px] sm:border-0 sm:bg-transparent sm:p-0">
+        <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-name`}>{lab ? 'Lab / Service' : 'Material'}</label><input id={`${item.localId}-name`} aria-label={`${label} row ${index + 1} name`} type="text" maxLength={255} value={item.materialName} onChange={(e) => updateItem(item.localId, { materialName: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder={lab ? 'e.g. Crown fabrication' : 'e.g. Composite resin'} /></div>
+        <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-cost`}>Unit Cost</label><input id={`${item.localId}-cost`} aria-label={`${label} row ${index + 1} unit cost`} type="number" min="0.01" step="0.01" value={item.costAmount || ''} onChange={(e) => updateItem(item.localId, { costAmount: Number(e.target.value || 0) })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder="0" /></div>
+        <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-quantity`}>Quantity</label><input id={`${item.localId}-quantity`} aria-label={`${label} row ${index + 1} quantity`} type="number" min="0.01" step="0.01" value={item.quantity || ''} onChange={(e) => updateItem(item.localId, { quantity: Number(e.target.value || 0) })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder="1" /></div>
+        <button type="button" onClick={() => removeItem(item.localId, costType)} className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 sm:w-11" aria-label={`Remove ${label.toLowerCase()} row`}><Trash2 size={16} /></button>
+      </div>)}
+      <button type="button" onClick={() => setItems((current) => [...current, createEmptyDraft(costType)])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] px-4 py-2.5 text-sm font-bold text-[var(--hover-700)] hover:bg-[var(--hover-100)]"><Plus size={16} />Add {lab ? 'Lab Cost' : 'Material'}</button>
+    </section>;
+  };
 
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-sm font-semibold text-slate-500">
-            <Loader2 size={18} className="animate-spin" />
-            Loading material costs...
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="hidden grid-cols-[1fr_140px_120px_44px] gap-3 px-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500 sm:grid">
-              <span>Material Name</span>
-              <span>Cost</span>
-              <span>Quantity</span>
-              <span />
-            </div>
-
-            {items.map((item, index) => (
-              <div key={item.localId} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-[1fr_140px_120px_44px] sm:items-center">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden">Material Name</label>
-                  <input
-                    type="text"
-                    value={item.materialName}
-                    onChange={(event) => updateItem(item.localId, { materialName: event.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]"
-                    placeholder={`Material ${index + 1}`}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden">Cost</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={item.costAmount || ''}
-                    onChange={(event) => updateItem(item.localId, { costAmount: Number(event.target.value || 0) })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden">Quantity</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={item.quantity || ''}
-                    onChange={(event) => updateItem(item.localId, { quantity: Number(event.target.value || 0) })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]"
-                    placeholder="1"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeItem(item.localId)}
-                  className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100 sm:w-11"
-                  aria-label="Remove material cost row"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setItems((current) => [...current, createEmptyDraft()])}
-              className="inline-flex items-center gap-2 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] px-4 py-2.5 text-sm font-bold text-[var(--hover-700)] transition hover:bg-[var(--hover-100)]"
-            >
-              <Plus size={16} />
-              Add Material
-            </button>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-            <Package size={17} className="text-[var(--hover-600)]" />
-            Material total
-          </div>
-          <p className="text-xl font-black text-[var(--hover-700)]">{formatCurrency(totalAmount, currency)}</p>
-        </div>
-
-        {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            {error}
-          </div>
-        ) : null}
-
-        <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading || saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--hover-600)] px-5 py-3 text-sm font-black text-white transition hover:bg-[var(--hover-700)] disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
-            {saving ? 'Saving...' : 'Save Material'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
+  return <Modal title="Material & Lab Cost" onClose={onClose} closeDisabled={saving} maxWidthClassName="max-w-5xl"><form onSubmit={handleSubmit} className="space-y-5">
+    <div className="grid gap-3 rounded-2xl border border-[var(--hover-100)] bg-[var(--hover-50)]/70 p-4 sm:grid-cols-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--hover-700)]">Patient</p><p className="mt-1 text-sm font-bold text-slate-900">{record.patient_name || 'Unknown'}</p></div><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--hover-700)]">Clinician</p><p className="mt-1 text-sm font-bold text-slate-900">{formatDoctorName(record.doctor_name)}</p></div><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--hover-700)]">Clinical Activity</p><p className="mt-1 text-sm font-bold text-slate-900">{getRecordActivity(record)}</p></div></div>
+    {loading ? <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-sm font-semibold text-slate-500"><Loader2 size={18} className="animate-spin" />Loading material and lab costs...</div> : <div className="space-y-4">{renderSection('material')}{renderSection('lab')}</div>}
+    <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3"><div className="flex items-center justify-between gap-2 text-sm font-bold text-cyan-700"><span className="inline-flex items-center gap-2"><Package size={17} />Material</span><span>{formatCurrency(materialTotal, currency)}</span></div><div className="flex items-center justify-between gap-2 text-sm font-bold text-violet-700"><span className="inline-flex items-center gap-2"><Beaker size={17} />Lab</span><span>{formatCurrency(labTotal, currency)}</span></div><div className="flex items-center justify-between gap-2 text-base font-black text-slate-900"><span>Combined total</span><span>{formatCurrency(materialTotal + labTotal, currency)}</span></div></div>
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><label htmlFor="material-lab-admin-password" className="block text-xs font-black uppercase tracking-wider text-amber-800">Administrator password</label><p className="mt-1 text-xs text-amber-700">Required to authorize changes to financial costs and linked expenses.</p><input id="material-lab-admin-password" type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} className="mt-3 w-full rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></div>
+    {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">{error}{loadFailed ? ' Close this window and reopen the treatment to retry loading.' : ''}</div>}
+    <div className="flex justify-end gap-3 border-t border-slate-200 pt-5"><button type="button" onClick={onClose} disabled={saving} className="min-h-11 rounded-xl border border-slate-300 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button><button type="submit" disabled={loading || saving || loadFailed} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--hover-600)] px-5 py-3 text-sm font-black text-white hover:bg-[var(--hover-700)] disabled:cursor-not-allowed disabled:bg-slate-300">{saving ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}{saving ? 'Saving...' : loadFailed ? 'Reload Required' : 'Save Material & Lab'}</button></div>
+  </form></Modal>;
 };
 
 export default MaterialCostModal;

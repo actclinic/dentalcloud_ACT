@@ -69,8 +69,8 @@ export const FLEXIBLE_STAFF_TABS = [
   },
   {
     key: 'material-cost',
-    label: 'Material Cost',
-    description: 'Track treatment material costs and linked expense impact.'
+    label: 'Material & Lab',
+    description: 'Track treatment material and lab costs with linked expense impact.'
   },
   {
     key: 'records',

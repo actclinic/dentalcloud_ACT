@@ -113,10 +113,13 @@ export interface AuditLogEntry {
   created_at?: string;
 }
 
+export type TreatmentCostType = 'material' | 'lab';
+
 export interface PatientMaterialCost {
   id: string;
   auditLogId: string;
   materialName: string;
+  costType: TreatmentCostType;
   costAmount: number;
   quantity: number;
   totalAmount: number;
@@ -128,8 +131,19 @@ export interface PatientMaterialCost {
 
 export interface PatientMaterialCostInput {
   materialName: string;
+  costType: TreatmentCostType;
   costAmount: number;
   quantity: number;
+}
+
+export interface TreatmentCostSummary {
+  auditLogId: string;
+  materialTotal: number;
+  materialItemCount: number;
+  labTotal: number;
+  labItemCount: number;
+  totalAmount: number;
+  itemCount: number;
 }
 
 export interface PaymentRecord {

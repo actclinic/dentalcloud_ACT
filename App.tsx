@@ -3813,7 +3813,7 @@ const App: React.FC = () => {
                <NavItem icon={<Stethoscope size={18} />} label="Service Menu" active={currentView === 'treatments'} onClick={() => { setCurrentView('treatments'); setIsMobileMenuOpen(false); }} />
              )}
              {canAccessView('material-cost') && (
-               <NavItem icon={<Package size={18} />} label="Material Cost" active={currentView === 'material-cost'} onClick={() => { setCurrentView('material-cost'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<Package size={18} />} label="Material & Lab" active={currentView === 'material-cost'} onClick={() => { setCurrentView('material-cost'); setIsMobileMenuOpen(false); }} />
              )}
              {canAccessView('records') && (
                <NavItem icon={<ClipboardList size={18} />} label={isDoctor ? 'Patient Records' : 'Audit Log'} active={currentView === 'records'} onClick={() => { setRecordsInitialFilter('all'); setCurrentView('records'); setIsMobileMenuOpen(false); }} />
