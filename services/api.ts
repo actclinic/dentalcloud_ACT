@@ -15,6 +15,7 @@ import { allocateCommissionablePayments, calculateCommissionLedgerEntries } from
 import { enumValue, finiteNumber, strictDateString, trimOptional, trimRequired } from '../utils/validation';
 import { buildPatientCreatedAt } from '../utils/patientCreationDate';
 import { summarizeTreatmentCostRows } from '../utils/treatmentCostSummaries';
+import { buildPatientProfileUpdatePayload } from '../utils/patientProfileUpdate';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -1759,19 +1760,7 @@ export const api = {
 
       const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
       const normalizedPhone = normalizePhoneForStorage(data.phone);
-      const payload = {
-        location_id: data.location_id,
-        name: data.name,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        age: data.age,
-        address: data.address,
-        city: data.city,
-        township: data.township,
-        patient_type: data.patient_type,
-        balance: data.balance,
-        medical_history: data.medicalHistory
-      };
+      const payload = buildPatientProfileUpdatePayload(data, normalizedEmail, normalizedPhone);
 
       const { data: result, error } = await supabase
         .from('patients')
