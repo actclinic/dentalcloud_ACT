@@ -1231,7 +1231,12 @@ const Receipt: React.FC<ReceiptProps> = ({
 
           body > .receipt-print {
             display: block !important;
-            position: static !important;
+            /* XP80C can vertically center normal-flow content when its driver
+               substitutes a longer roll page. Pin thermal output to the
+               physical page origin; keep A4 in normal flow. */
+            position: ${isThermal ? 'fixed' : 'static'} !important;
+            top: 0 !important;
+            left: 0 !important;
             visibility: visible !important;
             pointer-events: auto !important;
             width: ${isThermal ? thermalPaperWidth : '210mm'} !important;
