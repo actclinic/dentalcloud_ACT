@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Beaker, Loader2, Package, Plus } from 'lucide-react';
+import { Beaker, Loader2, Package, Plus, RotateCw } from 'lucide-react';
 import type { ClinicalRecord, PaymentRecord, TreatmentCostSummary } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
@@ -49,6 +49,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
   const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
   const [treatmentSearchTerm, setTreatmentSearchTerm] = useState('');
   const [materialFilter, setMaterialFilter] = useState<MaterialCostFilter>('today');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [editingRecord, setEditingRecord] = useState<(ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) | null>(null);
   const [materialSummaries, setMaterialSummaries] = useState<Record<string, TreatmentCostSummary>>({});
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
@@ -268,6 +269,19 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     await loadMaterialSummaries(paginatedRows);
   };
 
+  const handleRefresh = async () => {
+    if (isRefreshing || loading) return;
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } catch (error) {
+      console.error('Failed to refresh material and lab costs:', error);
+      alert(error instanceof Error ? error.message : 'Unable to refresh material and lab costs. Please try again.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const materialFilterOptions: Array<{ value: MaterialCostFilter; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'tomorrow', label: 'Tomorrow' },
@@ -299,13 +313,25 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
               <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm">
                 Track material and lab costs against completed treatment rows.
               </p>
-              <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1 text-xs sm:flex-wrap sm:overflow-visible sm:pb-0">
-                <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
-                  {statusFilteredRows.length} visible
-                </span>
-                <span className="shrink-0 rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 font-semibold theme-accent-text">
-                  {statusFilteredRows.length} treatments
-                </span>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
+                    {statusFilteredRows.length} visible
+                  </span>
+                  <span className="shrink-0 rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 font-semibold theme-accent-text">
+                    {statusFilteredRows.length} treatments
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRefresh()}
+                  disabled={loading || isRefreshing}
+                  aria-label={isRefreshing ? 'Refreshing material and lab costs' : 'Refresh material and lab costs'}
+                  className="refresh-action-button inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border px-3 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
+                >
+                  <RotateCw size={14} className={`refresh-action-icon ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                </button>
               </div>
             </div>
           </div>
@@ -394,7 +420,8 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
           <p className="text-sm font-medium">Loading material and lab cost rows...</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <div className="hidden overflow-x-auto xl:block">
           <table className="min-w-[1420px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
@@ -471,6 +498,95 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
             </tbody>
           </table>
         </div>
+        <div className="space-y-3 bg-slate-50/70 p-3 sm:p-4 xl:hidden">
+          {statusFilteredRows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center">
+              <p className="text-sm font-semibold text-slate-600">No treatment rows found</p>
+              <p className="mt-1 text-xs text-slate-400">Try another date range or clear the search field.</p>
+            </div>
+          ) : (
+            paginatedRows.map((row) => {
+              const record = row.record;
+              const treatmentAmount = getTreatmentAmount(record);
+              const collectedAmount = getCollectedAmount(record);
+              const adjustedDoctorEarned = getAdjustedDoctorEarned(record);
+              const netProfit = getNetProfit(record);
+              const totalCost = getMaterialTotal(record);
+              return (
+                <article key={`material-cost-card-${record.id}`} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-l-4 border-[var(--hover-300)] p-3 sm:p-4">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-base font-bold text-slate-900">{record.patient_name || 'Unknown'}</p>
+                        <p className="mt-1 break-words text-xs text-slate-500">{record.date} · {formatDoctorName(record.doctor_name)}</p>
+                      </div>
+                      <div className={`shrink-0 rounded-lg px-2.5 py-1 text-right ${netProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                        <p className="text-[10px] font-bold uppercase tracking-wide">Net profit</p>
+                        <p className="mt-0.5 text-sm font-black">{formatCurrency(netProfit, currency)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Clinical activity</p>
+                      <div className="mt-1 break-words text-sm text-slate-800">{renderTreatmentDescriptionList(record)}</div>
+                      <p className="mt-1 break-words font-mono text-xs text-slate-500">
+                        {record.teeth && record.teeth.length > 0 ? formatTeethWithPosition(record.teeth) : 'General'}
+                      </p>
+                    </div>
+
+                    <dl className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+                      <div className="min-w-0 rounded-xl border border-slate-100 p-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Patient balance</dt>
+                        <dd className="mt-1 min-w-0 text-sm font-bold">{renderPatientBalance(record.patient_balance)}</dd>
+                      </div>
+                      <div className="min-w-0 rounded-xl border border-slate-100 p-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Treatment amount</dt>
+                        <dd className="mt-1 break-words text-sm font-black text-slate-900">{formatCurrency(treatmentAmount, currency)}</dd>
+                      </div>
+                      <div className="min-w-0 rounded-xl border border-blue-100 bg-blue-50 p-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-blue-600">Collected payment</dt>
+                        <dd className="mt-1 break-words text-sm font-black text-blue-700">{collectedAmount > 0 ? formatCurrency(collectedAmount, currency) : '-'}</dd>
+                      </div>
+                      <div className="min-w-0 rounded-xl border border-cyan-100 bg-cyan-50 p-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-cyan-700">Material cost</dt>
+                        <dd className="mt-1 text-sm font-bold">{renderTypedCost(record, 'material')}</dd>
+                      </div>
+                      <div className="min-w-0 rounded-xl border border-violet-100 bg-violet-50 p-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Lab cost</dt>
+                        <dd className="mt-1 text-sm font-bold">{renderTypedCost(record, 'lab')}</dd>
+                      </div>
+                      <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 p-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Total cost</dt>
+                        <dd className="mt-1 break-words text-sm font-black text-slate-800">{totalCost > 0 ? formatCurrency(totalCost, currency) : '-'}</dd>
+                      </div>
+                      <div className="col-span-2 min-w-0 rounded-xl border border-emerald-100 bg-emerald-50 p-3 sm:col-span-3">
+                        <dt className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Doctor earned</dt>
+                        <dd className="mt-1 break-words text-sm font-black text-emerald-700">{adjustedDoctorEarned > 0 ? formatCurrency(adjustedDoctorEarned, currency) : '-'}</dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-3">
+                      {canManageMaterials ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingRecord(record)}
+                          className="flex min-h-10 w-full items-center justify-center gap-1 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] px-3 py-2 text-sm font-bold text-[var(--hover-700)] transition-colors hover:bg-[var(--hover-100)] focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
+                        >
+                          <Package size={15} />
+                          <Plus size={13} />
+                          Material & Lab
+                        </button>
+                      ) : (
+                        <p className="rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-400">No access to manage costs</p>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+        </>
       )}
 
       {!loading && statusFilteredRows.length > 0 && (
