@@ -2431,7 +2431,7 @@ BRANCH AWARENESS:
 
 PATIENT MANAGEMENT:
 - p_c(n, e, ph, age, patient_type, address, city, township, m, password, location_id): Create patient using the current registration form fields. n/name=Full Patient Name, e/email=Primary Email, ph/phone=Mobile Contact, age=required age when available, patient_type/pt=Patient Type, address=street address, city=City, township=Township, m/medicalHistory=Relevant Medical History, password/portal_password=optional Patient Portal password, location_id/location_name/branch_name=Branch. Do not set a clinical fee during registration.
-- p_u(id, data): Update patient profile. id=patient id (or use "name"), data={name, email, phone, age, address, city, township, patient_type, medicalHistory, balance, loyalty_points}.
+- p_u(id, data): Update patient profile. id=patient id (or use "name"), data={name, email, phone, age, address, city, township, patient_type, medicalHistory}. Never include balance or loyalty_points; those require their dedicated financial or loyalty workflows.
 - p_d(id): Delete patient.
 - p_find(name): Find patient by name (partial match).
 - pat_bal(pid): Get patient balance and loyalty points.
