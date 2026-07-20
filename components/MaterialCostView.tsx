@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Beaker, Loader2, Package, Plus, RotateCw } from 'lucide-react';
+import { ArrowLeftRight, Beaker, Loader2, Package, Plus, RotateCw } from 'lucide-react';
 import type { ClinicalRecord, PaymentRecord, TreatmentCostSummary } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
@@ -45,12 +45,14 @@ const paymentDedupeKey = (payment: PaymentRecord) => (
 
 const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, loading, currency, canManageMaterials, onRefresh }) => {
   const summaryRequestVersion = React.useRef(0);
+  const tableScrollRef = React.useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
   const [treatmentSearchTerm, setTreatmentSearchTerm] = useState('');
   const [materialFilter, setMaterialFilter] = useState<MaterialCostFilter>('today');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isTableScrollable, setIsTableScrollable] = useState(false);
   const [editingRecord, setEditingRecord] = useState<(ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) | null>(null);
   const [materialSummaries, setMaterialSummaries] = useState<Record<string, TreatmentCostSummary>>({});
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
@@ -238,6 +240,35 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     setCurrentPage(1);
   }, [records, doctorSearchTerm, treatmentSearchTerm, dateFrom, dateTo, materialFilter]);
 
+  React.useEffect(() => {
+    if (loading) {
+      setIsTableScrollable(false);
+      return;
+    }
+
+    const scrollContainer = tableScrollRef.current;
+    if (!scrollContainer) return;
+
+    const updateScrollableState = () => {
+      setIsTableScrollable(scrollContainer.scrollWidth > scrollContainer.clientWidth + 1);
+    };
+
+    updateScrollableState();
+    window.addEventListener('resize', updateScrollableState);
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateScrollableState)
+      : null;
+    resizeObserver?.observe(scrollContainer);
+    const table = scrollContainer.querySelector('table');
+    if (table) resizeObserver?.observe(table);
+
+    return () => {
+      window.removeEventListener('resize', updateScrollableState);
+      resizeObserver?.disconnect();
+    };
+  }, [loading]);
+
   const renderTypedCost = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }, costType: 'material' | 'lab') => {
     const totalAmount = getTypedCostTotal(record, costType);
     if (totalAmount <= 0) return <span className="text-slate-400">-</span>;
@@ -424,7 +455,27 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
         </div>
       ) : (
         <>
-        <div className="hidden overflow-x-auto xl:block">
+        <div className="hidden xl:block">
+          {isTableScrollable && (
+            <div
+              id="material-cost-scroll-instructions"
+              className="flex items-center justify-between gap-3 border-b border-[var(--hover-100)] bg-[var(--hover-50)] px-4 py-2.5 text-xs font-semibold text-[var(--hover-800)] sm:px-6"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <ArrowLeftRight size={16} className="shrink-0 text-[var(--hover-600)]" aria-hidden="true" />
+                <span>Scroll sideways to view all columns.</span>
+              </span>
+              <span className="hidden shrink-0 text-[11px] font-medium text-[var(--hover-700)] 2xl:inline">The Action column stays visible</span>
+            </div>
+          )}
+          <div
+            ref={tableScrollRef}
+            role="region"
+            aria-label="Material and lab cost table"
+            aria-describedby={isTableScrollable ? 'material-cost-scroll-instructions' : undefined}
+            tabIndex={isTableScrollable ? 0 : -1}
+            className="overflow-x-auto focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--hover-300)]"
+          >
           <table className="min-w-[1420px] w-full">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
@@ -500,6 +551,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
               )}
             </tbody>
           </table>
+          </div>
         </div>
         <div className="space-y-3 bg-slate-50/70 p-3 sm:p-4 xl:hidden">
           {statusFilteredRows.length === 0 ? (
