@@ -46,7 +46,19 @@ const applyColumnFormatting = (
   });
 };
 
-const buildWorksheet = async (rows: ExcelRow[], columns: ExcelColumn[], currency: Currency) => {
+export const EXCEL_HEADER_ROW_HEIGHT_POINTS = 20;
+
+interface WorksheetLayoutOptions {
+  compactHeader?: boolean;
+  freezeHeader?: boolean;
+}
+
+export const buildWorksheet = async (
+  rows: ExcelRow[],
+  columns: ExcelColumn[],
+  currency: Currency,
+  layout: WorksheetLayoutOptions = {}
+) => {
   const XLSX = await import('xlsx');
   const headers = columns.map(column => column.header);
   const worksheet = XLSX.utils.aoa_to_sheet([headers]);
@@ -69,11 +81,26 @@ const buildWorksheet = async (rows: ExcelRow[], columns: ExcelColumn[], currency
 
     return { wch: Math.min(Math.max(valueLength + 2, 12), 40) };
   });
+  if (layout.compactHeader) {
+    worksheet['!rows'] = [{ hpt: EXCEL_HEADER_ROW_HEIGHT_POINTS }];
+    headers.forEach((_, columnIndex) => {
+      const cellAddress = `${String.fromCharCode(65 + columnIndex)}1`;
+      const cell = worksheet[cellAddress];
+      if (!cell) return;
+      cell.s = {
+        ...(cell.s || {}),
+        alignment: { ...(cell.s?.alignment || {}), vertical: 'center', wrapText: false }
+      };
+    });
+  }
 
   if (headers.length > 0) {
     const lastColumnLetter = String.fromCharCode(64 + headers.length);
     const lastRowNumber = rows.length + 1;
     worksheet['!autofilter'] = { ref: `A1:${lastColumnLetter}${lastRowNumber}` };
+    if (layout.freezeHeader) {
+      worksheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    }
   }
 
   applyColumnFormatting(worksheet, columns, rows.length, currency);
@@ -86,9 +113,10 @@ const saveWorkbook = async (
   columns: ExcelColumn[],
   sheetName: string,
   fileName: string,
-  currency: Currency = 'USD'
+  currency: Currency = 'USD',
+  layout: WorksheetLayoutOptions = {}
 ) => {
-  const { XLSX, worksheet } = await buildWorksheet(rows, columns, currency);
+  const { XLSX, worksheet } = await buildWorksheet(rows, columns, currency, layout);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   XLSX.writeFile(workbook, fileName);
@@ -265,8 +293,8 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     { header: 'Patient Type', width: 18 },
     { header: 'Patient Balance', width: 16 },
     { header: 'Amount', width: 14, format: 'currency' },
-    { header: 'Service Charges', width: 16, format: 'currency' },
-    { header: 'Doctor Earned', width: 14, format: 'currency' }
+    { header: 'Service Charges', width: 18, format: 'currency' },
+    { header: 'Doctor Earned', width: 18, format: 'currency' }
   ];
   const exportRows = filterAuditLogRowsForExport(
     buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false, options.payments || [], options.rescheduleLogs || []),
@@ -285,7 +313,14 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     'Doctor Earned': row.doctorEarned ?? 0
   }));
 
-  await saveWorkbook(rows, columns, options.includeAppointments ? 'Audit Log' : 'Clinical Records', `${options.includeAppointments ? 'clinic-audit-logs' : 'clinical-records'}-${new Date().toISOString().split('T')[0]}.xlsx`, currency);
+  await saveWorkbook(
+    rows,
+    columns,
+    options.includeAppointments ? 'Audit Log' : 'Clinical Records',
+    `${options.includeAppointments ? 'clinic-audit-logs' : 'clinical-records'}-${new Date().toISOString().split('T')[0]}.xlsx`,
+    currency,
+    { compactHeader: true, freezeHeader: true }
+  );
 };
 
 export const exportDoctorsToExcel = async (doctors: Doctor[]) => {

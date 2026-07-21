@@ -437,6 +437,9 @@ interface ClinicalRecordsExportOptions extends AuditLogFilterOptions {
   includeAppointments?: boolean;
 }
 
+export const AUDIT_LOG_PDF_TABLE_WIDTH = 260;
+export const AUDIT_LOG_PDF_COLUMN_WIDTHS = [16, 25, 28, 27, 54, 27, 22, 18, 22, 21] as const;
+
 export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: Currency, options: ClinicalRecordsExportOptions = {}) => {
   const exportRows = filterAuditLogRowsForExport(
     buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false, options.payments || [], options.rescheduleLogs || []),
@@ -478,19 +481,21 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
       row.doctorEarned === null ? '-' : formatCurrency(row.doctorEarned, currency)
     ]),
     theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229], fontSize: 7.5, fontStyle: 'bold' },
+    tableWidth: AUDIT_LOG_PDF_TABLE_WIDTH,
+    headStyles: { fillColor: [79, 70, 229], fontSize: 7, fontStyle: 'bold', cellPadding: 1.2, valign: 'middle', overflow: 'linebreak' },
     bodyStyles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [245, 247, 250] },
     columnStyles: {
-      0: { cellWidth: 20 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 32 },
-      3: { cellWidth: 30 },
-      4: { cellWidth: 60 },
-      5: { cellWidth: 34 },
-      6: { cellWidth: 24, halign: 'right' },
-      7: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
-      8: { cellWidth: 24, halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[0] },
+      1: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[1] },
+      2: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[2] },
+      3: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[3] },
+      4: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[4] },
+      5: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[5] },
+      6: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[6], halign: 'right' },
+      7: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[7], halign: 'right', fontStyle: 'bold' },
+      8: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[8], halign: 'right', fontStyle: 'bold' },
+      9: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[9], halign: 'right', fontStyle: 'bold' }
     }
   });
   
