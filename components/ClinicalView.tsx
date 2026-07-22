@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2 } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, FileHeart, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2 } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
@@ -764,16 +764,24 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
       </div>
 
       {selectedPatient && (
-        <div className="bg-white p-5 md:p-7 rounded-xl shadow-sm border border-gray-100">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h3 className="text-xl font-black text-gray-900">Clinical Case History</h3>
-            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
-              {treatmentHistory.length} records
+        <div className="overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 via-fuchsia-50/60 to-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between md:px-7">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-200">
+                <FileHeart size={19} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-xl font-black text-gray-900">Clinical Case History</h3>
+                <p className="mt-0.5 text-sm text-violet-800">Treatments, clinicians, teeth, and recorded fees.</p>
+              </div>
+            </div>
+            <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-violet-700 ring-1 ring-violet-200">
+              {treatmentHistory.length} {treatmentHistory.length === 1 ? 'record' : 'records'}
             </span>
           </div>
-          <div className="overflow-x-auto max-h-[34rem] min-h-[18rem] overflow-y-auto custom-scrollbar">
-            <table className="w-full text-[15px] text-left">
-              <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 border-b border-gray-100 uppercase tracking-wide">
+          <div className="max-h-[34rem] min-h-[18rem] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[48rem] text-left text-[15px]">
+              <thead className="sticky top-0 border-b border-violet-100 bg-violet-50/90 text-xs uppercase tracking-wide text-violet-700 backdrop-blur-sm">
                 <tr>
                   <th className="px-5 py-4">Date</th>
                   <th className="px-5 py-4">Doctor</th>
@@ -783,16 +791,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                   <th className="px-5 py-4 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-violet-50">
                 {treatmentHistory.length === 0 ? (
                   <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400 italic">No clinical history recorded for this patient.</td></tr>
                 ) : (
                   treatmentHistory.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={rec.id} className="transition-colors hover:bg-violet-50/50">
                       <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{rec.date}</td>
                       <td className="px-5 py-4 text-gray-800 font-semibold whitespace-nowrap">{formatDoctorName(rec.doctor_name)}</td>
                       <td className="px-5 py-4">
-                        <span className="text-sm bg-gray-100 px-2 py-1 rounded leading-relaxed inline-block">
+                        <span className="inline-block rounded bg-violet-50 px-2 py-1 text-sm leading-relaxed text-violet-800 ring-1 ring-violet-100">
                           {formatTeethWithPosition(rec.teeth)}
                         </span>
                       </td>
@@ -802,7 +810,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                         {onUndoTreatment && (
                           <button 
                             onClick={() => onUndoTreatment(rec)}
-                            className="text-gray-400 hover:text-red-600 transition-colors p-2"
+                            className="rounded-lg p-2 text-violet-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
                             title="Undo/Delete Record"
                           >
                             <RotateCcw size={16} />
