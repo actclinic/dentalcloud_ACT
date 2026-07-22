@@ -11,6 +11,7 @@ import PatientQRScanButton from './PatientQRScanButton';
 import { calculateAppointmentShortcutDate, type AppointmentDateShortcut } from '../utils/appointmentDateShortcuts';
 import { getNextTreatmentOptionIndex } from '../utils/treatmentSelectorKeyboard';
 import { formatMedicineQuantity, getPatientMedicineHistory } from '../utils/medicineHistory';
+import { distributeOverallTreatmentDiscount } from '../utils/treatmentDiscount';
 
 const AboutPatientReport = React.lazy(() => import('./AboutPatientReport'));
 
@@ -163,6 +164,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
   const [selectedTreatmentForCharge, setSelectedTreatmentForCharge] = React.useState<TreatmentType | null>(null);
   const [treatmentChargeInputs, setTreatmentChargeInputs] = React.useState<string[]>([]);
+  const [overallTreatmentDiscountInput, setOverallTreatmentDiscountInput] = React.useState('0');
   const [isRecordingTreatment, setIsRecordingTreatment] = React.useState(false);
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
   const [showPatientReport, setShowPatientReport] = React.useState(false);
@@ -380,12 +382,19 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const selectedTreatmentStandardTotal = selectedTreatmentForCharge
     ? getTreatmentChargeLines(selectedTreatmentForCharge).reduce((sum, line) => sum + line.standardCost, 0)
     : 0;
-  const selectedTreatmentFinalTotal = selectedTreatmentForCharge
+  const selectedTreatmentLineSubtotal = selectedTreatmentForCharge
     ? treatmentChargeInputs.reduce((sum, value) => {
         const parsedValue = Number.parseFloat(value);
         return sum + (Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0);
       }, 0)
     : 0;
+  const parsedOverallTreatmentDiscount = Number.parseFloat(overallTreatmentDiscountInput);
+  const overallTreatmentDiscount = Number.isFinite(parsedOverallTreatmentDiscount)
+    ? Math.min(selectedTreatmentLineSubtotal, Math.max(0, parsedOverallTreatmentDiscount))
+    : 0;
+  const selectedTreatmentFinalTotal = Math.max(0, selectedTreatmentLineSubtotal - overallTreatmentDiscount);
+  const individualTreatmentDiscount = Math.max(0, selectedTreatmentStandardTotal - selectedTreatmentLineSubtotal);
+  const selectedTreatmentTotalDiscount = individualTreatmentDiscount + overallTreatmentDiscount;
 
   const handleTreatmentSelect = (treatment: TreatmentType) => {
     if (!canApplyTreatment) return;
@@ -393,6 +402,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     const chargeLines = getTreatmentChargeLines(treatment);
     setSelectedTreatmentForCharge(treatment);
     setTreatmentChargeInputs(chargeLines.map((line) => String(line.cost)));
+    setOverallTreatmentDiscountInput('0');
     setTreatmentSearchTerm('');
     setShowTreatmentDropdown(false);
   };
@@ -426,6 +436,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     if (isRecordingTreatment) return;
     setSelectedTreatmentForCharge(null);
     setTreatmentChargeInputs([]);
+    setOverallTreatmentDiscountInput('0');
   };
 
   const handleConfirmTreatmentCharge = async () => {
@@ -445,6 +456,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           cost: Math.max(0, parsedCost)
         };
       });
+      chargeLines = distributeOverallTreatmentDiscount(chargeLines, overallTreatmentDiscount);
     } catch (error: any) {
       alert(error?.message || 'Please enter valid treatment charges.');
       return;
@@ -1263,6 +1275,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                          <p className="mt-1 text-xl font-black text-gray-900">
                            {formatCurrency(selectedTreatmentFinalTotal, currency)}
                          </p>
+                         {selectedTreatmentTotalDiscount > 0 && (
+                           <div className="mt-1 space-y-0.5 text-xs font-bold text-amber-700">
+                             <p>Total discount: -{formatCurrency(selectedTreatmentTotalDiscount, currency)}</p>
+                             {overallTreatmentDiscount > 0 && individualTreatmentDiscount > 0 ? (
+                               <p className="font-semibold text-amber-600">
+                                 Includes overall: -{formatCurrency(overallTreatmentDiscount, currency)}
+                               </p>
+                             ) : null}
+                           </div>
+                         )}
                        </div>
                      </div>
 
@@ -1333,17 +1355,57 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                        })}
                      </div>
 
+                     <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                       <div className="mb-3">
+                         <p className="text-sm font-black text-amber-950">Overall Discount</p>
+                         <p className="mt-1 text-xs font-semibold text-amber-800">
+                           Applied after the individual treatment charges below.
+                         </p>
+                       </div>
+                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                         <Input
+                           label={`Overall Discount (${currencySymbol})`}
+                           type="number"
+                           inputMode="decimal"
+                           min="0"
+                           max={selectedTreatmentLineSubtotal}
+                           step="0.01"
+                           value={overallTreatmentDiscountInput}
+                           onChange={(event: any) => setOverallTreatmentDiscountInput(event.target.value)}
+                           onBlur={() => setOverallTreatmentDiscountInput(String(overallTreatmentDiscount))}
+                         />
+                         <button
+                           type="button"
+                           onClick={() => setOverallTreatmentDiscountInput('0')}
+                           disabled={overallTreatmentDiscount === 0}
+                           className="min-h-11 rounded-xl border border-amber-200 bg-white px-4 py-3 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                         >
+                           Clear Discount
+                         </button>
+                       </div>
+                       <div className="mt-3 flex items-center justify-between gap-3 border-t border-amber-200 pt-3 text-sm">
+                         <span className="font-semibold text-amber-800">Charge before overall discount</span>
+                         <span className="font-black text-amber-950">{formatCurrency(selectedTreatmentLineSubtotal, currency)}</span>
+                       </div>
+                     </div>
+
                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                        <button
                          type="button"
-                         onClick={() => setTreatmentChargeInputs(getTreatmentChargeLines(selectedTreatmentForCharge).map((line) => String(line.standardCost)))}
+                         onClick={() => {
+                           setTreatmentChargeInputs(getTreatmentChargeLines(selectedTreatmentForCharge).map((line) => String(line.standardCost)));
+                           setOverallTreatmentDiscountInput('0');
+                         }}
                          className="rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-black text-gray-700 hover:bg-gray-50"
                        >
                          All Standard
                        </button>
                        <button
                          type="button"
-                         onClick={() => setTreatmentChargeInputs(getTreatmentChargeLines(selectedTreatmentForCharge).map(() => '0'))}
+                         onClick={() => {
+                           setTreatmentChargeInputs(getTreatmentChargeLines(selectedTreatmentForCharge).map(() => '0'));
+                           setOverallTreatmentDiscountInput('0');
+                         }}
                          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-700 hover:bg-amber-100"
                        >
                          All FOC

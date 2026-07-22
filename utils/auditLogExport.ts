@@ -11,7 +11,7 @@ export type AuditExportRow =
   | { kind: 'treatment'; sortDate: string; record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] } }
   | { kind: 'appointment'; sortDate: string; appointment: Appointment }
   | { kind: 'reschedule'; sortDate: string; rescheduleLog: AppointmentRescheduleLog }
-  | { kind: 'payment'; sortDate: string; payment: PaymentRecord };
+  | { kind: 'payment'; sortDate: string; payment: PaymentRecord & { _treatmentDiscountAmount?: number } };
 
 export interface AuditLogFilterOptions {
   auditFilter?: AuditFilter;
@@ -30,6 +30,7 @@ export interface AuditLogExportTableRow {
   patientType: string;
   patientBalance: string;
   amount: number | null;
+  discount: number | null;
   serviceCharges: number | null;
   doctorEarned: number | null;
   paymentMethod: string;
@@ -38,6 +39,32 @@ export interface AuditLogExportTableRow {
 const getPositiveNumber = (value: unknown): number => {
   const numericValue = Number(value || 0);
   return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
+};
+
+const getTreatmentDiscount = (record?: ClinicalRecord): number => {
+  if (!record) return 0;
+  const explicitDiscount = getPositiveNumber(record.discountAmount);
+  if (explicitDiscount > 0) return explicitDiscount;
+  return Math.max(0, getPositiveNumber(record.standardCost) - getPositiveNumber(record.cost));
+};
+
+export const getAuditPaymentDiscount = (
+  payment: PaymentRecord & { _treatmentDiscountAmount?: number }
+): number => {
+  const snapshotDiscount = (payment.receiptSnapshot?.treatments || []).reduce(
+    (sum, treatment) => {
+      const explicitDiscount = getPositiveNumber(treatment.discountAmount);
+      const derivedDiscount = Math.max(
+        0,
+        getPositiveNumber(treatment.standardCost) - getPositiveNumber(treatment.finalCost)
+      );
+      return sum + (explicitDiscount > 0 ? explicitDiscount : derivedDiscount);
+    },
+    0
+  );
+  return snapshotDiscount > 0
+    ? snapshotDiscount
+    : getPositiveNumber(payment._treatmentDiscountAmount);
 };
 
 const getPaymentServiceFeeAmount = (payment: PaymentRecord): number => {
@@ -145,12 +172,16 @@ export const buildAuditLogRows = (
     const allDescriptions = sorted.map((record) => record.description).filter(Boolean);
     const allTeeth = sorted.flatMap((record) => record.teeth || []);
     const totalCost = sorted.reduce((sum, record) => sum + (record.cost || 0), 0);
+    const totalDiscount = sorted.reduce((sum, record) => sum + getTreatmentDiscount(record), 0);
+    const totalStandardCost = sorted.reduce((sum, record) => sum + getPositiveNumber(record.standardCost ?? record.cost), 0);
     const totalEarnings = sorted.reduce((sum, record) => sum + (record.doctorEarnings || 0), 0);
     const patientType = sorted.find((record) => (record.patient_type || '').trim())?.patient_type || base.patient_type || null;
 
     base.description = allDescriptions.join(' + ');
     base.teeth = [...new Set(allTeeth)].sort((a, b) => a - b);
     base.cost = totalCost;
+    base.standardCost = totalStandardCost;
+    base.discountAmount = totalDiscount;
     base.doctorEarnings = totalEarnings > 0 ? totalEarnings : base.doctorEarnings;
     base.patient_type = patientType;
     base.serviceCharges = calculateTreatmentServiceCharges(sorted, payments, appointments);
@@ -171,11 +202,18 @@ export const buildAuditLogRows = (
       }))
     : [];
 
+  const treatmentById = new Map(records.map((record) => [record.id, record]));
   const paymentRows: AuditExportRow[] = includeAppointments
     ? payments.map((payment) => ({
         kind: 'payment',
         sortDate: payment.createdAt || `${payment.date || ''}T23:59:58`,
-        payment
+        payment: {
+          ...payment,
+          _treatmentDiscountAmount: [...new Set(payment.treatmentIds || [])].reduce(
+            (sum, treatmentId) => sum + getTreatmentDiscount(treatmentById.get(treatmentId)),
+            0
+          )
+        }
       }))
     : [];
 
@@ -280,6 +318,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         patientType: '-',
         patientBalance: formatAuditPatientBalance(appointment.patient_balance, currency),
         amount: null,
+        discount: null,
         serviceCharges: null,
         doctorEarned: null,
         paymentMethod: '-'
@@ -298,6 +337,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         patientType: '-',
         patientBalance: '-',
         amount: null,
+        discount: null,
         serviceCharges: null,
         doctorEarned: null,
         paymentMethod: '-'
@@ -316,6 +356,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         patientType: '-',
         patientBalance: formatAuditPatientBalance(payment.remainingBalance, currency),
         amount: payment.amount,
+        discount: getAuditPaymentDiscount(payment) || null,
         serviceCharges: null,
         doctorEarned: null,
         paymentMethod: payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)
@@ -337,6 +378,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
       patientType: record.patient_type || '-',
       patientBalance: formatAuditPatientBalance(record.patient_balance, currency),
       amount: record.cost || 0,
+      discount: getTreatmentDiscount(record) || null,
       serviceCharges: getPositiveNumber(record.serviceCharges) || null,
       doctorEarned: record.doctorEarnings || null,
       paymentMethod: '-'

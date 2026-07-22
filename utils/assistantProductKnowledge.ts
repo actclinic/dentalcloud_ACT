@@ -74,10 +74,11 @@ BRANCH WORKSPACE:
 - A successful switch changes the active clinic workspace and reloads patient, appointment, doctor, and operational information for that branch. If loading fails, the previous branch remains active; never claim the switch completed without success confirmation.
 
 AUDIT LOG AND PERMISSIONS:
-- The Audit Log has All logs, Appointment log, and Treatment log filters. Doctors see patient records but cannot delete all records, and payment correction access is limited to admins.
+- The Audit Log has All, Appointments, Reschedule, Treatments, and Payments filters. Doctors see patient treatment records but cannot delete all records, and payment correction access is limited to admins.
 - In the Audit Log treatments section, the old Recorded By and Payment Type columns were replaced with Patient Type and Service Charges. Patient Type comes directly from the Patient tab's patient_type field.
 - Audit Log treatment Service Charges show recorded patient service fees for that grouped same-patient/same-day treatment visit. Use payment receipt snapshot serviceFeeAmount first; if no payment service-fee metadata exists, fall back to same-day completed appointments with an APPLIED clinical_fee_amount. Do not treat treatment Amount or Patient Balance as Service Charges.
-- Audit Log PDF/Excel exports match the visible Audit Log columns: Type, Date / Time, Patient, Clinician, Clinical Activity, Patient Type, Patient Balance, Amount, Service Charges, and Doctor Earned.
+- Audit Log treatment rows show the total treatment discount for the grouped visit. Payment rows may repeat that amount as the related treatment discount captured on that payment receipt; it is not a second payment-time discount and must not be subtracted from the balance again.
+- Audit Log PDF/Excel exports match the visible Audit Log columns: Type, Date / Time, Patient, Clinician, Clinical Activity, Patient Type, Patient Balance, Amount, Discount, Service Charges, and Doctor Earned.
 - Theme-aware UI elements follow the selected Settings theme color, including audit accents and refresh buttons; avoid telling users to look for fixed MIT-blue styling.
 
 USER INTERFACE:
