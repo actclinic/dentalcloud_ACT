@@ -5,6 +5,7 @@ import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
 import { resolveReceiptHeaderTitle } from '../utils/receiptPreferences';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { resolveReceiptTreatmentPricing } from '../utils/receiptPricing';
 
 interface ReceiptProps {
   patient: Patient;
@@ -107,38 +108,14 @@ const Receipt: React.FC<ReceiptProps> = ({
       }))
     : medicines;
 
-  const getTreatmentPricing = (treatment: Pick<ClinicalRecord, 'cost' | 'description' | 'teeth'> & Partial<ClinicalRecord>) => {
-    const finalCost = Number(treatment.cost || 0);
-    const explicitStandard = Number((treatment as any).standardCost ?? (treatment as any).standard_cost);
-    const explicitDiscount = Number((treatment as any).discountAmount ?? (treatment as any).discount_amount ?? 0);
-    const matchedType = treatmentTypes.find((type) => {
-      return (type.name || '').trim().toLowerCase() === (treatment.description || '').trim().toLowerCase();
-    });
-    const derivedStandard = matchedType
-      ? Number(matchedType.cost || 0) * Math.max(1, treatment.teeth?.length || 1)
-      : finalCost;
-    const standardCost = Number.isFinite(explicitStandard) && explicitStandard >= finalCost
-      ? explicitStandard
-      : explicitDiscount > 0
-        ? finalCost + explicitDiscount
-        : derivedStandard > finalCost
-          ? derivedStandard
-          : finalCost;
-    const discountAmount = Math.max(0, explicitDiscount || (standardCost - finalCost));
-    const pricingNote = ((treatment as any).pricingNote || (treatment as any).pricing_note || '') as string;
-    const note = discountAmount > 0
-      ? (pricingNote === 'FOC' || finalCost === 0 ? 'FOC' : 'Discount')
-      : '';
-
-    return {
-      finalCost,
-      standardCost,
-      discountAmount,
-      note
-    };
-  };
+  const getTreatmentPricing = (
+    treatment: Pick<ClinicalRecord, 'cost' | 'description' | 'teeth'> & Partial<ClinicalRecord>
+  ) => resolveReceiptTreatmentPricing(treatment, treatmentTypes);
 
   const totalTreatmentCost = receiptTreatments.reduce((sum, treatment) => sum + (treatment.cost || 0), 0);
+  const totalTreatmentStandardCost = receiptTreatments.reduce((sum, treatment) => {
+    return sum + getTreatmentPricing(treatment).standardCost;
+  }, 0);
   const totalTreatmentDiscount = receiptTreatments.reduce((sum, treatment) => {
     return sum + getTreatmentPricing(treatment).discountAmount;
   }, 0);
@@ -413,12 +390,12 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <div className="flex justify-between py-2 border-b border-gray-300">
                   <span className="text-sm font-semibold text-gray-700">Treatment Services:</span>
                   <span className="text-sm font-semibold text-gray-900">
-                    {formatCurrency(totalTreatmentCost, currency)}
+                    {formatCurrency(totalTreatmentStandardCost, currency)}
                   </span>
                 </div>
                 {totalTreatmentDiscount > 0 && (
                   <div className="flex justify-between py-2 border-b border-gray-300">
-                    <span className="text-sm font-semibold text-gray-700">Treatment Adjustments:</span>
+                    <span className="text-sm font-semibold text-gray-700">Overall Discount:</span>
                     <span className="text-sm font-semibold text-amber-700">
                       -{formatCurrency(totalTreatmentDiscount, currency)}
                     </span>
@@ -568,8 +545,8 @@ const Receipt: React.FC<ReceiptProps> = ({
 
           {/* Summary */}
           <div style={{ marginBottom: '6px' }}>
-            {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, currency))}
-            {totalTreatmentDiscount > 0 && thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, currency)}`, undefined, { color: '#b45309' })}
+            {thermalLine('Treatment Services:', formatCurrency(totalTreatmentStandardCost, currency))}
+            {totalTreatmentDiscount > 0 && thermalLine('Overall Discount:', `-${formatCurrency(totalTreatmentDiscount, currency)}`, undefined, { color: '#b45309' })}
             {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, currency))}
             {thermalDivider()}
             {thermalLine('Subtotal:', formatCurrency(grandTotal, currency), undefined, { fontWeight: 700 })}
@@ -656,12 +633,12 @@ const Receipt: React.FC<ReceiptProps> = ({
               <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
                 <span className="text-sm font-semibold text-gray-700">Treatment Services:</span>
                 <span className="text-sm font-semibold text-gray-900">
-                  {formatCurrency(totalTreatmentCost, currency)}
+                  {formatCurrency(totalTreatmentStandardCost, currency)}
                 </span>
               </div>
               {totalTreatmentDiscount > 0 && (
                 <div className="flex justify-between py-2 border-b border-gray-300" style={{ borderBottom: '1px solid #d1d5db', padding: '8px 0' }}>
-                  <span className="text-sm font-semibold text-gray-700">Treatment Adjustments:</span>
+                  <span className="text-sm font-semibold text-gray-700">Overall Discount:</span>
                   <span className="text-sm font-semibold text-amber-700">
                     -{formatCurrency(totalTreatmentDiscount, currency)}
                   </span>
@@ -789,8 +766,8 @@ const Receipt: React.FC<ReceiptProps> = ({
 
         {/* Summary */}
         <div style={{ marginBottom: '6px' }}>
-          {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, currency))}
-          {totalTreatmentDiscount > 0 && thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, currency)}`, undefined, { color: '#b45309' })}
+          {thermalLine('Treatment Services:', formatCurrency(totalTreatmentStandardCost, currency))}
+          {totalTreatmentDiscount > 0 && thermalLine('Overall Discount:', `-${formatCurrency(totalTreatmentDiscount, currency)}`, undefined, { color: '#b45309' })}
           {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, currency))}
           <div style={{ borderTop: '1px dashed #333', margin: '4px 0' }} />
           {thermalLine('Subtotal:', formatCurrency(grandTotal, currency), undefined, { fontWeight: 700 })}
@@ -883,11 +860,11 @@ const Receipt: React.FC<ReceiptProps> = ({
             <div className="w-72">
               <div className="flex justify-between py-2 border-b border-gray-300">
                 <span className="text-sm font-semibold text-gray-700">Treatment Services:</span>
-                <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalTreatmentCost, effectiveCurrency)}</span>
+                <span className="text-sm font-semibold text-gray-900">{formatCurrency(totalTreatmentStandardCost, effectiveCurrency)}</span>
               </div>
               {totalTreatmentDiscount > 0 ? (
                 <div className="flex justify-between py-2 border-b border-gray-300">
-                  <span className="text-sm font-semibold text-gray-700">Treatment Adjustments:</span>
+                  <span className="text-sm font-semibold text-gray-700">Overall Discount:</span>
                   <span className="text-sm font-semibold text-amber-700">-{formatCurrency(totalTreatmentDiscount, effectiveCurrency)}</span>
                 </div>
               ) : null}
@@ -1038,8 +1015,8 @@ const Receipt: React.FC<ReceiptProps> = ({
 
         {thermalThickDivider()}
         <div style={{ marginBottom: '6px' }}>
-          {thermalLine('Treatment Services:', formatCurrency(totalTreatmentCost, effectiveCurrency))}
-          {totalTreatmentDiscount > 0 ? thermalLine('Treatment Adjust.:', `-${formatCurrency(totalTreatmentDiscount, effectiveCurrency)}`, undefined, { color: '#b45309' }) : null}
+          {thermalLine('Treatment Services:', formatCurrency(totalTreatmentStandardCost, effectiveCurrency))}
+          {totalTreatmentDiscount > 0 ? thermalLine('Overall Discount:', `-${formatCurrency(totalTreatmentDiscount, effectiveCurrency)}`, undefined, { color: '#b45309' }) : null}
           {thermalLine('Medicines & Items:', formatCurrency(totalMedicineCost, effectiveCurrency))}
           {paymentServiceFeeAmount > 0 ? thermalLine(`${paymentServiceFeeLabel}:`, formatCurrency(paymentServiceFeeAmount, effectiveCurrency)) : null}
           {thermalDivider()}

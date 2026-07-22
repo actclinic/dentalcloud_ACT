@@ -265,8 +265,9 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     { header: 'Patient Type', width: 18 },
     { header: 'Patient Balance', width: 16 },
     { header: 'Amount', width: 14, format: 'currency' },
-    { header: 'Service Charges', width: 16, format: 'currency' },
-    { header: 'Doctor Earned', width: 14, format: 'currency' }
+    { header: 'Discount', width: 14, format: 'currency' },
+    { header: 'Service Charges', width: 18, format: 'currency' },
+    { header: 'Doctor Earned', width: 18, format: 'currency' }
   ];
   const exportRows = filterAuditLogRowsForExport(
     buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false, options.payments || [], options.rescheduleLogs || []),
@@ -281,6 +282,7 @@ export const exportClinicalRecordsToExcel = async (records: ClinicalRecord[], cu
     'Patient Type': row.patientType,
     'Patient Balance': row.patientBalance,
     Amount: row.amount ?? 0,
+    Discount: row.discount === null ? 0 : -row.discount,
     'Service Charges': row.serviceCharges ?? 0,
     'Doctor Earned': row.doctorEarned ?? 0
   }));

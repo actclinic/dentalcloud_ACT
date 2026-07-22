@@ -290,6 +290,9 @@ interface ClinicalRecordsExportOptions extends AuditLogFilterOptions {
   includeAppointments?: boolean;
 }
 
+export const AUDIT_LOG_PDF_TABLE_WIDTH = 260;
+export const AUDIT_LOG_PDF_COLUMN_WIDTHS = [15, 23, 26, 24, 50, 24, 21, 17, 17, 21, 22] as const;
+
 export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: Currency, options: ClinicalRecordsExportOptions = {}) => {
   const exportRows = filterAuditLogRowsForExport(
     buildAuditLogRows(records, options.appointments || [], options.includeAppointments ?? false, options.payments || [], options.rescheduleLogs || []),
@@ -311,13 +314,15 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
     doc.text(`Date Range: ${options.dateFrom} to ${options.dateTo}`, 14, 40);
   }
   
-  const totalRevenue = tableRows.reduce((sum, row) => sum + (row.amount || 0), 0);
-  doc.text(`Treatment Revenue: ${formatCurrency(totalRevenue, currency)}`, 14, options.dateFrom && options.dateTo ? 46 : 40);
+  const netTreatmentCharges = tableRows
+    .filter((row) => row.type === 'Treatment')
+    .reduce((sum, row) => sum + (row.amount || 0), 0);
+  doc.text(`Net Treatment Charges: ${formatCurrency(netTreatmentCharges, currency)}`, 14, options.dateFrom && options.dateTo ? 46 : 40);
   
   // Table
   autoTable(doc, {
     startY: options.dateFrom && options.dateTo ? 52 : 46,
-    head: [['Type', 'Date / Time', 'Patient', 'Clinician', 'Clinical Activity', 'Patient Type', 'Patient Balance', 'Amount', 'Service Charges', 'Doctor Earned']],
+    head: [['Type', 'Date / Time', 'Patient', 'Clinician', 'Clinical Activity', 'Patient Type', 'Patient Balance', 'Amount', 'Discount', 'Service Charges', 'Doctor Earned']],
     body: tableRows.map((row) => [
       row.type,
       row.dateTime,
@@ -327,6 +332,7 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
       row.patientType,
       row.patientBalance,
       row.amount === null ? '-' : formatCurrency(row.amount, currency),
+      row.discount === null ? '-' : `-${formatCurrency(row.discount, currency)}`,
       row.serviceCharges === null ? '-' : formatCurrency(row.serviceCharges, currency),
       row.doctorEarned === null ? '-' : formatCurrency(row.doctorEarned, currency)
     ]),
@@ -335,15 +341,17 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
     bodyStyles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [245, 247, 250] },
     columnStyles: {
-      0: { cellWidth: 20 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 32 },
-      3: { cellWidth: 30 },
-      4: { cellWidth: 60 },
-      5: { cellWidth: 34 },
-      6: { cellWidth: 24, halign: 'right' },
-      7: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
-      8: { cellWidth: 24, halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[0] },
+      1: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[1] },
+      2: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[2] },
+      3: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[3] },
+      4: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[4] },
+      5: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[5] },
+      6: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[6], halign: 'right' },
+      7: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[7], halign: 'right', fontStyle: 'bold' },
+      8: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[8], halign: 'right', fontStyle: 'bold' },
+      9: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[9], halign: 'right', fontStyle: 'bold' },
+      10: { cellWidth: AUDIT_LOG_PDF_COLUMN_WIDTHS[10], halign: 'right', fontStyle: 'bold' }
     }
   });
   

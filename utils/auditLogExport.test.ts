@@ -15,6 +15,8 @@ describe('audit log export rows', () => {
       teeth: [11],
       description: 'Filling',
       cost: 20000,
+      standardCost: 25000,
+      discountAmount: 5000,
       doctorEarnings: 8000,
       date: '2026-05-30'
     },
@@ -82,6 +84,7 @@ describe('audit log export rows', () => {
       patientId: 'pat-1',
       patient_name: 'Aung Min',
       amount: 10000,
+      treatmentIds: ['tr-1', 'tr-2'],
       date: '2026-05-30',
       type: 'PARTIAL',
       remainingBalance: 5000,
@@ -98,7 +101,19 @@ describe('audit log export rows', () => {
           balanceAfter: 5000,
           serviceFeeAmount: 3000,
           serviceFeeCategory: 'NEW'
-        }
+        },
+        treatments: [
+          {
+            id: 'tr-1',
+            date: '2026-05-30',
+            description: 'Filling',
+            teeth: [11],
+            finalCost: 20000,
+            standardCost: 25000,
+            discountAmount: 5000,
+            pricingNote: 'DISCOUNT'
+          }
+        ]
       },
       createdAt: '2026-05-30T10:00:00Z',
       createdByUserName: 'Reception One'
@@ -188,6 +203,7 @@ describe('audit log export rows', () => {
       patientType: 'Marketing',
       patientBalance: '15,000Ks',
       amount: 30000,
+      discount: 5000,
       serviceCharges: 3000,
       doctorEarned: 12000
     });
@@ -205,6 +221,45 @@ describe('audit log export rows', () => {
       serviceCharges: null,
       doctorEarned: null
     });
+  });
+
+  it('shows the related treatment discount on payment audit rows and exports', () => {
+    const rows = buildAuditLogRows(records, appointments, true, payments);
+    const paymentRow = rows.find((row) => row.kind === 'payment');
+
+    expect(paymentRow?.kind).toBe('payment');
+    if (paymentRow?.kind === 'payment') {
+      expect(paymentRow.payment._treatmentDiscountAmount).toBe(5000);
+      expect(buildAuditLogExportTableRows([paymentRow], 'MMK')[0].discount).toBe(5000);
+    }
+  });
+
+  it('derives legacy receipt discounts and does not double-count duplicate treatment links', () => {
+    const legacyPayment: PaymentRecord = {
+      ...payments[0],
+      id: 'pay-legacy-discount',
+      treatmentIds: ['tr-1', 'tr-1'],
+      receiptSnapshot: {
+        ...payments[0].receiptSnapshot!,
+        treatments: [{
+          id: 'tr-1',
+          date: '2026-05-30',
+          description: 'Filling',
+          teeth: [11],
+          finalCost: 20000,
+          standardCost: 25000,
+          discountAmount: 0
+        }]
+      }
+    };
+    const paymentRow = buildAuditLogRows(records, [], true, [legacyPayment])
+      .find((row) => row.kind === 'payment');
+
+    expect(paymentRow?.kind).toBe('payment');
+    if (paymentRow?.kind === 'payment') {
+      expect(paymentRow.payment._treatmentDiscountAmount).toBe(5000);
+      expect(buildAuditLogExportTableRows([paymentRow], 'MMK')[0].discount).toBe(5000);
+    }
   });
 
   it('falls back to applied appointment clinical fee when payment service charge metadata is unavailable', () => {
