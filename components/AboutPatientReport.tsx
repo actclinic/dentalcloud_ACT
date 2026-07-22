@@ -3,7 +3,7 @@ import {
   Activity, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, FileHeart,
   Download, Pill, Stethoscope, UserRound, WalletCards
 } from 'lucide-react';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import type { Appointment, ClinicalRecord, Doctor, MedicineSale, Patient, PaymentAllocation, PaymentMethod, PaymentRecord } from '../types';
 import type { Currency } from '../utils/currency';
 import { formatCurrency } from '../utils/currency';
@@ -56,6 +56,28 @@ const EmptyPanel = ({ children }: { children: React.ReactNode }) => (
   <div className="flex min-h-36 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm font-medium text-slate-500">
     {children}
   </div>
+);
+
+const ChartLegend = ({
+  items,
+  colors,
+  formatValue
+}: {
+  items: Array<{ name: string; value: number }>;
+  colors: Record<string, string>;
+  formatValue: (value: number) => string;
+}) => (
+  <ul aria-label="Chart legend" className="mt-3 flex flex-wrap gap-2" role="list">
+    {items.map((item) => (
+      <li key={item.name} className="flex min-w-0 flex-1 basis-36 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colors[item.name] }} aria-hidden="true" />
+          <span className="truncate text-xs font-semibold text-slate-700" title={item.name}>{item.name}</span>
+        </span>
+        <span className="shrink-0 text-xs font-black tabular-nums text-slate-950">{formatValue(item.value)}</span>
+      </li>
+    ))}
+  </ul>
 );
 
 const AboutPatientReport: React.FC<AboutPatientReportProps> = ({
@@ -148,17 +170,21 @@ const AboutPatientReport: React.FC<AboutPatientReportProps> = ({
               <h3 className="font-black text-slate-950">Care value composition</h3>
               <p className="mt-1 text-xs text-slate-500">Billed clinical care, not cash collected.</p>
             </div>
-            <div className="h-64 min-h-64">
+            <div className="min-h-64">
               {careComposition.length ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={careComposition} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={4}>
-                      {careComposition.map((entry) => <Cell key={entry.name} fill={CARE_COLORS[entry.name]} />)}
-                    </Pie>
-                    <Tooltip formatter={(value: number | undefined) => formatCurrency(Number(value || 0), currency)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <>
+                  <div className="h-48" aria-label="Care value composition chart">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                        <Pie data={careComposition} dataKey="value" nameKey="name" innerRadius={50} outerRadius={76} paddingAngle={4}>
+                          {careComposition.map((entry) => <Cell key={entry.name} fill={CARE_COLORS[entry.name]} />)}
+                        </Pie>
+                        <Tooltip formatter={(value: number | undefined) => formatCurrency(Number(value || 0), currency)} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ChartLegend items={careComposition} colors={CARE_COLORS} formatValue={(value) => formatCurrency(value, currency)} />
+                </>
               ) : <EmptyPanel>No treatment, medicine, or service-fee value has been recorded.</EmptyPanel>}
             </div>
           </div>
@@ -167,17 +193,21 @@ const AboutPatientReport: React.FC<AboutPatientReportProps> = ({
               <h3 className="font-black text-slate-950">Appointment outcomes</h3>
               <p className="mt-1 text-xs text-slate-500">All appointments currently available for this patient.</p>
             </div>
-            <div className="h-64 min-h-64">
+            <div className="min-h-64">
               {report.appointmentStatus.length ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={report.appointmentStatus} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={4}>
-                      {report.appointmentStatus.map((entry) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name]} />)}
-                    </Pie>
-                    <Tooltip formatter={(value: number | undefined) => [`${Number(value || 0)} appointments`, 'Count']} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <>
+                  <div className="h-48" aria-label="Appointment outcomes chart">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                        <Pie data={report.appointmentStatus} dataKey="value" nameKey="name" innerRadius={50} outerRadius={76} paddingAngle={4}>
+                          {report.appointmentStatus.map((entry) => <Cell key={entry.name} fill={STATUS_COLORS[entry.name]} />)}
+                        </Pie>
+                        <Tooltip formatter={(value: number | undefined) => [`${Number(value || 0)} appointments`, 'Count']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ChartLegend items={report.appointmentStatus} colors={STATUS_COLORS} formatValue={(value) => `${value}`} />
+                </>
               ) : <EmptyPanel>No appointments have been recorded for this patient.</EmptyPanel>}
             </div>
           </div>
