@@ -68,6 +68,25 @@ describe('treatments.getAllRecords', () => {
     expect(supabaseMock.calls).toContainEqual({ action: 'limit', count: 50 });
   });
 
+  it('keeps commission-ledger GET URLs below custom gateway limits', async () => {
+    supabaseMock.rows = Array.from({ length: 101 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      location_id: 'location-1',
+      patient_id: `patient-${index}`,
+      doctor_id: `doctor-${index}`,
+      teeth: [],
+      description: 'Cleaning',
+      cost: 10_000,
+      doctor_earnings: 1_000,
+      date: '2026-07-16'
+    }));
+
+    await api.treatments.getAllRecords('location-1', { limit: null });
+
+    const ledgerFilters = supabaseMock.calls.filter((call: any) => call.action === 'in' && call.column === 'treatment_id');
+    expect(ledgerFilters.map((call: any) => call.value.length)).toEqual([50, 50, 1]);
+  });
+
   it('does not apply the recent-record limit when audit log asks for all records', async () => {
     await api.treatments.getAllRecords('location-1', { limit: null });
 

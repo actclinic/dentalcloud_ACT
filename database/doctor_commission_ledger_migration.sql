@@ -124,6 +124,11 @@ WITH CHECK (true);
 
 COMMIT;
 
+-- Make the newly created/granted relation visible to PostgREST immediately.
+-- This is especially important on production projects where the app may be
+-- deployed as soon as this idempotent migration finishes.
+NOTIFY pgrst, 'reload schema';
+
 SELECT
   'migration_ok' AS status,
   EXISTS (

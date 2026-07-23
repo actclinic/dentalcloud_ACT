@@ -377,16 +377,21 @@ const getDoctorEarningEntriesByTreatmentIds = async (treatmentIds: string[]) => 
   const entriesByTreatment = new Map<string, any[]>();
   if (uniqueIds.length === 0) return entriesByTreatment;
   const rows: any[] = [];
+  // PostgREST encodes `.in()` filters in the GET request URL. Keep UUID batches
+  // below common Cloudflare/Kong request-line limits used by our custom domains.
+  // A 200-UUID batch is roughly 8 KB before the select list and URL escaping and
+  // has produced gateway 502 responses (surfaced by browsers as a CORS failure).
+  const requestBatchSize = 50;
   // This lookup only enriches treatment rows with commission-ledger breakdown details.
   // It must never block or blank out the primary treatments list (e.g. the Audit Log's
   // Treatments filter), so any failure here is logged and treated as "no entries" rather
   // than propagated to the caller's outer try/catch.
-  for (let index = 0; index < uniqueIds.length; index += 200) {
+  for (let index = 0; index < uniqueIds.length; index += requestBatchSize) {
     try {
       const { data, error } = await supabase
         .from('doctor_commission_entries')
         .select('id, payment_id, treatment_id, doctor_id, payment_date, treatment_date, calculation_mode, allocated_payment, commission_rate, earnings')
-        .in('treatment_id', uniqueIds.slice(index, index + 200));
+        .in('treatment_id', uniqueIds.slice(index, index + requestBatchSize));
 
       if (error) {
         // Commission entries enrich dashboard period totals, but they must never
