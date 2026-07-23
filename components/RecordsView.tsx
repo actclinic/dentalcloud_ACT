@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards, Printer, Pencil, Package } from 'lucide-react';
-import { Appointment, AppointmentRescheduleLog, ClinicalRecord, PaymentRecord } from '../types';
+import { Beaker, Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards, Printer, Pencil, Package } from 'lucide-react';
+import { Appointment, AppointmentRescheduleLog, ClinicalRecord, PaymentRecord, TreatmentCostSummary } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportClinicalRecordsToPDF } from '../utils/pdfExport';
 import { exportClinicalRecordsToExcel } from '../utils/excelExport';
@@ -10,7 +10,7 @@ import ExportMenu from './ExportMenu';
 import { toLocalISODate } from '../utils/auditLogFilters';
 import { buildAuditLogRows, filterAuditLogRowsForExport, getAuditPaymentDiscount, type AuditExportRow, type AuditFilter } from '../utils/auditLogExport';
 import { buildRecordsViewFilterOptions } from '../utils/recordsViewFilterOptions';
-import { formatPaymentMethod } from '../utils/paymentMethods';
+import { formatPaymentAllocations, formatPaymentMethod } from '../utils/paymentMethods';
 import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
 import EditPaymentModal from './EditPaymentModal';
 import { api } from '../services/api';
@@ -41,7 +41,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
   const [dateFrom, setDateFrom] = useState(todayKey);
   const [dateTo, setDateTo] = useState(todayKey);
-  const [materialSummaries, setMaterialSummaries] = useState<Record<string, { auditLogId: string; totalAmount: number; itemCount: number }>>({});
+  const [materialSummaries, setMaterialSummaries] = useState<Record<string, TreatmentCostSummary>>({});
   const isTodayRange = dateFrom === todayKey && dateTo === todayKey;
   const itemsPerPage = 10;
 
@@ -110,6 +110,11 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
             {formatCurrency(correction.newAmount, currency)}
             )
             {correction.editorName ? ` by ${correction.editorName}` : ''}
+            {correction.oldAllocations?.length || correction.newAllocations?.length ? (
+              <span className="mt-1 block">
+                Tender: {formatPaymentAllocations(correction.oldAllocations)} → {formatPaymentAllocations(correction.newAllocations)}
+              </span>
+            ) : null}
           </div>
         ))}
       </div>
@@ -143,22 +148,16 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
     ), 0);
   };
 
+  const getTypedCostTotal = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }, costType: 'material' | 'lab') => {
+    const key = costType === 'lab' ? 'labTotal' : 'materialTotal';
+    return getTreatmentRecordIds(record).reduce((sum, treatmentId) => sum + Number(materialSummaries[treatmentId]?.[key] || 0), 0);
+  };
+
   const getAdjustedDoctorEarned = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
     const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
     return calculateMaterialAdjustedDoctorEarnings(
       groupedRecords,
       (treatmentId) => Number(materialSummaries[treatmentId]?.totalAmount || 0)
-    );
-  };
-
-  const renderMaterialCost = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    const totalAmount = getMaterialTotal(record);
-    if (totalAmount <= 0) return <span className="text-slate-400">-</span>;
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--hover-100)] bg-[var(--hover-50)] px-2.5 py-1 text-xs font-black text-[var(--hover-700)]">
-        <Package size={13} />
-        {formatCurrency(totalAmount, currency)}
-      </span>
     );
   };
 
@@ -423,7 +422,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                   <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Amount</th>
                   <th className="px-6 py-4 text-right text-[11px] font-black text-amber-700 uppercase tracking-[0.18em]">Discount</th>
                   <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Service Charges</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Material Cost</th>
+                  <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Material & Lab</th>
                   <th className="px-6 py-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-[0.18em]">Doctor Earned</th>
                 </tr>
               </thead>
@@ -463,7 +462,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                           <td className="px-4 py-4 text-right text-sm text-slate-400 xl:px-6">-</td>
                           <td className="px-4 py-4 text-sm font-bold text-slate-800 xl:px-6">
                             <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs font-semibold text-slate-500">{payment.createdByUserName || 'Unknown'} · {formatPaymentMethod(payment.paymentMethod)}</span>
+                              <span className="text-xs font-semibold text-slate-500">{payment.createdByUserName || 'Unknown'} · {payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)}</span>
                               <div className="flex items-center gap-2">
                                 {canEditPayments ? (
                                   <button
@@ -549,6 +548,8 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                     }
 
                     const rec = row.record;
+                    const materialOnlyTotal = getTypedCostTotal(rec, 'material');
+                    const labTotal = getTypedCostTotal(rec, 'lab');
                     const adjustedDoctorEarned = getAdjustedDoctorEarned(rec);
                     return (
                       <tr key={`treatment-${rec.id}`} className="border-l-4 border-emerald-300 transition-colors hover:bg-emerald-50/30">
@@ -571,7 +572,14 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                         <td className="px-4 py-4 text-right text-sm font-black text-slate-900 xl:px-6">{formatCurrency(rec.cost || 0, currency)}</td>
                         <td className="px-4 py-4 text-right text-sm font-black text-amber-700 xl:px-6">{rec.discountAmount ? `-${formatCurrency(rec.discountAmount, currency)}` : '-'}</td>
                         <td className="px-4 py-4 text-right text-sm font-bold text-indigo-700 xl:px-6">{rec.serviceCharges ? formatCurrency(rec.serviceCharges, currency) : '-'}</td>
-                        <td className="px-4 py-4 text-right text-sm font-bold xl:px-6">{renderMaterialCost(rec)}</td>
+                        <td className="px-4 py-4 text-right text-xs font-bold xl:px-6">
+                          {materialOnlyTotal > 0 || labTotal > 0 ? (
+                            <div className="space-y-1">
+                              {materialOnlyTotal > 0 && <div className="text-cyan-700">M: {formatCurrency(materialOnlyTotal, currency)}</div>}
+                              {labTotal > 0 && <div className="text-violet-700">L: {formatCurrency(labTotal, currency)}</div>}
+                            </div>
+                          ) : '-'}
+                        </td>
                         <td className="px-4 py-4 text-right text-sm font-bold text-emerald-700 xl:px-6">{adjustedDoctorEarned ? formatCurrency(adjustedDoctorEarned, currency) : '-'}</td>
                       </tr>
                     );
@@ -606,7 +614,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <div className="rounded-xl bg-violet-50 p-3">
                           <p className="text-[11px] font-semibold uppercase text-violet-600">Payment Type</p>
-                          <p className="mt-1 text-sm font-bold text-violet-900">{formatPaymentMethod(payment.paymentMethod)}</p>
+                          <p className="mt-1 text-sm font-bold text-violet-900">{payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)}</p>
                         </div>
                         <div className="rounded-xl bg-rose-50 p-3 text-right">
                           <p className="text-[11px] font-semibold uppercase text-rose-600">Balance</p>
@@ -716,7 +724,8 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                 }
 
                 const rec = row.record;
-                const materialTotal = getMaterialTotal(rec);
+                const materialOnlyTotal = getTypedCostTotal(rec, 'material');
+                const labTotal = getTypedCostTotal(rec, 'lab');
                 const adjustedDoctorEarned = getAdjustedDoctorEarned(rec);
                 return (
                   <div key={`treatment-${rec.id}`} className="my-2 min-w-0 overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm ring-1 ring-emerald-50">
@@ -736,12 +745,21 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
                         <span className="min-w-0 text-right text-sm font-black text-amber-800">-{formatCurrency(rec.discountAmount, currency)}</span>
                       </div>
                     ) : null}
-                    {materialTotal > 0 ? (
+                    {materialOnlyTotal > 0 ? (
                       <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-[var(--hover-50)] p-3">
                         <span className="text-xs font-semibold text-[var(--hover-700)]">Material Cost</span>
                         <span className="inline-flex min-w-0 items-center gap-1 text-right text-sm font-bold text-[var(--hover-800)]">
                           <Package size={14} />
-                          {formatCurrency(materialTotal, currency)}
+                          {formatCurrency(materialOnlyTotal, currency)}
+                        </span>
+                      </div>
+                    ) : null}
+                    {labTotal > 0 ? (
+                      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-violet-50 p-3">
+                        <span className="text-xs font-semibold text-violet-700">Lab Cost</span>
+                        <span className="inline-flex min-w-0 items-center gap-1 text-right text-sm font-bold text-violet-800">
+                          <Beaker size={14} />
+                          {formatCurrency(labTotal, currency)}
                         </span>
                       </div>
                     ) : null}

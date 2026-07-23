@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from 'react';
-import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon, Trophy, AlertTriangle, Clock, XCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon, Trophy, AlertTriangle, Clock, XCircle, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
 import { appointmentPatientName, buildRecallsCancelsLists } from '../utils/recallsCancels';
 import ExportMenu from './ExportMenu';
+import TreatmentAnalysisView from './TreatmentAnalysisView';
 import {
   buildDailyAppointmentData,
   buildDailyFinancialData,
@@ -13,6 +14,7 @@ import {
   calculateDashboardRangeSummary,
   countPatientsCreatedInRange
 } from '../utils/dashboardMath';
+import { buildTreatmentAnalysis } from '../utils/treatmentAnalytics';
 
 interface DashboardViewProps {
   patients: Patient[];
@@ -26,6 +28,8 @@ interface DashboardViewProps {
   allBranchesValue: string;
   canViewAllBranches: boolean;
   onLocationChange: (locationId: string) => void;
+  onLoadTreatmentAnalysis: (dateFrom: string, dateTo: string) => Promise<ClinicalRecord[]>;
+  onSelectPatient: (patient: Patient) => void;
   loading?: boolean;
 }
 
@@ -48,6 +52,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   allBranchesValue,
   canViewAllBranches,
   onLocationChange,
+  onLoadTreatmentAnalysis,
+  onSelectPatient,
   loading = false
 }) => {
   const selectedLocationName = useMemo(() => {
@@ -56,24 +62,71 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   }, [allBranchesValue, locations, selectedLocationId]);
 
   const todayKey = useMemo(() => toLocalISODate(new Date()), []);
-  const [activeTab, setActiveTab] = useState<'overview' | 'recalls-cancels'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'recalls-cancels' | 'treatment-analysis'>('overview');
   const [exportingRecallsCancels, setExportingRecallsCancels] = useState(false);
   const [dateFrom, setDateFrom] = useState(todayKey);
   const [dateTo, setDateTo] = useState(todayKey);
+  const [analysisRecords, setAnalysisRecords] = useState<ClinicalRecord[]>([]);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
+  const analysisRequestRef = useRef(0);
+  const analysisPanelRef = useRef<HTMLDivElement>(null);
+  const moreDetailButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleDateFromChange = (value: string) => {
     setDateFrom(value);
+    const nextDateTo = value > dateTo ? value : dateTo;
     if (value > dateTo) {
       setDateTo(value);
     }
+    if (activeTab === 'treatment-analysis') void loadTreatmentAnalysis(value, nextDateTo);
   };
 
   const handleDateToChange = (value: string) => {
     setDateTo(value);
+    const nextDateFrom = value < dateFrom ? value : dateFrom;
     if (value < dateFrom) {
       setDateFrom(value);
     }
+    if (activeTab === 'treatment-analysis') void loadTreatmentAnalysis(nextDateFrom, value);
   };
+
+  const loadTreatmentAnalysis = async (from: string, to: string) => {
+    const requestId = ++analysisRequestRef.current;
+    setAnalysisLoading(true);
+    setAnalysisError('');
+    setAnalysisRecords([]);
+
+    try {
+      const records = await onLoadTreatmentAnalysis(from, to);
+      if (requestId === analysisRequestRef.current) setAnalysisRecords(records);
+    } catch (error) {
+      if (requestId === analysisRequestRef.current) {
+        setAnalysisError(error instanceof Error ? error.message : 'Treatment analysis could not be loaded.');
+      }
+    } finally {
+      if (requestId === analysisRequestRef.current) setAnalysisLoading(false);
+    }
+  };
+
+  const openTreatmentAnalysis = () => {
+    setActiveTab('treatment-analysis');
+    void loadTreatmentAnalysis(dateFrom, dateTo);
+    requestAnimationFrame(() => analysisPanelRef.current?.focus());
+  };
+
+  const closeTreatmentAnalysis = () => {
+    analysisRequestRef.current += 1;
+    setActiveTab('overview');
+    requestAnimationFrame(() => {
+      moreDetailButtonRef.current?.focus();
+      moreDetailButtonRef.current?.scrollIntoView({ block: 'center' });
+    });
+  };
+
+  useEffect(() => () => {
+    analysisRequestRef.current += 1;
+  }, []);
 
   const isWithinRange = (dateStr?: string) => {
     if (!dateStr) return false;
@@ -248,24 +301,46 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             {rows.map((appointment) => {
               const patientName = appointmentPatientName(appointment);
               const relativeLabel = getRelativeDayLabel(appointment.date);
-
-              return (
-                <article
-                  key={appointment.id}
-                  className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors ${classes.row}`}
-                >
-                  <div className="min-w-0">
+              const patient = tone === 'cancelled' && appointment.patient_id
+                ? patients.find(candidate => candidate.id === appointment.patient_id)
+                : undefined;
+              const rowContent = (
+                <>
+                  <div className="min-w-0 text-left">
                     <h4 className="truncate text-sm font-semibold text-slate-900">{patientName}</h4>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500">
                       <span className={`rounded-full px-2 py-0.5 ring-1 ${classes.badge}`}>{appointment.patient_id ? 'Patient' : 'Lead'}</span>
                       <span>{appointment.type || 'No type'}</span>
+                      {patient && <span className="font-bold text-indigo-600">Open chart</span>}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-slate-700">{formatAppointmentDate(appointment.date)}</p>
-                    <p className="mt-1 font-mono text-xs font-semibold text-slate-500 tabular-nums">{appointment.time || '--:--'}</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{relativeLabel}</p>
+                  <div className="flex items-start gap-2 text-right">
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">{formatAppointmentDate(appointment.date)}</p>
+                      <p className="mt-1 font-mono text-xs font-semibold text-slate-500 tabular-nums">{appointment.time || '--:--'}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{relativeLabel}</p>
+                    </div>
+                    {patient && <ArrowUpRight className="mt-0.5 h-4 w-4 flex-none text-indigo-500" aria-hidden="true" />}
                   </div>
+                </>
+              );
+
+              return patient ? (
+                <button
+                  key={appointment.id}
+                  type="button"
+                  onClick={() => onSelectPatient(patient)}
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${classes.row}`}
+                  aria-label={`Open clinical chart for ${patientName}`}
+                >
+                  {rowContent}
+                </button>
+              ) : (
+                <article
+                  key={appointment.id}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 transition-colors ${classes.row}`}
+                >
+                  {rowContent}
                 </article>
               );
             })}
@@ -361,23 +436,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     Cancelled: '#EF4444'
   };
 
-  // Treatment Mix (top 8 procedures by count, range)
-  const treatmentMixData = useMemo(() => {
-    const map = new Map<string, number>();
-
-    filteredTreatmentRecords.forEach(rec => {
-      const key = rec.description || 'Unknown';
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, count]) => ({
-        name: name.length > 18 ? name.substring(0, 18) + '...' : name,
-        count
-      }));
-  }, [filteredTreatmentRecords]);
+  // Keep the overview and detailed page on one aggregation path so their counts cannot drift.
+  const treatmentAnalysis = useMemo(
+    () => buildTreatmentAnalysis(filteredTreatmentRecords, { combineAcrossLocations: selectedLocationId === allBranchesValue }),
+    [allBranchesValue, filteredTreatmentRecords, selectedLocationId]
+  );
+  const treatmentMixData = useMemo(() => treatmentAnalysis.rows.slice(0, 8).map((row) => ({
+    name: row.name.length > 18 ? `${row.name.substring(0, 18)}...` : row.name,
+    count: row.count
+  })), [treatmentAnalysis.rows]);
 
   const expenseCategoryData = useMemo(() => {
     const totals = new Map<string, number>();
@@ -397,11 +464,16 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const paymentMethodData = useMemo(() => {
     const totals = new Map<string, { value: number; count: number }>();
     filteredPaymentRecords.forEach((payment) => {
-      const name = formatPaymentMethod(payment.paymentMethod);
-      const current = totals.get(name) || { value: 0, count: 0 };
-      current.value += Number(payment.amount || 0);
-      current.count += 1;
-      totals.set(name, current);
+      const allocations = payment.allocations?.length
+        ? payment.allocations
+        : [{ method: payment.paymentMethod || 'UNKNOWN' as const, amount: payment.amount }];
+      allocations.forEach((allocation) => {
+        const name = formatPaymentMethod(allocation.method);
+        const current = totals.get(name) || { value: 0, count: 0 };
+        current.value += Number(allocation.amount || 0);
+        current.count += 1; // Tender-use count; parent payment count remains filteredPaymentRecords.length.
+        totals.set(name, current);
+      });
     });
 
     return Array.from(totals.entries())
@@ -611,7 +683,11 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               {canViewAllBranches ? (
                 <select
                   value={selectedLocationId}
-                  onChange={(e) => onLocationChange(e.target.value)}
+                  onChange={(e) => {
+                    setActiveTab('overview');
+                    analysisRequestRef.current += 1;
+                    void onLocationChange(e.target.value);
+                  }}
                   disabled={loading}
                   className="w-full bg-white text-gray-800 text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
@@ -636,12 +712,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-wrap gap-2 rounded-xl border border-gray-100 bg-white p-2 shadow-sm">
         {[
           { id: 'overview', label: 'Overview' },
-          { id: 'recalls-cancels', label: 'Recalls & Cancels' }
+          { id: 'recalls-cancels', label: 'Recalls & Cancels' },
+          ...(activeTab === 'treatment-analysis' ? [{ id: 'treatment-analysis', label: 'Treatment Analysis' }] : [])
         ].map(tab => (
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id as 'overview' | 'recalls-cancels')}
+            onClick={() => setActiveTab(tab.id as 'overview' | 'recalls-cancels' | 'treatment-analysis')}
             className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${activeTab === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             {tab.label}
@@ -649,7 +726,22 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         ))}
       </div>
 
-      {activeTab === 'recalls-cancels' ? (
+      {activeTab === 'treatment-analysis' ? (
+        <div ref={analysisPanelRef} tabIndex={-1} className="focus:outline-none">
+          <TreatmentAnalysisView
+            records={analysisRecords}
+            currency={currency}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            locationName={selectedLocationName}
+            loading={analysisLoading}
+            error={analysisError}
+            combineAcrossLocations={selectedLocationId === allBranchesValue}
+            onRetry={() => void loadTreatmentAnalysis(dateFrom, dateTo)}
+            onBack={closeTreatmentAnalysis}
+          />
+        </div>
+      ) : activeTab === 'recalls-cancels' ? (
         <div className="space-y-5">
           <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -745,7 +837,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                     <tr key={payment.id}>
                       <td className="whitespace-nowrap py-2 pr-4 text-gray-500">{payment.date}</td>
                       <td className="py-2 pr-4 font-medium text-gray-900">{payment.patient_name || 'Unknown'}</td>
-                      <td className="py-2 pr-4 font-semibold text-gray-700">{formatPaymentMethod(payment.paymentMethod)}</td>
+                      <td className="py-2 pr-4 font-semibold text-gray-700">{payment.allocations?.length > 1 ? payment.allocations.map((allocation) => formatPaymentMethod(allocation.method)).join(' + ') : formatPaymentMethod(payment.paymentMethod)}</td>
                       <td className="py-2 text-right font-bold text-violet-700">{formatCurrency(payment.amount, currency)}</td>
                     </tr>
                   ))}
@@ -1102,7 +1194,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-xs text-gray-500 mb-4">Top procedures by frequency in the selected range</p>
           <div className="h-[260px] w-full min-h-[260px]">
             {treatmentMixData.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">No treatment activity recorded in the last 30 days.</p>
+              <p className="text-sm text-gray-400 italic">No treatment activity recorded in the selected range.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={treatmentMixData} layout="vertical" margin={{ left: 80 }}>
@@ -1122,6 +1214,18 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                 </BarChart>
               </ResponsiveContainer>
             )}
+          </div>
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <button
+              ref={moreDetailButtonRef}
+              type="button"
+              onClick={openTreatmentAnalysis}
+              className="group inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 transition-colors hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              aria-label="Open detailed treatment analysis"
+            >
+              More Detail
+              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+            </button>
           </div>
         </div>
       </div>

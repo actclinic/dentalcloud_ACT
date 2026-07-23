@@ -1,18 +1,21 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType } from '../types';
 import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
 import { buildSupabasePublicUrl, deleteSupabaseStorageFile, isSupabaseStorageReady, listSupabaseStorageFiles, normalizeSupabaseStorageUrl, uploadSupabaseStorageFile } from '../utils/supabaseStorage';
 import { findInvalidTeeth } from '../utils/toothNumbering';
-import { normalizePaymentMethod } from '../utils/paymentMethods';
+import { getPaymentHeaderMethod, normalizePaymentAllocations, normalizePaymentMethod, validatePaymentAllocations } from '../utils/paymentMethods';
 import { normalizePaymentReceiptSnapshot } from '../utils/paymentReceipt';
 import { DEFAULT_RECEIPT_PREFERENCES, normalizeReceiptPreferences } from '../utils/receiptPreferences';
 import { usesFlatVisitCommission } from '../utils/doctorCommission';
 import { allocateCommissionablePayments, calculateCommissionLedgerEntries } from '../utils/doctorCommissionLedger';
 import { enumValue, finiteNumber, strictDateString, trimOptional, trimRequired } from '../utils/validation';
+import { buildPatientCreatedAt } from '../utils/patientCreationDate';
+import { summarizeTreatmentCostRows } from '../utils/treatmentCostSummaries';
+import { buildPatientProfileUpdatePayload } from '../utils/patientProfileUpdate';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -62,23 +65,37 @@ const buildExpensePayload = (data: Partial<Expense>, existing?: Partial<Expense>
   return payload;
 };
 
-const buildMaterialCostExpenseDescription = (
+const getTreatmentCostExpenseMetadata = (costType: TreatmentCostType) => costType === 'lab'
+  ? { category: 'Lab Cost', sourceType: 'lab_cost', label: 'Lab cost' }
+  : { category: 'Material Cost', sourceType: 'material_cost', label: 'Material cost' };
+
+const buildTreatmentCostExpenseDescription = (
   treatment: Partial<ClinicalRecord>,
-  materialNames: string
+  itemNames: string,
+  costType: TreatmentCostType
 ): string => {
   const patientName = (treatment.patient_name || 'Unknown patient').trim();
   const treatmentLabel = (treatment.description || 'Treatment').trim();
-  const materialsLabel = materialNames.trim();
-  return `Material cost - ${patientName} - ${treatmentLabel}${materialsLabel ? ` (${materialsLabel})` : ''}`;
+  const itemsLabel = itemNames.trim();
+  return `${getTreatmentCostExpenseMetadata(costType).label} - ${patientName} - ${treatmentLabel}${itemsLabel ? ` (${itemsLabel})` : ''}`;
 };
 
-const buildMaterialCostExpensePrefix = (treatment: Partial<ClinicalRecord>): string => {
+const buildTreatmentCostExpensePrefix = (treatment: Partial<ClinicalRecord>, costType: TreatmentCostType): string => {
   const patientName = (treatment.patient_name || 'Unknown patient').trim();
   const treatmentLabel = (treatment.description || 'Treatment').trim();
-  return `Material cost - ${patientName} - ${treatmentLabel}`;
+  return `${getTreatmentCostExpenseMetadata(costType).label} - ${patientName} - ${treatmentLabel}`;
 };
 
 const roundMoney = (amount: number): number => Math.round(amount * 100) / 100;
+
+const generateRequestUuid = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
 
 const getReceiptServiceFeeAmount = (receiptSnapshot: unknown): number => {
   const snapshot = normalizePaymentReceiptSnapshot(receiptSnapshot);
@@ -229,6 +246,23 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
       .eq('id', treatment.id);
     if (error) throw new Error(error.message);
   }));
+
+};
+
+const processPendingCommissionRecalculation = async (
+  patientId: string,
+  requestToken: string,
+  admin: { userId: string; authToken: string }
+): Promise<void> => {
+  await recalculatePatientDoctorCommissions(patientId);
+  const { error } = await supabase.rpc('acknowledge_commission_recalculation', {
+    p_patient_id: patientId,
+    p_request_token: requestToken,
+    p_admin_user_id: admin.userId,
+    // The legacy parameter name is retained for rolling-deployment compatibility.
+    p_admin_password: admin.authToken
+  });
+  if (error) throw new Error(error.message);
 };
 
 const recalculateDoctorEarningsForTreatments = async (treatmentIds: string[]): Promise<void> => {
@@ -355,13 +389,21 @@ const getDoctorEarningEntriesByTreatmentIds = async (treatmentIds: string[]) => 
         .in('treatment_id', uniqueIds.slice(index, index + 200));
 
       if (error) {
-        if (isOptionalRelationAccessError(error, ['doctor_commission_entries'])) return entriesByTreatment;
-        console.warn('Unable to load doctor commission entries; continuing without them:', error.message);
+        // Commission entries enrich dashboard period totals, but they must never
+        // make core treatment/audit records disappear. Network/proxy failures and
+        // partially deployed schemas fall back to persisted treatments.doctor_earnings.
+        const errorSummary = String(error.message || error)
+          .replace(/\s+/g, ' ')
+          .slice(0, 240);
+        console.warn('Unable to load doctor commission ledger entries; using stored treatment earnings.', errorSummary);
         return entriesByTreatment;
       }
       rows.push(...(data || []));
     } catch (err) {
-      console.warn('Unexpected error loading doctor commission entries; continuing without them:', err);
+      const errorSummary = String((err as any)?.message || err)
+        .replace(/\s+/g, ' ')
+        .slice(0, 240);
+      console.warn('Unable to load doctor commission ledger entries; using stored treatment earnings.', errorSummary);
       return entriesByTreatment;
     }
   }
@@ -407,13 +449,17 @@ const mapPaymentCorrectionRow = (row: any): PaymentCorrection => ({
   newAmount: Number(row.new_amount || 0),
   oldMethod: normalizePaymentMethod(row.old_method),
   newMethod: normalizePaymentMethod(row.new_method),
+  oldAllocations: normalizePaymentAllocations(row.old_allocations),
+  newAllocations: normalizePaymentAllocations(row.new_allocations),
   reason: row.reason || '',
   editedBy: row.edited_by,
   editedAt: row.edited_at,
   editorName: row.editor?.username || null
 });
 
-const mapPaymentRow = (row: any): PaymentRecord => ({
+const mapPaymentRow = (row: any): PaymentRecord => {
+  const allocations = normalizePaymentAllocations(row.payment_allocations, normalizePaymentMethod(row.payment_method), Number(row.amount || 0));
+  return ({
   id: row.id,
   location_id: row.location_id,
   patientId: row.patient_id,
@@ -430,7 +476,8 @@ const mapPaymentRow = (row: any): PaymentRecord => ({
   patientCurrentBalance: row.patients?.balance !== undefined && row.patients?.balance !== null
     ? Number(row.patients.balance || 0)
     : undefined,
-  paymentMethod: normalizePaymentMethod(row.payment_method),
+  paymentMethod: getPaymentHeaderMethod(allocations),
+  allocations,
   receiptNumber: row.receipt_number,
   receiptSnapshot: normalizePaymentReceiptSnapshot(row.receipt_snapshot),
   createdAt: row.created_at,
@@ -439,7 +486,8 @@ const mapPaymentRow = (row: any): PaymentRecord => ({
   corrections: Array.isArray(row.payment_corrections)
     ? row.payment_corrections.map(mapPaymentCorrectionRow)
     : []
-});
+  });
+};
 
 const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
   const costAmount = Number(row.cost_amount || 0);
@@ -448,6 +496,7 @@ const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
     id: row.id,
     auditLogId: row.audit_log_id,
     materialName: row.material_name,
+    costType: row.cost_type === 'lab' ? 'lab' : 'material',
     costAmount,
     quantity,
     totalAmount: Number(row.total_amount ?? costAmount * quantity),
@@ -462,9 +511,17 @@ const fetchSyntheticMaterialCostExpenses = async (
   locationId: string | undefined,
   existingExpenses: Expense[]
 ): Promise<Expense[]> => {
-  const { data: materialRows, error: materialError } = await supabase
+  let { data: materialRows, error: materialError } = await supabase
     .from('patient_material_costs')
-    .select('audit_log_id, material_name, total_amount, created_at, updated_at');
+    .select('audit_log_id, material_name, cost_type, total_amount, created_at, updated_at');
+
+  if (materialError && isMissingColumnError(materialError, 'cost_type')) {
+    const legacyResult = await supabase
+      .from('patient_material_costs')
+      .select('audit_log_id, material_name, total_amount, created_at, updated_at');
+    materialRows = (legacyResult.data || []).map((row: any) => ({ ...row, cost_type: 'material' }));
+    materialError = legacyResult.error;
+  }
 
   if (materialError) {
     if (isMissingRelationError(materialError, 'patient_material_costs')) return [];
@@ -481,9 +538,10 @@ const fetchSyntheticMaterialCostExpenses = async (
     return chunks;
   };
 
-  const materialSummaryByAuditId = new Map<string, {
+  const costSummaryByAuditAndType = new Map<string, {
+    costType: TreatmentCostType;
     totalAmount: number;
-    materialNames: Set<string>;
+    itemNames: Set<string>;
     createdAt?: string | null;
     updatedAt?: string | null;
   }>();
@@ -492,21 +550,24 @@ const fetchSyntheticMaterialCostExpenses = async (
     const auditLogId = row.audit_log_id;
     if (!auditLogId) return;
 
-    const current = materialSummaryByAuditId.get(auditLogId) || {
+    const costType: TreatmentCostType = row.cost_type === 'lab' ? 'lab' : 'material';
+    const summaryKey = `${auditLogId}|${costType}`;
+    const current = costSummaryByAuditAndType.get(summaryKey) || {
+      costType,
       totalAmount: 0,
-      materialNames: new Set<string>(),
+      itemNames: new Set<string>(),
       createdAt: row.created_at || null,
       updatedAt: row.updated_at || null
     };
 
     current.totalAmount += Number(row.total_amount || 0);
-    if (row.material_name) current.materialNames.add(row.material_name);
+    if (row.material_name) current.itemNames.add(row.material_name);
     current.createdAt = current.createdAt || row.created_at || null;
     current.updatedAt = row.updated_at || current.updatedAt || null;
-    materialSummaryByAuditId.set(auditLogId, current);
+    costSummaryByAuditAndType.set(summaryKey, current);
   });
 
-  const auditIds = Array.from(materialSummaryByAuditId.keys());
+  const auditIds = Array.from(new Set((materialRows || []).map((row: any) => row.audit_log_id).filter(Boolean)));
   if (auditIds.length === 0) return [];
 
   const auditBatches = await Promise.all(chunk(auditIds, 100).map(async (auditIdBatch) => {
@@ -550,52 +611,51 @@ const fetchSyntheticMaterialCostExpenses = async (
   }));
 
   const treatmentById = new Map(treatmentBatches.flat().map((row: any) => [row.id, row]));
-  const linkedExpenseAuditIds = new Set(
+  const linkedExpenseKeys = new Set(
     existingExpenses
-      .filter((expense) => expense.source_type === 'material_cost' && expense.source_id)
-      .map((expense) => expense.source_id as string)
+      .filter((expense) => ['material_cost', 'lab_cost'].includes(expense.source_type || '') && expense.source_id)
+      .map((expense) => `${expense.source_id}|${expense.source_type}`)
   );
 
   return auditRows.flatMap((auditRow: any): Expense[] => {
-    const summary = materialSummaryByAuditId.get(auditRow.id);
     const treatment = treatmentById.get(auditRow.source_id);
-    if (!summary || !treatment || summary.totalAmount <= 0) return [];
+    if (!treatment) return [];
 
     const resolvedLocationId = auditRow.location_id || treatment.location_id || null;
     if (locationId && resolvedLocationId !== locationId) return [];
-    if (linkedExpenseAuditIds.has(auditRow.id)) return [];
+    return (['material', 'lab'] as TreatmentCostType[]).flatMap((costType): Expense[] => {
+      const summary = costSummaryByAuditAndType.get(`${auditRow.id}|${costType}`);
+      if (!summary || summary.totalAmount <= 0) return [];
+      const metadata = getTreatmentCostExpenseMetadata(costType);
+      if (linkedExpenseKeys.has(`${auditRow.id}|${metadata.sourceType}`)) return [];
+      const treatmentContext = {
+        patient_name: treatment.patients?.name || 'Unknown patient',
+        description: treatment.description || 'Treatment'
+      };
+      const description = buildTreatmentCostExpenseDescription(treatmentContext, Array.from(summary.itemNames).join(', '), costType);
+      const prefix = buildTreatmentCostExpensePrefix(treatmentContext, costType);
+      const hasLegacyExpense = existingExpenses.some((expense) => (
+        expense.category === metadata.category &&
+        expense.location_id === resolvedLocationId &&
+        expense.date === treatment.date &&
+        expense.description.startsWith(prefix)
+      ));
+      if (hasLegacyExpense) return [];
 
-    const materialNames = Array.from(summary.materialNames).join(', ');
-    const description = buildMaterialCostExpenseDescription({
-      patient_name: treatment.patients?.name || 'Unknown patient',
-      description: treatment.description || 'Treatment'
-    }, materialNames);
-    const prefix = buildMaterialCostExpensePrefix({
-      patient_name: treatment.patients?.name || 'Unknown patient',
-      description: treatment.description || 'Treatment'
+      return [{
+        id: `${metadata.sourceType.replace('_', '-')}-${auditRow.id}`,
+        location_id: resolvedLocationId,
+        description,
+        amount: summary.totalAmount,
+        category: metadata.category,
+        date: treatment.date || summary.createdAt?.slice(0, 10) || '',
+        source_type: metadata.sourceType,
+        source_id: auditRow.id,
+        is_system_generated: true,
+        created_at: summary.createdAt || undefined,
+        updated_at: summary.updatedAt || undefined
+      }];
     });
-
-    const hasLegacyExpense = existingExpenses.some((expense) => (
-      expense.category === 'Material Cost' &&
-      expense.location_id === resolvedLocationId &&
-      expense.date === treatment.date &&
-      expense.description.startsWith(prefix)
-    ));
-    if (hasLegacyExpense) return [];
-
-    return [{
-      id: `material-cost-${auditRow.id}`,
-      location_id: resolvedLocationId,
-      description,
-      amount: summary.totalAmount,
-      category: 'Material Cost',
-      date: treatment.date || summary.createdAt?.slice(0, 10) || '',
-      source_type: 'material_cost',
-      source_id: auditRow.id,
-      is_system_generated: true,
-      created_at: summary.createdAt || undefined,
-      updated_at: summary.updatedAt || undefined
-    }];
   });
 };
 
@@ -1602,7 +1662,8 @@ export const api = {
         patient_type: data.patient_type || DEFAULT_PATIENT_TYPE_NAME,
         balance: data.balance ?? 0,
         loyalty_points: 0,
-        medical_history: data.medicalHistory || null
+        medical_history: data.medicalHistory || null,
+        ...(data.created_at ? { created_at: buildPatientCreatedAt(data.created_at) } : {})
       };
 
       const { data: result, error } = await supabase
@@ -1699,19 +1760,7 @@ export const api = {
 
       const normalizedEmail = data.email ? data.email.toLowerCase().trim() : data.email;
       const normalizedPhone = normalizePhoneForStorage(data.phone);
-      const payload = {
-        location_id: data.location_id,
-        name: data.name,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        age: data.age,
-        address: data.address,
-        city: data.city,
-        township: data.township,
-        patient_type: data.patient_type,
-        balance: data.balance,
-        medical_history: data.medicalHistory
-      };
+      const payload = buildPatientProfileUpdatePayload(data, normalizedEmail, normalizedPhone);
 
       const { data: result, error } = await supabase
         .from('patients')
@@ -2802,7 +2851,7 @@ export const api = {
   materialCosts: {
     getTotalsByTreatmentIds: async (
       treatmentIds: string[]
-    ): Promise<Record<string, { auditLogId: string; totalAmount: number; itemCount: number }>> => {
+    ): Promise<Record<string, TreatmentCostSummary>> => {
       const uniqueIds = Array.from(new Set(treatmentIds.filter(Boolean)));
       if (uniqueIds.length === 0) return {};
 
@@ -2835,10 +2884,19 @@ export const api = {
         if (auditIds.length === 0) return {};
 
         const materialBatches = await Promise.all(chunk(auditIds, 100).map(async (auditIdBatch) => {
-          const { data, error: materialError } = await supabase
+          let { data, error: materialError } = await supabase
             .from('patient_material_costs')
-            .select('audit_log_id, total_amount')
+            .select('audit_log_id, cost_type, total_amount')
             .in('audit_log_id', auditIdBatch);
+
+          if (materialError && isMissingColumnError(materialError, 'cost_type')) {
+            const legacyResult = await supabase
+              .from('patient_material_costs')
+              .select('audit_log_id, total_amount')
+              .in('audit_log_id', auditIdBatch);
+            data = (legacyResult.data || []).map((row: any) => ({ ...row, cost_type: 'material' }));
+            materialError = legacyResult.error;
+          }
 
           if (materialError) {
             if (isMissingRelationError(materialError, 'patient_material_costs')) return [];
@@ -2850,20 +2908,7 @@ export const api = {
         const materialRows: any[] = materialBatches.flat();
 
         const sourceByAuditId = new Map(auditRows.map((row: any) => [row.id, row.source_id]));
-        return materialRows.reduce((summary, row: any) => {
-          const treatmentId = sourceByAuditId.get(row.audit_log_id);
-          if (!treatmentId) return summary;
-
-          const existing = summary[treatmentId] || {
-            auditLogId: row.audit_log_id,
-            totalAmount: 0,
-            itemCount: 0
-          };
-          existing.totalAmount += Number(row.total_amount || 0);
-          existing.itemCount += 1;
-          summary[treatmentId] = existing;
-          return summary;
-        }, {} as Record<string, { auditLogId: string; totalAmount: number; itemCount: number }>);
+        return summarizeTreatmentCostRows(materialRows, sourceByAuditId);
       } catch (err) {
         console.warn('Error fetching material cost totals:', err);
         throw err;
@@ -2905,14 +2950,15 @@ export const api = {
     upsertForTreatment: async (
       treatment: ClinicalRecord,
       items: PatientMaterialCostInput[],
-      createdBy?: { userId?: string | null; username?: string | null }
-    ): Promise<{ auditLogId: string; items: PatientMaterialCost[] }> => {
+      createdBy?: { userId?: string | null; username?: string | null; authToken?: string }
+    ): Promise<{ auditLogId: string; items: PatientMaterialCost[]; commissionRefreshPending: boolean }> => {
       const treatmentId = trimRequired(treatment.id, 'Treatment audit row');
       const normalizedItems = items
         .map((item) => ({
-          material_name: trimRequired(item.materialName, 'Material name', { maxLength: 255 }),
-          cost_amount: finiteNumber(item.costAmount, 'Material cost', { min: 0.01 }),
-          quantity: finiteNumber(item.quantity, 'Material quantity', { min: 0.01 })
+          material_name: trimRequired(item.materialName, item.costType === 'lab' ? 'Lab cost name' : 'Material name', { maxLength: 255 }),
+          cost_type: enumValue(item.costType, ['material', 'lab'] as const, 'Cost type'),
+          cost_amount: finiteNumber(item.costAmount, item.costType === 'lab' ? 'Lab cost' : 'Material cost', { min: 0.01 }),
+          quantity: finiteNumber(item.quantity, item.costType === 'lab' ? 'Lab quantity' : 'Material quantity', { min: 0.01 })
         }))
         .filter((item) => item.material_name);
 
@@ -2939,115 +2985,37 @@ export const api = {
       }
 
       const auditLogId = auditLog.id;
-      const { error: deleteError } = await supabase
-        .from('patient_material_costs')
-        .delete()
-        .eq('audit_log_id', auditLogId);
-
-      if (deleteError) throw new Error(deleteError.message);
-
-        const materialNames = normalizedItems.map((item) => item.material_name).join(', ');
-        const expenseDescription = buildMaterialCostExpenseDescription(treatment, materialNames);
-        const expensePrefix = buildMaterialCostExpensePrefix(treatment);
-
-        if (normalizedItems.length === 0) {
-          const { error: expenseDeleteError } = await supabase
-            .from('expenses')
-            .delete()
-            .eq('source_type', 'material_cost')
-            .eq('source_id', auditLogId);
-
-          if (expenseDeleteError) {
-            if (isMissingColumnError(expenseDeleteError, 'source_type')) {
-              const legacyDeleteQuery = supabase
-                .from('expenses')
-                .delete()
-                .eq('location_id', treatment.location_id)
-                .eq('category', 'Material Cost')
-                .eq('date', treatment.date)
-                .like('description', `${expensePrefix}%`);
-
-              const { error: legacyDeleteError } = await legacyDeleteQuery;
-              if (legacyDeleteError) throw new Error(legacyDeleteError.message);
-            } else {
-              throw new Error(expenseDeleteError.message);
-            }
-          }
-
-          await recalculateDoctorEarningsForTreatments([treatmentId]);
-          return { auditLogId, items: [] };
+      const requestToken = generateRequestUuid();
+      const { data, error: replaceError } = await supabase.rpc('replace_treatment_costs', {
+        p_audit_log_id: auditLogId,
+        p_items: normalizedItems,
+        p_admin_user_id: createdBy?.userId || null,
+        // The legacy parameter name is retained for rolling-deployment compatibility.
+        p_admin_password: createdBy?.authToken || '',
+        p_request_token: requestToken
+      });
+      if (replaceError) {
+        if (isMissingRelationError(replaceError, 'replace_treatment_costs') || String(replaceError.message || '').includes('replace_treatment_costs')) {
+          throw new Error('Material & Lab cost migration is not installed yet. Run database/material_and_lab_costs_migration.sql first.');
         }
+        throw new Error(replaceError.message);
+      }
 
-      const { data, error } = await supabase
-        .from('patient_material_costs')
-        .insert(normalizedItems.map((item) => ({
-          audit_log_id: auditLogId,
-          ...item,
-          created_by: createdBy?.userId || null,
-          created_by_name: createdBy?.username || null
-        })))
-        .select('*, users(username)')
-        .order('created_at', { ascending: true });
-
-      if (error) throw new Error(error.message);
-
-        const totalAmount = (data || []).reduce((sum: number, row: any) => sum + Number(row.total_amount || 0), 0);
-        const expensePayload = {
-          location_id: treatment.location_id,
-          description: expenseDescription,
-          amount: totalAmount,
-          category: 'Material Cost',
-          date: treatment.date,
-          source_type: 'material_cost',
-        source_id: auditLogId,
-        is_system_generated: true
-      };
-
-      const { error: expenseError } = await supabase
-        .from('expenses')
-        .upsert(expensePayload, { onConflict: 'source_type,source_id' });
-
-        if (expenseError) {
-          const missingExpenseLinkColumns =
-            isMissingColumnError(expenseError, 'source_type') ||
-            isMissingColumnError(expenseError, 'source_id') ||
-            isMissingColumnError(expenseError, 'is_system_generated');
-
-          if (missingExpenseLinkColumns) {
-            const legacyDeleteQuery = supabase
-              .from('expenses')
-              .delete()
-              .eq('location_id', treatment.location_id)
-              .eq('category', 'Material Cost')
-              .eq('date', treatment.date)
-              .like('description', `${expensePrefix}%`);
-
-            const { error: legacyDeleteError } = await legacyDeleteQuery;
-            if (legacyDeleteError) throw new Error(legacyDeleteError.message);
-
-            const legacyExpensePayload = {
-              location_id: treatment.location_id,
-              description: expenseDescription,
-              amount: totalAmount,
-              category: 'Material Cost',
-              date: treatment.date
-            };
-
-            const { error: legacyInsertError } = await supabase
-              .from('expenses')
-              .insert(legacyExpensePayload);
-
-            if (legacyInsertError) throw new Error(legacyInsertError.message);
-          } else {
-            throw new Error(expenseError.message);
-          }
-        }
-
-      await recalculateDoctorEarningsForTreatments([treatmentId]);
+      let commissionRefreshPending = false;
+      try {
+        await processPendingCommissionRecalculation(treatment.patient_id, requestToken, {
+          userId: createdBy?.userId || '',
+          authToken: createdBy?.authToken || ''
+        });
+      } catch (commissionError) {
+        commissionRefreshPending = true;
+        console.error('Material and lab costs were saved, but doctor commission refresh needs retry.', commissionError);
+      }
 
       return {
         auditLogId,
-        items: (data || []).map(mapPatientMaterialCostRow)
+        items: data.map(mapPatientMaterialCostRow),
+        commissionRefreshPending
       };
     }
   },
@@ -3150,6 +3118,65 @@ export const api = {
         doctor_commission_percentage: rec.doctors?.commission_percentage !== undefined ? Number(rec.doctors.commission_percentage || 0) : null,
         doctor_commission_per_visit: rec.doctors?.commission_per_visit !== undefined ? Number(rec.doctors.commission_per_visit || 0) : null
       }));
+    },
+    getAnalysisRecords: async ({
+      locationId,
+      dateFrom,
+      dateTo
+    }: {
+      locationId?: string;
+      dateFrom: string;
+      dateTo: string;
+    }): Promise<ClinicalRecord[]> => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo) || dateFrom > dateTo) {
+        throw new Error('A valid treatment analysis date range is required.');
+      }
+
+      const pageSize = 1000;
+      const records: ClinicalRecord[] = [];
+
+      for (let offset = 0; ; offset += pageSize) {
+        let query = supabase
+          .from('treatments')
+          .select('id, location_id, patient_id, doctor_id, treatment_type_id, teeth, description, cost, standard_cost, discount_amount, pricing_note, date, doctors(name)')
+          .gte('date', dateFrom)
+          .lte('date', dateTo)
+          .order('date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1);
+
+        if (locationId) query = query.eq('location_id', locationId);
+
+        let { data, error }: { data: any[] | null; error: any } = await query;
+        if (error && isOptionalRelationAccessError(error, ['doctors'])) {
+          let fallbackQuery = supabase
+            .from('treatments')
+            .select('id, location_id, patient_id, doctor_id, treatment_type_id, teeth, description, cost, standard_cost, discount_amount, pricing_note, date')
+            .gte('date', dateFrom)
+            .lte('date', dateTo)
+            .order('date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          const fallback = await fallbackQuery;
+          data = fallback.data;
+          error = fallback.error;
+        }
+        if (error) throw new Error(error.message || 'Treatment analysis could not be loaded.');
+
+        const page = data || [];
+        records.push(...page.map((record: any) => ({
+          ...record,
+          standardCost: record.standard_cost ?? null,
+          discountAmount: Number(record.discount_amount || 0),
+          pricingNote: record.pricing_note || null,
+          doctor_name: record.doctors?.name || undefined
+        })));
+
+        if (page.length < pageSize) break;
+      }
+
+      return records;
     },
     getAllRecords: async (locationId?: string, options?: { limit?: number | null }): Promise<ClinicalRecord[]> => {
       try {
@@ -4064,12 +4091,20 @@ export const api = {
   },
 
   finance: {
+    supportsSplitPayments: async (): Promise<boolean> => {
+      const { error } = await supabase
+        .from('payment_allocations')
+        .select('id')
+        .limit(1);
+      return !error;
+    },
     getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
       let query = supabase
         .from('payments')
         .select(`
           *,
           patients(name, balance, patient_type),
+          payment_allocations (id, payment_id, payment_method, amount, reference),
           payment_corrections (
             id,
             payment_id,
@@ -4077,6 +4112,8 @@ export const api = {
             new_amount,
             old_method,
             new_method,
+            old_allocations,
+            new_allocations,
             reason,
             edited_by,
             edited_at,
@@ -4090,6 +4127,16 @@ export const api = {
       if (locationId) query = query.eq('location_id', locationId);
 
       let { data, error } = await query;
+      if (error && isOptionalRelationAccessError(error, ['payment_allocations'])) {
+        let fallbackQuery = supabase
+          .from('payments')
+          .select('*, patients(name, balance, patient_type), payment_corrections(*, editor:users!payment_corrections_edited_by_fkey(username))')
+          .order('created_at', { ascending: false });
+        if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        const fallback = await fallbackQuery;
+        data = fallback.data;
+        error = fallback.error;
+      }
       if (error && isMissingRelationError(error, 'payment_corrections')) {
         let fallbackQuery = supabase
           .from('payments')
@@ -4101,7 +4148,7 @@ export const api = {
         error = fallback.error;
       }
 
-      if (error && isOptionalRelationAccessError(error, ['patients', 'payment_corrections', 'users'])) {
+      if (error && isOptionalRelationAccessError(error, ['patients', 'payment_allocations', 'payment_corrections', 'users'])) {
         let fallbackQuery = supabase
           .from('payments')
           .select('*')
@@ -4126,6 +4173,7 @@ export const api = {
       patientId: string;
       amount: number;
       paymentMethod: PaymentMethod;
+      allocations?: PaymentAllocation[];
       treatmentIds?: string[];
       paymentDate?: string;
       submissionKey?: string | null;
@@ -4139,6 +4187,40 @@ export const api = {
       }
       if (normalizePaymentMethod(input.paymentMethod) === 'UNKNOWN') {
         throw new Error('Select a valid payment method.');
+      }
+      const allocations = normalizePaymentAllocations(input.allocations, input.paymentMethod, normalizedAmount);
+      const allocationError = validatePaymentAllocations(allocations, normalizedAmount);
+      if (allocationError) throw new Error(allocationError);
+
+      if (allocations.length > 1) {
+        const { data, error } = await supabase.rpc('process_patient_split_payment', {
+          p_patient_id: input.patientId,
+          p_amount: normalizedAmount,
+          p_allocations: allocations.map(({ method, amount, reference }) => ({ method, amount, reference: reference || null })),
+          p_treatment_ids: input.treatmentIds || [],
+          p_payment_date: input.paymentDate || new Date().toISOString().slice(0, 10),
+          p_receipt_snapshot: input.receiptSnapshot || null,
+          p_submission_key: input.submissionKey?.trim() || null,
+          p_created_by_user_id: input.createdByUserId || null,
+          p_created_by_user_name: input.createdByUserName || null
+        });
+        if (error) {
+          if (isMissingFunctionError(error, 'process_patient_split_payment')) {
+            throw new Error('Split payment storage is not installed. Run database/split_payment_allocations_migration.sql in Supabase before collecting a split payment.');
+          }
+          throw new Error(error.message);
+        }
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new Error('Payment was not recorded.');
+        const payment = mapPaymentRow({ ...row, payment_allocations: allocations });
+        await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
+        return {
+          status: 'success',
+          new_balance: payment.remainingBalance,
+          amount_collected: payment.amount,
+          cleared_amount: payment.clearedAmount ?? payment.amount,
+          payment
+        };
       }
 
       const rpcPayload = {
@@ -4236,6 +4318,8 @@ export const api = {
         paymentId: string;
         newAmount: number;
         newMethod: PaymentMethod;
+        allocations?: PaymentAllocation[];
+        wasSplitPayment?: boolean;
         reason: string;
         editedByUserId: string;
       }
@@ -4243,6 +4327,8 @@ export const api = {
       const normalizedAmount = Number(input.newAmount || 0);
       const normalizedMethod = normalizePaymentMethod(input.newMethod);
       const normalizedReason = input.reason?.trim() || '';
+      const allocations = normalizePaymentAllocations(input.allocations, normalizedMethod, normalizedAmount);
+      const allocationError = validatePaymentAllocations(allocations, normalizedAmount);
 
       if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
         throw new Error('Amount must be greater than 0.');
@@ -4250,6 +4336,7 @@ export const api = {
       if (normalizedMethod === 'UNKNOWN') {
         throw new Error('Select a valid payment method.');
       }
+      if (allocationError) throw new Error(allocationError);
       if (normalizedReason.length < 10) {
         throw new Error('Correction reason must be at least 10 characters.');
       }
@@ -4257,17 +4344,29 @@ export const api = {
         throw new Error('Missing admin session. Please log in again.');
       }
 
-      const { data: correctedPaymentId, error: rpcError } = await supabase.rpc('correct_payment_record', {
-        p_payment_id: input.paymentId,
-        p_new_amount: normalizedAmount,
-        p_new_method: normalizedMethod,
-        p_reason: normalizedReason,
-        p_edited_by_user_id: input.editedByUserId
-      });
+      const isSplit = allocations.length > 1 || input.wasSplitPayment === true;
+      const { data: correctedPaymentId, error: rpcError } = await supabase.rpc(
+        isSplit ? 'correct_split_payment_record' : 'correct_payment_record',
+        isSplit ? {
+          p_payment_id: input.paymentId,
+          p_new_amount: normalizedAmount,
+          p_new_allocations: allocations.map(({ method, amount, reference }) => ({ method, amount, reference: reference || null })),
+          p_reason: normalizedReason,
+          p_edited_by_user_id: input.editedByUserId
+        } : {
+          p_payment_id: input.paymentId,
+          p_new_amount: normalizedAmount,
+          p_new_method: normalizedMethod,
+          p_reason: normalizedReason,
+          p_edited_by_user_id: input.editedByUserId
+        }
+      );
 
       if (rpcError) {
-        if (isMissingFunctionError(rpcError, 'correct_payment_record')) {
-          throw new Error('Payment correction flow is not installed. Run database/payment_corrections_migration.sql in Supabase.');
+        if (isMissingFunctionError(rpcError, isSplit ? 'correct_split_payment_record' : 'correct_payment_record')) {
+          throw new Error(isSplit
+            ? 'Split payment correction is not installed. Run database/split_payment_allocations_migration.sql in Supabase.'
+            : 'Payment correction flow is not installed. Run database/payment_corrections_migration.sql in Supabase.');
         }
         throw new Error(rpcError.message);
       }
@@ -4277,6 +4376,7 @@ export const api = {
         .select(`
           *,
           patients(name, balance),
+          payment_allocations (id, payment_id, payment_method, amount, reference),
           payment_corrections (
             id,
             payment_id,
@@ -4284,6 +4384,8 @@ export const api = {
             new_amount,
             old_method,
             new_method,
+            old_allocations,
+            new_allocations,
             reason,
             edited_by,
             edited_at,
@@ -5304,6 +5406,38 @@ export const api = {
   },
 
   users: {
+    revokeAuthSession: async (authToken: string): Promise<void> => {
+      if (!authToken) return;
+      const { error } = await supabase.rpc('revoke_staff_auth_session', {
+        p_session_token: authToken
+      });
+      if (error) throw new Error(error.message || 'Failed to revoke staff session.');
+    },
+    getById: async (id: string): Promise<User | null> => {
+      const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
+      const supportsDoctorId = await detectUsersDoctorIdSupport();
+      const { data, error } = await supabase
+        .from('users')
+        .select(supportsAllowedTabs
+          ? `id, location_id, username, role, allowed_tabs, created_at, updated_at${supportsDoctorId ? ', doctor_id' : ''}`
+          : `id, location_id, username, role, created_at, updated_at${supportsDoctorId ? ', doctor_id' : ''}`)
+        .eq('id', id)
+        .maybeSingle() as { data: User | null, error: any };
+
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+
+      return {
+        id: data.id,
+        location_id: data.location_id,
+        doctor_id: supportsDoctorId ? (data.doctor_id || null) : null,
+        username: data.username,
+        role: data.role,
+        allowed_tabs: resolveAllowedTabs(data.role, supportsAllowedTabs ? data.allowed_tabs : undefined),
+        created_at: data.created_at,
+        updated_at: data.updated_at
+      };
+    },
     getAll: async (locationId?: string): Promise<User[]> => {
       try {
         const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
@@ -5348,24 +5482,24 @@ export const api = {
         const supportsAllowedTabs = await detectUsersAllowedTabsSupport();
         const supportsDoctorId = await detectUsersDoctorIdSupport();
         const selectColumns = supportsAllowedTabs
-          ? `id, location_id, username, password, role, allowed_tabs${supportsDoctorId ? ', doctor_id' : ''}`
-          : `id, location_id, username, password, role${supportsDoctorId ? ', doctor_id' : ''}`;
+          ? `id, location_id, username, role, allowed_tabs${supportsDoctorId ? ', doctor_id' : ''}`
+          : `id, location_id, username, role${supportsDoctorId ? ', doctor_id' : ''}`;
         const mapUserForSession = (user: User): User => ({
           id: user.id,
           location_id: user.location_id,
           doctor_id: supportsDoctorId ? (user.doctor_id || null) : null,
           username: user.username,
+          auth_session_token: user.auth_session_token,
           role: user.role,
           allowed_tabs: resolveAllowedTabs(user.role, supportsAllowedTabs ? user.allowed_tabs : undefined)
         });
   
-        let { data, error } = await supabase
-          .from('users')
-          .select(selectColumns)
-          .ilike('username', trimmedUsername)
-          .limit(2) as { data: User[] | null, error: any };
-
-        console.log('Supabase response:', { data, error });
+        const authResult = await supabase.rpc('authenticate_staff_user_session', {
+          p_username: trimmedUsername,
+          p_password: password
+        });
+        const data = authResult.data as User[] | null;
+        const error = authResult.error;
 
         if (error) {
           console.error('Supabase error:', error);
@@ -5376,8 +5510,7 @@ export const api = {
           || (data || []).find((row) => row.username?.toLowerCase() === trimmedUsername.toLowerCase())
           || (data || [])[0];
 
-        // Simple password comparison (in production, use hashed passwords)
-        if (user && passwordMatches(user.password)) {
+        if (user) {
           console.log('Authentication successful for user:', trimmedUsername);
           return mapUserForSession(user);
         }
@@ -5932,23 +6065,25 @@ export const api = {
           id: saleResult.id,
           location_id: saleResult.location_id,
           patient_id: saleResult.patient_id,
-          patient_name: saleResult.patients?.name || 'Unknown',
+          patient_name: patient.name || 'Unknown',
           medicine_id: saleResult.medicine_id,
-          medicine_name: saleResult.medicines?.name || 'Unknown',
+          medicine_name: medicine.name || 'Unknown',
+          medicine_unit: medicine.unit || undefined,
           quantity: saleResult.quantity,
           unit_price: saleResult.unit_price,
           total_price: saleResult.total_price,
           date: saleResult.date,
-          treatment_id: saleResult.treatment_id
+          treatment_id: saleResult.treatment_id,
+          created_at: saleResult.created_at
         },
         new_stock: newStock
       };
     },
-    getSales: async (locationId?: string, patientId?: string): Promise<MedicineSale[]> => {
+    getSales: async (locationId?: string, patientId?: string, options?: { throwOnError?: boolean }): Promise<MedicineSale[]> => {
       try {
         let query = supabase
           .from('medicine_sales')
-          .select('*, patients(name), medicines(name)')
+          .select('*, patients(name), medicines(name, unit)')
           .order('date', { ascending: false });
 
         if (locationId) {
@@ -5987,14 +6122,17 @@ export const api = {
           patient_name: sale.patients?.name || 'Unknown',
           medicine_id: sale.medicine_id,
           medicine_name: sale.medicines?.name || 'Unknown',
+          medicine_unit: sale.medicines?.unit || undefined,
           quantity: sale.quantity,
           unit_price: sale.unit_price,
           total_price: sale.total_price,
           date: sale.date,
-          treatment_id: sale.treatment_id
+          treatment_id: sale.treatment_id,
+          created_at: sale.created_at
         }));
       } catch (err) {
         console.warn("Error fetching medicine sales:", err);
+        if (options?.throwOnError) throw err;
         return [];
       }
     },

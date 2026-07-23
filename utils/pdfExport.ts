@@ -1,12 +1,14 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, Doctor, Medicine, Expense, PaymentRecord } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, Doctor, Medicine, MedicineSale, Expense, PaymentRecord } from '../types';
 import { formatCurrency, Currency } from './currency';
 import { usesFlatVisitCommission } from './doctorCommission';
 import { formatTeethWithPosition } from './toothNumbering';
 import { buildAuditLogExportTableRows, buildAuditLogRows, filterAuditLogRowsForExport, type AuditLogFilterOptions } from './auditLogExport';
 import { formatDoctorName, normalizeDoctorName } from './doctorName';
 import { buildRecallsCancelsExportRows, type RecallsCancelsExportRow } from './recallsCancels';
+import { buildPatientReport } from './patientReport';
+import { buildPatientReportPdfData } from './patientReportExport';
 
 // Add type declaration for jsPDF with autoTable
 declare module 'jspdf' {
@@ -37,6 +39,151 @@ const summarizeDoctorsForExport = (records: ClinicalRecord[]) => {
   if (doctors.length === 0) return '-';
   const visibleDoctors = doctors.slice(0, 2).map((doctor) => formatDoctorName(doctor)).join(', ');
   return doctors.length > 2 ? `${visibleDoctors} +${doctors.length - 2} more` : visibleDoctors;
+};
+
+const getAutoTableEndY = (doc: jsPDF, fallback: number): number => {
+  const finalY = Number((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY);
+  return Number.isFinite(finalY) ? finalY : fallback;
+};
+
+const addPatientReportSectionTitle = (doc: jsPDF, title: string, requestedY: number): number => {
+  const pageHeight = doc.internal.pageSize.height;
+  let y = requestedY;
+  if (y > pageHeight - 24) {
+    doc.addPage();
+    y = 18;
+  }
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42);
+  doc.text(title, 14, y);
+  return y + 4;
+};
+
+export interface AboutPatientPdfInput {
+  patient: Patient;
+  appointments: Appointment[];
+  treatments: ClinicalRecord[];
+  medicineSales: MedicineSale[];
+  payments: PaymentRecord[];
+  paymentsAvailable: boolean;
+  doctors: Doctor[];
+  currency: Currency;
+}
+
+export const buildAboutPatientPdf = ({
+  patient,
+  appointments,
+  treatments,
+  medicineSales,
+  payments,
+  paymentsAvailable,
+  doctors,
+  currency
+}: AboutPatientPdfInput): { doc: jsPDF; filename: string } => {
+  const report = buildPatientReport({ patient, appointments, treatments, medicineSales, payments, paymentsAvailable, doctors, currency });
+  const exportData = buildPatientReportPdfData(patient, report, currency);
+  const doc = new jsPDF('l', 'mm', 'a4');
+
+  doc.setFontSize(18);
+  doc.setTextColor(15, 23, 42);
+  doc.text('About This Patient Report', 14, 18);
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  exportData.patientLines.forEach((line, index) => doc.text(line, 14, 26 + (index * 5)));
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 190, 26);
+
+  autoTable(doc, {
+    startY: 44,
+    head: [['Summary', 'Value']],
+    body: exportData.summaryRows,
+    theme: 'grid',
+    tableWidth: 104,
+    headStyles: { fillColor: [15, 23, 42], fontSize: 8, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 8, cellPadding: 1.8 },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: { 0: { cellWidth: 52, fontStyle: 'bold' }, 1: { cellWidth: 52, halign: 'right' } },
+    margin: { left: 14, right: 14, bottom: 16 }
+  });
+
+  let startY = addPatientReportSectionTitle(doc, 'Treatment Amounts and Payments', getAutoTableEndY(doc, 44) + 10);
+  autoTable(doc, {
+    startY,
+    head: [['Date', 'Treatment', 'Teeth', 'Clinician', 'Amount', 'Paid', 'Remaining', 'Payment Dates and Details']],
+    body: exportData.treatmentRows.length ? exportData.treatmentRows : [['-', 'No treatments recorded', '-', '-', '-', '-', '-', '-']],
+    theme: 'grid',
+    tableWidth: 215,
+    showHead: 'everyPage',
+    headStyles: { fillColor: [2, 132, 199], fontSize: 7, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 6.8, cellPadding: 1.5, overflow: 'linebreak', valign: 'top' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      0: { cellWidth: 16 }, 1: { cellWidth: 28 }, 2: { cellWidth: 25 }, 3: { cellWidth: 24 },
+      4: { cellWidth: 20, halign: 'right' }, 5: { cellWidth: 20, halign: 'right' },
+      6: { cellWidth: 20, halign: 'right' }, 7: { cellWidth: 62 }
+    },
+    margin: { left: 14, right: 14, bottom: 16 }
+  });
+
+  startY = addPatientReportSectionTitle(doc, 'Payment History', getAutoTableEndY(doc, startY) + 10);
+  autoTable(doc, {
+    startY,
+    head: [['Payment Date', 'Method', 'Receipt', 'Amount', 'Patient Balance After']],
+    body: exportData.paymentRows === null
+      ? [['Restricted', 'Restricted', 'Restricted', 'Restricted', 'Restricted']]
+      : exportData.paymentRows.length ? exportData.paymentRows : [['-', 'No payments recorded', '-', '-', '-']],
+    theme: 'grid',
+    tableWidth: 215,
+    showHead: 'everyPage',
+    headStyles: { fillColor: [5, 150, 105], fontSize: 7.5, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7.2, cellPadding: 1.6, overflow: 'linebreak' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: { 0: { cellWidth: 26 }, 1: { cellWidth: 56 }, 2: { cellWidth: 48 }, 3: { cellWidth: 38, halign: 'right' }, 4: { cellWidth: 47, halign: 'right' } },
+    margin: { left: 14, right: 14, bottom: 16 }
+  });
+
+  startY = addPatientReportSectionTitle(doc, 'Appointment History', getAutoTableEndY(doc, startY) + 10);
+  autoTable(doc, {
+    startY,
+    head: [['Date', 'Time', 'Type', 'Clinician', 'Status', 'Notes']],
+    body: exportData.appointmentRows.length ? exportData.appointmentRows : [['-', '-', 'No appointments recorded', '-', '-', '-']],
+    theme: 'grid',
+    tableWidth: 215,
+    showHead: 'everyPage',
+    headStyles: { fillColor: [79, 70, 229], fontSize: 7.5, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7.2, cellPadding: 1.6, overflow: 'linebreak', valign: 'top' },
+    columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 18 }, 2: { cellWidth: 36 }, 3: { cellWidth: 40 }, 4: { cellWidth: 26 }, 5: { cellWidth: 71 } },
+    margin: { left: 14, right: 14, bottom: 16 }
+  });
+
+  startY = addPatientReportSectionTitle(doc, 'Medicine Summary', getAutoTableEndY(doc, startY) + 10);
+  autoTable(doc, {
+    startY,
+    head: [['Medicine / Item', 'Quantity', 'Total', 'Dates']],
+    body: exportData.medicineRows.length ? exportData.medicineRows : [['No medicines recorded', '-', '-', '-']],
+    theme: 'grid',
+    tableWidth: 215,
+    showHead: 'everyPage',
+    headStyles: { fillColor: [5, 150, 105], fontSize: 7.5, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 7.2, cellPadding: 1.6, overflow: 'linebreak' },
+    columnStyles: { 0: { cellWidth: 65 }, 1: { cellWidth: 38 }, 2: { cellWidth: 47, halign: 'right' }, 3: { cellWidth: 65 } },
+    margin: { left: 14, right: 14, bottom: 16 }
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(exportData.accessNote, 14, doc.internal.pageSize.height - 8);
+    doc.text(`Page ${page} of ${pageCount}`, doc.internal.pageSize.width - 14, doc.internal.pageSize.height - 8, { align: 'right' });
+  }
+
+  return { doc, filename: exportData.filename };
+};
+
+export const exportAboutPatientToPDF = (input: AboutPatientPdfInput) => {
+  const { doc, filename } = buildAboutPatientPdf(input);
+  doc.save(filename);
 };
 
 export const exportPatientsToPDF = (patients: Patient[], currency: Currency, treatmentRecords: ClinicalRecord[] = []) => {
@@ -337,7 +484,8 @@ export const exportClinicalRecordsToPDF = (records: ClinicalRecord[], currency: 
       row.doctorEarned === null ? '-' : formatCurrency(row.doctorEarned, currency)
     ]),
     theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229], fontSize: 7.5, fontStyle: 'bold' },
+    tableWidth: AUDIT_LOG_PDF_TABLE_WIDTH,
+    headStyles: { fillColor: [79, 70, 229], fontSize: 7, fontStyle: 'bold', cellPadding: 1.2, valign: 'middle', overflow: 'linebreak' },
     bodyStyles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [245, 247, 250] },
     columnStyles: {

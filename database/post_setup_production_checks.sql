@@ -1,8 +1,8 @@
 -- ============================================================================
 -- POST SETUP PRODUCTION CHECKS
 -- Purpose:
--- Run after complete_database_setup_production.sql to confirm the database is
--- structurally ready before opening the app.
+-- Run after complete_database_setup.sql, payment_corrections_migration.sql,
+-- and split_payment_allocations_migration.sql before opening the app.
 --
 -- This file is read-only. It does not modify schema or data.
 -- ============================================================================
@@ -33,6 +33,7 @@ FROM (
     ('treatment_types'),
     ('treatments'),
     ('payments'),
+    ('payment_allocations'),
     ('appointments'),
     ('medicines'),
     ('medicine_sales'),
@@ -114,9 +115,29 @@ SELECT
   ) THEN 'OK' ELSE 'MISSING' END AS status
 FROM (
   VALUES
-    ('process_patient_payment', 'p_patient_id uuid, p_amount numeric, p_payment_method text, p_treatment_ids uuid[], p_payment_date date, p_receipt_snapshot jsonb, p_created_by_user_id uuid, p_created_by_user_name text'),
+    ('process_patient_payment', 'p_patient_id uuid, p_amount numeric, p_payment_method text, p_treatment_ids uuid[], p_payment_date date, p_receipt_snapshot jsonb, p_submission_key text, p_created_by_user_id uuid, p_created_by_user_name text'),
+    ('process_patient_split_payment', 'p_patient_id uuid, p_amount numeric, p_allocations jsonb, p_treatment_ids uuid[], p_payment_date date, p_receipt_snapshot jsonb, p_submission_key text, p_created_by_user_id uuid, p_created_by_user_name text'),
     ('complete_appointment_with_clinical_fee', 'p_appointment_id uuid, p_skip_clinical_fee boolean')
 ) AS f(function_name, identity_args);
+
+-- Split tender integrity: invalid_payment_count must be zero.
+SELECT
+  'payment_allocation_integrity' AS check_group,
+  COUNT(*) FILTER (
+    WHERE allocation_count = 0
+       OR allocated_total <> cleared_amount
+       OR (allocation_count = 1 AND only_method <> payment_method)
+       OR (allocation_count > 1 AND payment_method <> 'MIXED')
+  ) AS invalid_payment_count
+FROM (
+  SELECT p.id, p.cleared_amount, p.payment_method,
+    COUNT(a.id) AS allocation_count,
+    COALESCE(SUM(a.amount), 0) AS allocated_total,
+    MIN(a.payment_method) AS only_method
+  FROM public.payments p
+  LEFT JOIN public.payment_allocations a ON a.payment_id = p.id
+  GROUP BY p.id, p.cleared_amount, p.payment_method
+) allocation_check;
 
 -- ----------------------------------------------------------------------------
 -- 5. Check for unwanted overloaded process_patient_payment function

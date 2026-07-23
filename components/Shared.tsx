@@ -7,20 +7,22 @@ type ModalProps = {
   children?: React.ReactNode;
   onClose: () => void;
   maxWidthClassName?: string;
+  closeDisabled?: boolean;
 };
 
-export const Modal = ({ title, children, onClose, maxWidthClassName = 'max-w-lg' }: ModalProps) => {
+export const Modal = ({ title, children, onClose, maxWidthClassName = 'max-w-lg', closeDisabled = false }: ModalProps) => {
+  const titleId = React.useId();
   // Use portal to render modal at document body level for full viewport coverage
   if (typeof document === 'undefined') return null;
   
   return createPortal(
     <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-[9999] flex items-center justify-center p-3 sm:p-6 animate-fade-in">
-      <div className={`bg-white rounded-3xl sm:rounded-[2.5rem] shadow-2xl ${maxWidthClassName} w-full max-h-[94vh] sm:max-h-[90vh] flex flex-col relative animate-scale-up`}>
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={`bg-white rounded-3xl sm:rounded-[2.5rem] shadow-2xl ${maxWidthClassName} w-full max-h-[94vh] sm:max-h-[90vh] flex flex-col relative animate-scale-up`}>
         <div className="flex-shrink-0 p-5 pb-4 border-b border-gray-100 relative sm:p-10 sm:pb-6">
-          <button onClick={onClose} className="absolute right-5 top-5 text-gray-300 transition-colors hover:text-gray-900 sm:right-8 sm:top-8">
+          <button type="button" onClick={onClose} disabled={closeDisabled} aria-label="Close dialog" className="absolute right-5 top-5 text-gray-300 transition-colors hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 sm:right-8 sm:top-8">
             <X size={24} />
           </button>
-          <h3 className="pr-12 text-xl font-black tracking-tight text-gray-900 sm:text-2xl">{title}</h3>
+          <h3 id={titleId} className="pr-12 text-xl font-black tracking-tight text-gray-900 sm:text-2xl">{title}</h3>
         </div>
         <div className="flex-1 overflow-y-auto p-5 pt-4 sm:p-10 sm:pt-6">
           {children}

@@ -525,6 +525,7 @@ CREATE TABLE patient_material_costs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   audit_log_id UUID NOT NULL REFERENCES audit_logs(id) ON DELETE CASCADE,
   material_name VARCHAR(255) NOT NULL,
+  cost_type VARCHAR(20) NOT NULL DEFAULT 'material' CHECK (cost_type IN ('material', 'lab')),
   cost_amount DECIMAL(12,2) NOT NULL CHECK (cost_amount >= 0),
   quantity DECIMAL(12,2) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   total_amount DECIMAL(12,2) GENERATED ALWAYS AS (cost_amount * quantity) STORED,
@@ -533,6 +534,22 @@ CREATE TABLE patient_material_costs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE pending_commission_recalculations (
+  patient_id UUID PRIMARY KEY REFERENCES patients(id) ON DELETE CASCADE,
+  request_token UUID NOT NULL,
+  requested_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE staff_auth_sessions (
+  session_token UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '1 year'),
+  revoked_at TIMESTAMPTZ
+);
+CREATE INDEX idx_staff_auth_sessions_user_id ON staff_auth_sessions(user_id);
+CREATE INDEX idx_staff_auth_sessions_expires_at ON staff_auth_sessions(expires_at);
 
 -- Conversations (Messaging)
 CREATE TABLE conversations (
@@ -1076,13 +1093,13 @@ CREATE INDEX idx_expenses_date ON expenses(date);
 CREATE INDEX idx_expenses_category ON expenses(category);
 CREATE INDEX idx_expenses_source ON expenses(source_type, source_id);
 CREATE UNIQUE INDEX idx_expenses_source_unique
-ON expenses(source_type, source_id)
-WHERE source_type IS NOT NULL AND source_id IS NOT NULL;
+ON expenses(source_type, source_id);
 CREATE INDEX idx_audit_logs_source ON audit_logs(source_type, source_id);
 CREATE INDEX idx_audit_logs_patient ON audit_logs(patient_id);
 CREATE INDEX idx_audit_logs_doctor ON audit_logs(doctor_id);
 CREATE INDEX idx_patient_material_costs_audit_log ON patient_material_costs(audit_log_id);
 CREATE INDEX idx_patient_material_costs_created_by ON patient_material_costs(created_by);
+CREATE INDEX idx_patient_material_costs_audit_type ON patient_material_costs(audit_log_id, cost_type);
 CREATE INDEX idx_conversations_patient_id ON conversations(patient_id);
 CREATE INDEX idx_conversations_doctor_user_id ON conversations(doctor_user_id);
 CREATE INDEX idx_conversations_admin_id ON conversations(admin_id);
@@ -1417,11 +1434,104 @@ CREATE OR REPLACE FUNCTION delete_audit_log_material_expense()
 RETURNS TRIGGER AS $$
 BEGIN
   DELETE FROM expenses
-  WHERE source_type = 'material_cost'
+  WHERE source_type IN ('material_cost', 'lab_cost')
     AND source_id = OLD.id;
   RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION replace_treatment_costs(
+  p_audit_log_id UUID, p_items JSONB,
+  p_admin_user_id UUID, p_admin_password TEXT, p_request_token UUID
+)
+RETURNS SETOF patient_material_costs
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_material_total NUMERIC(12,2);
+  v_lab_total NUMERIC(12,2);
+  v_admin_username TEXT;
+  v_location_id UUID;
+  v_treatment_date DATE;
+  v_patient_id UUID;
+  v_patient_name TEXT;
+  v_treatment_label TEXT;
+  v_material_names TEXT;
+  v_lab_names TEXT;
+BEGIN
+  SELECT u.username INTO v_admin_username FROM users u
+  WHERE u.id = p_admin_user_id AND u.role = 'admin'
+    AND (
+      u.password = p_admin_password OR btrim(u.password) = btrim(p_admin_password)
+      OR EXISTS (
+        SELECT 1 FROM staff_auth_sessions s
+        WHERE s.user_id = u.id AND s.session_token::TEXT = btrim(p_admin_password)
+          AND s.revoked_at IS NULL AND s.expires_at > NOW()
+      )
+    );
+  IF NOT FOUND THEN RAISE EXCEPTION 'A valid administrator session is required.'; END IF;
+  SELECT t.location_id, t.date, t.patient_id, COALESCE(p.name, 'Unknown patient'), COALESCE(t.description, 'Treatment')
+  INTO v_location_id, v_treatment_date, v_patient_id, v_patient_name, v_treatment_label
+  FROM audit_logs a JOIN treatments t ON t.id = a.source_id LEFT JOIN patients p ON p.id = t.patient_id
+  WHERE a.id = p_audit_log_id AND a.source_type = 'treatment' FOR UPDATE OF a;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Treatment audit row was not found.'; END IF;
+  IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' THEN RAISE EXCEPTION 'Cost items must be a JSON array.'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_to_recordset(p_items) AS item(material_name TEXT, cost_type TEXT, cost_amount NUMERIC, quantity NUMERIC)
+    WHERE btrim(COALESCE(item.material_name, '')) = '' OR item.cost_type NOT IN ('material', 'lab')
+      OR item.cost_amount IS NULL OR item.cost_amount <= 0 OR item.quantity IS NULL OR item.quantity <= 0
+  ) THEN RAISE EXCEPTION 'Every cost item requires a valid name, type, positive cost, and positive quantity.'; END IF;
+  DELETE FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
+  INSERT INTO patient_material_costs (audit_log_id, material_name, cost_type, cost_amount, quantity, created_by, created_by_name)
+  SELECT p_audit_log_id, btrim(item.material_name), item.cost_type, item.cost_amount, item.quantity, p_admin_user_id, v_admin_username
+  FROM jsonb_to_recordset(p_items) AS item(material_name TEXT, cost_type TEXT, cost_amount NUMERIC, quantity NUMERIC);
+  SELECT COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'material'), 0), COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'lab'), 0)
+  INTO v_material_total, v_lab_total FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
+  SELECT COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'material'), ''), COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'lab'), '')
+  INTO v_material_names, v_lab_names FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
+  DELETE FROM expenses WHERE source_id = p_audit_log_id AND source_type IN ('material_cost', 'lab_cost');
+  IF v_material_total > 0 THEN
+    INSERT INTO expenses (location_id, description, amount, category, date, source_type, source_id, is_system_generated)
+    VALUES (v_location_id, 'Material cost - ' || v_patient_name || ' - ' || v_treatment_label || CASE WHEN v_material_names <> '' THEN ' (' || v_material_names || ')' ELSE '' END, v_material_total, 'Material Cost', v_treatment_date, 'material_cost', p_audit_log_id, true);
+  END IF;
+  IF v_lab_total > 0 THEN
+    INSERT INTO expenses (location_id, description, amount, category, date, source_type, source_id, is_system_generated)
+    VALUES (v_location_id, 'Lab cost - ' || v_patient_name || ' - ' || v_treatment_label || CASE WHEN v_lab_names <> '' THEN ' (' || v_lab_names || ')' ELSE '' END, v_lab_total, 'Lab Cost', v_treatment_date, 'lab_cost', p_audit_log_id, true);
+  END IF;
+  INSERT INTO pending_commission_recalculations (patient_id, request_token, requested_at) VALUES (v_patient_id, p_request_token, NOW())
+  ON CONFLICT (patient_id) DO UPDATE SET request_token = EXCLUDED.request_token, requested_at = EXCLUDED.requested_at;
+  RETURN QUERY SELECT costs.* FROM patient_material_costs AS costs WHERE costs.audit_log_id = p_audit_log_id ORDER BY costs.created_at, costs.id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION acknowledge_commission_recalculation(
+  p_patient_id UUID, p_request_token UUID, p_admin_user_id UUID, p_admin_password TEXT
+)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM users u WHERE u.id = p_admin_user_id AND u.role = 'admin'
+      AND (
+        u.password = p_admin_password OR btrim(u.password) = btrim(p_admin_password)
+        OR EXISTS (
+          SELECT 1 FROM staff_auth_sessions s
+          WHERE s.user_id = u.id AND s.session_token::TEXT = btrim(p_admin_password)
+            AND s.revoked_at IS NULL AND s.expires_at > NOW()
+        )
+      )
+  ) THEN RAISE EXCEPTION 'A valid administrator session is required.'; END IF;
+  DELETE FROM pending_commission_recalculations
+  WHERE patient_id = p_patient_id AND request_token = p_request_token;
+  RETURN FOUND;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION replace_treatment_costs(UUID, JSONB, UUID, TEXT, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION replace_treatment_costs(UUID, JSONB, UUID, TEXT, UUID) TO anon, authenticated;
+REVOKE ALL ON FUNCTION acknowledge_commission_recalculation(UUID, UUID, UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION acknowledge_commission_recalculation(UUID, UUID, UUID, TEXT) TO anon, authenticated;
 
 CREATE OR REPLACE FUNCTION set_doctor_treatment_commissions_updated_at()
 RETURNS TRIGGER AS $$
@@ -1738,9 +1848,7 @@ DECLARE
     'medicine_sales',
     'loyalty_rules',
     'loyalty_transactions',
-    'expenses',
     'audit_logs',
-    'patient_material_costs',
     'conversations',
     'messages',
     'assistant_memory',
@@ -1765,6 +1873,67 @@ BEGIN
     ', tbl, tbl);
   END LOOP;
 END $$;
+
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "anon_full_access_expenses" ON expenses;
+CREATE POLICY "read_expenses" ON expenses FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "insert_manual_expenses" ON expenses FOR INSERT TO anon, authenticated WITH CHECK (COALESCE(is_system_generated, false) = false AND source_type IS NULL AND source_id IS NULL);
+CREATE POLICY "update_manual_expenses" ON expenses FOR UPDATE TO anon, authenticated USING (COALESCE(is_system_generated, false) = false) WITH CHECK (COALESCE(is_system_generated, false) = false AND source_type IS NULL AND source_id IS NULL);
+CREATE POLICY "delete_manual_expenses" ON expenses FOR DELETE TO anon, authenticated USING (COALESCE(is_system_generated, false) = false);
+
+ALTER TABLE patient_material_costs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "anon_full_access_patient_material_costs" ON patient_material_costs;
+CREATE POLICY "read_patient_material_costs" ON patient_material_costs FOR SELECT TO anon, authenticated USING (true);
+REVOKE INSERT, UPDATE, DELETE ON patient_material_costs FROM anon, authenticated;
+
+ALTER TABLE pending_commission_recalculations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON pending_commission_recalculations FROM anon, authenticated;
+
+ALTER TABLE staff_auth_sessions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON staff_auth_sessions FROM anon, authenticated;
+
+REVOKE SELECT ON users FROM anon, authenticated;
+GRANT SELECT (id, location_id, username, role, allowed_tabs, created_at, updated_at, doctor_id) ON users TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION authenticate_staff_user(p_username TEXT, p_password TEXT)
+RETURNS TABLE (id UUID, location_id UUID, username TEXT, role TEXT, allowed_tabs JSONB, doctor_id UUID)
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT u.id, u.location_id, u.username::TEXT, u.role::TEXT, u.allowed_tabs, u.doctor_id
+  FROM users u
+  WHERE lower(u.username) = lower(btrim(p_username))
+    AND (u.password = p_password OR btrim(u.password) = btrim(p_password))
+  LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION authenticate_staff_user(TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION authenticate_staff_user(TEXT, TEXT) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION authenticate_staff_user_session(p_username TEXT, p_password TEXT)
+RETURNS TABLE (id UUID, location_id UUID, username TEXT, role TEXT, allowed_tabs JSONB, doctor_id UUID, auth_session_token TEXT)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_user users%ROWTYPE; v_token UUID;
+BEGIN
+  SELECT u.* INTO v_user FROM users u
+  WHERE lower(u.username) = lower(btrim(p_username))
+    AND (u.password = p_password OR btrim(u.password) = btrim(p_password)) LIMIT 1;
+  IF NOT FOUND THEN RETURN; END IF;
+  DELETE FROM staff_auth_sessions WHERE expires_at <= NOW() OR revoked_at IS NOT NULL;
+  INSERT INTO staff_auth_sessions(user_id) VALUES (v_user.id) RETURNING session_token INTO v_token;
+  RETURN QUERY SELECT v_user.id, v_user.location_id, v_user.username::TEXT, v_user.role::TEXT,
+    v_user.allowed_tabs, v_user.doctor_id, v_token::TEXT;
+END;
+$$;
+CREATE OR REPLACE FUNCTION revoke_staff_auth_session(p_session_token TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE staff_auth_sessions SET revoked_at = NOW()
+  WHERE session_token::TEXT = btrim(p_session_token) AND revoked_at IS NULL;
+  RETURN FOUND;
+END;
+$$;
+REVOKE ALL ON FUNCTION authenticate_staff_user_session(TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION authenticate_staff_user_session(TEXT, TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION revoke_staff_auth_session(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION revoke_staff_auth_session(TEXT) TO anon, authenticated;
 
 -- ============================================================================
 -- 7.1 STORAGE BUCKET POLICIES

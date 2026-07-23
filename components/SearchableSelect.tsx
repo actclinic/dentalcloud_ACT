@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, X, Search } from 'lucide-react';
+import { getNextTreatmentOptionIndex } from '../utils/treatmentSelectorKeyboard';
 
 interface SearchableSelectProps {
   value: string;
@@ -20,8 +21,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeOptionIndex, setActiveOptionIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const listboxId = React.useId();
 
   const selectedOption = options.find(opt => opt.value === value);
 
@@ -33,6 +37,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     onChange(optionValue);
     setIsOpen(false);
     setSearchTerm('');
+    setActiveOptionIndex(-1);
   }, [onChange]);
 
   const handleClear = useCallback((e: React.MouseEvent) => {
@@ -63,10 +68,54 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    setActiveOptionIndex(-1);
+    optionRefs.current = [];
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (activeOptionIndex < 0) return;
+    optionRefs.current[activeOptionIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [activeOptionIndex]);
+
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    event.stopPropagation();
+
+    if (event.key === 'Escape') {
+      setIsOpen(false);
+      setSearchTerm('');
+      setActiveOptionIndex(-1);
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveOptionIndex((currentIndex) => getNextTreatmentOptionIndex(
+        currentIndex,
+        filteredOptions.length,
+        event.key === 'ArrowDown' ? 'down' : 'up'
+      ));
+      return;
+    }
+
+    if (event.key === 'Enter' && isOpen && activeOptionIndex >= 0) {
+      event.preventDefault();
+      handleSelect(filteredOptions[activeOptionIndex].value);
+    }
+  };
+
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <div
         onClick={() => setIsOpen(!isOpen)}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+        role="combobox"
+        aria-controls={listboxId}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-activedescendant={activeOptionIndex >= 0 ? `${listboxId}-option-${activeOptionIndex}` : undefined}
         className="w-full border border-indigo-200 bg-white rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer flex items-center justify-between gap-2 hover:border-indigo-300 transition-colors"
       >
         <div className="flex-1 min-w-0">
@@ -106,22 +155,29 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 placeholder="Search..."
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={handleKeyDown}
+                role="searchbox"
               />
             </div>
           </div>
           
-          <div className="max-h-48 overflow-y-auto">
+          <div id={listboxId} role="listbox" className="max-h-48 overflow-y-auto">
             {filteredOptions.length === 0 ? (
               <div className="px-4 py-6 text-center text-gray-400 text-sm">
                 {emptyMessage}
               </div>
             ) : (
-              filteredOptions.map((option) => (
+              filteredOptions.map((option, index) => (
                 <div
                   key={option.value}
+                  id={`${listboxId}-option-${index}`}
+                  ref={(element) => { optionRefs.current[index] = element; }}
+                  role="option"
+                  aria-selected={option.value === value}
                   onClick={() => handleSelect(option.value)}
+                  onMouseEnter={() => setActiveOptionIndex(index)}
                   className={`px-4 py-2.5 text-sm cursor-pointer transition-colors hover:bg-indigo-50 ${
-                    option.value === value ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700'
+                    option.value === value || index === activeOptionIndex ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700'
                   }`}
                 >
                   {option.label}

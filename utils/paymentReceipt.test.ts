@@ -253,4 +253,26 @@ describe('paymentReceipt', () => {
       ]
     });
   });
+
+  it('stores and normalizes a version 2 split-payment breakdown', () => {
+    const patient: Patient = {
+      id: 'patient-split', location_id: 'branch-1', name: 'Split Patient', email: '', phone: '', balance: 0, loyalty_points: 0
+    };
+    const snapshot = buildPaymentReceiptSnapshot({
+      patient,
+      amountPaid: 10000,
+      paymentMethod: 'MIXED',
+      allocations: [{ method: 'CASH', amount: 4000 }, { method: 'KPAY', amount: 6000 }],
+      paymentDate: '2026-07-18',
+      receiptNumber: 'REC-SPLIT-1',
+      balanceBefore: 10000,
+      balanceAfter: 0,
+      paymentStatus: 'FULL',
+      clinic
+    });
+    expect(snapshot.version).toBe(2);
+    expect(snapshot.payment.method).toBe('MIXED');
+    expect(snapshot.payment.allocations).toEqual([{ method: 'CASH', amount: 4000 }, { method: 'KPAY', amount: 6000 }]);
+    expect(normalizePaymentReceiptSnapshot(snapshot)).toEqual(snapshot);
+  });
 });

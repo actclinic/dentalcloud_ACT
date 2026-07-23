@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, X, Upload, Trash2, FileText, FileHeart, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2 } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2, FileHeart } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
-import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location } from '../types';
+import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location, MedicineSale, PaymentRecord } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
 import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName';
 import { formatTeethArray, formatTeethWithPosition, getTeethInQuadrant } from '../utils/toothNumbering';
@@ -9,7 +9,11 @@ import { Modal, Input, TimeInput } from './Shared';
 import { SearchableSelect } from './SearchableSelect';
 import PatientQRScanButton from './PatientQRScanButton';
 import { calculateAppointmentShortcutDate, type AppointmentDateShortcut } from '../utils/appointmentDateShortcuts';
+import { getNextTreatmentOptionIndex } from '../utils/treatmentSelectorKeyboard';
+import { formatMedicineQuantity, getPatientMedicineHistory } from '../utils/medicineHistory';
 import { distributeOverallTreatmentDiscount } from '../utils/treatmentDiscount';
+
+const AboutPatientReport = React.lazy(() => import('./AboutPatientReport'));
 
 export interface UploadProgress {
   fileName: string;
@@ -27,6 +31,11 @@ interface ClinicalViewProps {
   selectedTeeth: number[];
   treatmentTypes: TreatmentType[];
   treatmentHistory: ClinicalRecord[];
+  medicineSales: MedicineSale[];
+  medicineHistoryLoading?: boolean;
+  medicineHistoryError?: string | null;
+  paymentRecords: PaymentRecord[];
+  paymentsAvailable?: boolean;
   patientFiles: PatientFile[];
   uploadingFiles: boolean;
   useFlatRate: boolean;
@@ -70,6 +79,11 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   selectedTeeth,
   treatmentTypes,
   treatmentHistory,
+  medicineSales,
+  medicineHistoryLoading = false,
+  medicineHistoryError = null,
+  paymentRecords,
+  paymentsAvailable = true,
   patientFiles,
   uploadingFiles,
   useFlatRate,
@@ -103,6 +117,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   loyaltyRules = [],
   loyaltyTransactions = []
 }) => {
+  const medicineHistory = React.useMemo(
+    () => selectedPatient ? getPatientMedicineHistory(medicineSales, selectedPatient.id) : [],
+    [medicineSales, selectedPatient]
+  );
   const appointmentTypeOptions = React.useMemo(() => {
     const activeNames = appointmentTypes
       .filter((type) => type.is_active)
@@ -141,6 +159,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [fileToDelete, setFileToDelete] = React.useState<{name: string, path: string} | null>(null);
   const [treatmentSearchTerm, setTreatmentSearchTerm] = React.useState('');
   const [showTreatmentDropdown, setShowTreatmentDropdown] = React.useState(false);
+  const [activeTreatmentIndex, setActiveTreatmentIndex] = React.useState(-1);
   const [currentPage, setCurrentPage] = useState(1);
   const [showNextAppointmentModal, setShowNextAppointmentModal] = React.useState(false);
   const [selectedTreatmentForCharge, setSelectedTreatmentForCharge] = React.useState<TreatmentType | null>(null);
@@ -148,6 +167,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   const [overallTreatmentDiscountInput, setOverallTreatmentDiscountInput] = React.useState('0');
   const [isRecordingTreatment, setIsRecordingTreatment] = React.useState(false);
   const [isSavingNextAppointment, setIsSavingNextAppointment] = React.useState(false);
+  const [showPatientReport, setShowPatientReport] = React.useState(false);
   const [nextAppointmentFeedback, setNextAppointmentFeedback] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [nextAppointmentForm, setNextAppointmentForm] = React.useState<Partial<Appointment>>({
     date: getDefaultNextAppointmentDate(),
@@ -157,6 +177,9 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     doctor_id: '',
     notes: ''
   });
+  React.useEffect(() => {
+    setShowPatientReport(false);
+  }, [selectedPatient?.id]);
   const appointmentTypeOptionsForAppointment = React.useMemo(() => {
     const currentType = (nextAppointmentForm.type || '').trim();
     if (!currentType || appointmentTypeOptions.includes(currentType)) {
@@ -201,10 +224,6 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     (half) => selectedTeeth.length === halfTeeth[half].length && halfTeeth[half].every((tooth) => selectedTeeth.includes(tooth))
   ) || '';
   const canApplyTreatment = useFlatRate || selectedTeeth.length > 0;
-  const firstApplicableTreatment = React.useMemo(
-    () => filteredTreatmentTypes.find(() => canApplyTreatment),
-    [filteredTreatmentTypes, canApplyTreatment]
-  );
   const treatmentSelectorMessage = React.useMemo(() => {
     if (treatmentTypes.length === 0) {
       return 'No treatments are configured yet. Add services in Treatment Config first.';
@@ -219,6 +238,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   }, [canApplyTreatment, filteredTreatmentTypes.length, treatmentSearchTerm, treatmentTypes.length]);
   const menuRef = useRef<HTMLDivElement>(null);
   const treatmentSelectorRef = useRef<HTMLDivElement>(null);
+  const treatmentOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const FILES_PER_PAGE = 3;
@@ -279,6 +299,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
       };
     }
   }, [showTreatmentDropdown]);
+
+  useEffect(() => {
+    setActiveTreatmentIndex(-1);
+    treatmentOptionRefs.current = [];
+  }, [treatmentSearchTerm]);
+
+  useEffect(() => {
+    if (activeTreatmentIndex < 0) return;
+    treatmentOptionRefs.current[activeTreatmentIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [activeTreatmentIndex]);
 
   // Toggle menu for a specific file
   const toggleMenu = useCallback((fileId: string, event?: React.MouseEvent) => {
@@ -375,6 +405,31 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     setOverallTreatmentDiscountInput('0');
     setTreatmentSearchTerm('');
     setShowTreatmentDropdown(false);
+  };
+
+  const handleTreatmentSelectorKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setShowTreatmentDropdown(false);
+      setActiveTreatmentIndex(-1);
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setShowTreatmentDropdown(true);
+      setActiveTreatmentIndex((currentIndex) => getNextTreatmentOptionIndex(
+        currentIndex,
+        filteredTreatmentTypes.length,
+        event.key === 'ArrowDown' ? 'down' : 'up'
+      ));
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const treatment = filteredTreatmentTypes[activeTreatmentIndex];
+      if (treatment) handleTreatmentSelect(treatment);
+    }
   };
 
   const handleChargeModalClose = () => {
@@ -652,20 +707,16 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                   onFocus={() => {
                     if (treatmentTypes.length > 0) setShowTreatmentDropdown(true);
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setShowTreatmentDropdown(false);
-                      return;
-                    }
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (firstApplicableTreatment) handleTreatmentSelect(firstApplicableTreatment);
-                    }
-                  }}
+                  onKeyDown={handleTreatmentSelectorKeyDown}
                   placeholder="Search by treatment name or category..."
                   className="w-full rounded-xl border border-indigo-200 bg-white py-2.5 pl-10 pr-24 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
                   aria-label="Search treatments"
                   aria-describedby="treatment-selector-message"
+                  aria-autocomplete="list"
+                  aria-controls="treatment-options"
+                  aria-expanded={showTreatmentDropdown}
+                  aria-activedescendant={activeTreatmentIndex >= 0 ? `treatment-option-${filteredTreatmentTypes[activeTreatmentIndex]?.id}` : undefined}
+                  role="combobox"
                 />
                 <button
                   type="button"
@@ -711,13 +762,13 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                       {filteredTreatmentTypes.length} of {treatmentTypes.length}
                     </span>
                   </div>
-                  <div className="max-h-80 overflow-y-auto p-2 custom-scrollbar">
+                  <div id="treatment-options" role="listbox" className="max-h-80 overflow-y-auto p-2 custom-scrollbar">
                     {filteredTreatmentTypes.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-indigo-100 bg-indigo-50 px-3 py-4 text-center text-sm font-semibold text-indigo-700">
                         No treatments match your search.
                       </div>
                     ) : (
-                      filteredTreatmentTypes.map(t => {
+                      filteredTreatmentTypes.map((t, index) => {
                         const displayCost = useFlatRate
                           ? t.cost
                           : (t.cost * (selectedTeeth.length || 1));
@@ -729,10 +780,15 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                         return (
                           <button
                             key={t.id}
+                            id={`treatment-option-${t.id}`}
+                            ref={(element) => { treatmentOptionRefs.current[index] = element; }}
                             type="button"
+                            role="option"
+                            aria-selected={index === activeTreatmentIndex}
                             disabled={isDisabled}
                             onClick={() => handleTreatmentSelect(t)}
-                            className="flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                            onMouseEnter={() => setActiveTreatmentIndex(index)}
+                            className={`flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${index === activeTreatmentIndex ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-200' : ''}`}
                           >
                             <span className="min-w-0">
                               <span className="block break-words text-sm font-bold text-gray-900">{t.name}</span>
@@ -825,6 +881,77 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
           </div>
         </div>
       )}
+
+      {selectedPatient && (
+        <div className="overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-emerald-100 bg-emerald-50/70 px-5 py-5 sm:flex-row sm:items-center sm:justify-between md:px-7">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                <Package size={19} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-xl font-black text-gray-900">Medicine History</h3>
+                <p className="mt-0.5 text-sm text-emerald-800">Medicines and inventory items given to this patient.</p>
+              </div>
+            </div>
+            <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
+              {medicineHistory.length} {medicineHistory.length === 1 ? 'record' : 'records'}
+            </span>
+          </div>
+
+          <div className="max-h-[28rem] min-h-[12rem] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[42rem] text-left text-[15px]">
+              <thead className="sticky top-0 border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-5 py-4 md:px-7">Date</th>
+                  <th className="px-5 py-4">Medicine / Item</th>
+                  <th className="px-5 py-4">Quantity given</th>
+                  <th className="px-5 py-4 text-right">Unit price</th>
+                  <th className="px-5 py-4 text-right md:pr-7">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {medicineHistoryLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                      <Loader2 className="mx-auto mb-3 animate-spin text-emerald-500" size={30} aria-hidden="true" />
+                      <p className="font-semibold text-gray-500">Loading medicine history…</p>
+                    </td>
+                  </tr>
+                ) : medicineHistoryError ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                      <AlertCircle className="mx-auto mb-3 text-red-400" size={32} aria-hidden="true" />
+                      <p className="font-semibold text-red-700">Medicine history could not be loaded.</p>
+                      <p className="mt-1 text-sm text-gray-500">{medicineHistoryError}</p>
+                    </td>
+                  </tr>
+                ) : medicineHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                      <Package className="mx-auto mb-3 text-emerald-200" size={34} aria-hidden="true" />
+                      <p className="font-semibold text-gray-500">No medicine records for this patient yet.</p>
+                      <p className="mt-1 text-sm text-gray-400">Items added to the patient’s bill will appear here.</p>
+                    </td>
+                  </tr>
+                ) : medicineHistory.map((sale) => (
+                  <tr key={sale.id} className="transition-colors hover:bg-emerald-50/30">
+                    <td className="whitespace-nowrap px-5 py-4 text-gray-600 md:px-7">{sale.date}</td>
+                    <td className="px-5 py-4 font-semibold text-gray-900">{sale.medicine_name || 'Inventory item'}</td>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex rounded-lg bg-emerald-50 px-2.5 py-1 text-sm font-bold text-emerald-800">
+                        {formatMedicineQuantity(sale.quantity, sale.medicine_unit)}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-right text-gray-600">{formatCurrency(Number(sale.unit_price || 0), currency)}</td>
+                    <td className="whitespace-nowrap px-5 py-4 text-right font-black text-gray-900 md:pr-7">{formatCurrency(Number(sale.total_price || 0), currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
 
     <div className="space-y-6 h-fit">
@@ -843,6 +970,17 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
         </div>
         {selectedPatient ? (
           <div className="space-y-6">
+             <button
+               type="button"
+               onClick={() => setShowPatientReport(true)}
+               className="flex w-full items-center justify-between gap-3 rounded-xl bg-slate-950 px-4 py-3 text-left text-white shadow-sm transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2"
+             >
+               <span className="flex items-center gap-3">
+                 <span className="rounded-lg bg-cyan-300 p-2 text-slate-950"><FileHeart size={18} /></span>
+                 <span><span className="block text-sm font-black">About this patient</span><span className="block text-[11px] text-slate-300">Open visits, care, medicine and payment report</span></span>
+               </span>
+               <Eye size={18} className="shrink-0 text-cyan-300" />
+             </button>
              <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center text-xl font-bold text-indigo-700">
                   {selectedPatient.name.charAt(0)}
@@ -1682,6 +1820,26 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {showPatientReport && selectedPatient && (
+        <React.Suspense fallback={
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/60 backdrop-blur-md">
+            <div className="rounded-2xl bg-white px-6 py-5 text-center shadow-2xl"><Loader2 className="mx-auto animate-spin text-indigo-600" /><p className="mt-2 text-sm font-bold text-gray-700">Preparing patient report…</p></div>
+          </div>
+        }>
+          <AboutPatientReport
+            patient={selectedPatient}
+            appointments={appointments}
+            treatments={treatmentHistory}
+            medicineSales={medicineSales}
+            payments={paymentRecords}
+            paymentsAvailable={paymentsAvailable}
+            doctors={doctors}
+            currency={currency}
+            onClose={() => setShowPatientReport(false)}
+          />
+        </React.Suspense>
       )}
 
       {showNextAppointmentModal && selectedPatient && onCreateAppointment && (

@@ -50,6 +50,7 @@ export interface AuthSession {
   location_id: string | null;
   loginTime: number;
   clientSessionId?: string;
+  staffAuthToken?: string;
   doctor_id?: string | null;
   patientId?: string; // For patient sessions
   supabaseUserId?: string; // For Supabase Auth sessions
@@ -113,6 +114,14 @@ export const auth = {
         await activeStaffPresence.markInactive(session);
       } catch (error) {
         console.warn('Unable to clear active staff presence during logout. Continuing local logout.', error);
+      }
+    }
+
+    if (session?.staffAuthToken) {
+      try {
+        await api.users.revokeAuthSession(session.staffAuthToken);
+      } catch (error) {
+        console.warn('Unable to revoke the server staff session during logout. Continuing local logout.', error);
       }
     }
 
@@ -222,6 +231,32 @@ export const auth = {
     return null;
   },
 
+  async refreshStaffSession(): Promise<AuthSession | null> {
+    const currentSession = this.getSession();
+    if (!currentSession || currentSession.role === 'patient') return currentSession;
+
+    const currentUser = await api.users.getById(currentSession.userId);
+    if (!currentUser) {
+      await this.logout();
+      return null;
+    }
+
+    const isDoctorUser = Boolean(currentUser.doctor_id);
+    const refreshedSession: AuthSession = {
+      ...currentSession,
+      username: currentUser.username,
+      role: isDoctorUser ? 'doctor' : currentUser.role,
+      allowed_tabs: isDoctorUser
+        ? [...DOCTOR_DASHBOARD_TABS]
+        : resolveAllowedTabs(currentUser.role, currentUser.allowed_tabs),
+      location_id: currentUser.location_id || null,
+      doctor_id: currentUser.doctor_id || null
+    };
+
+    this.setSession(refreshedSession);
+    return refreshedSession;
+  },
+
   // Patient/staff sessions are managed in localStorage; Supabase Auth is not used for app login.
   onAuthStateChange(_callback: (session: AuthSession | null) => void) {
     return {
@@ -244,7 +279,8 @@ export const auth = {
       location_id: user.location_id || null,
       doctor_id: user.doctor_id || null,
       loginTime: Date.now(),
-      clientSessionId: getOrCreateSessionInstanceId()
+      clientSessionId: getOrCreateSessionInstanceId(),
+      staffAuthToken: user.auth_session_token
     };
 
     this.setSession(session);

@@ -1,10 +1,13 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
-import { Patient, ClinicalRecord, MedicineSale, PaymentMethod, PaymentReceiptSnapshot, ReceiptSize, TreatmentType } from '../types';
+import { Patient, ClinicalRecord, MedicineSale, PaymentAllocation, PaymentMethod, PaymentReceiptSnapshot, ReceiptSize, TreatmentType } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
+import { normalizePaymentAllocations } from '../utils/paymentMethods';
 import { resolveReceiptHeaderTitle } from '../utils/receiptPreferences';
 import { formatTeethWithPosition } from '../utils/toothNumbering';
+import { getReceiptPageSize, getReceiptPrintPosition, getThermalPageHeightMm } from '../utils/receiptPrint';
 import { resolveReceiptTreatmentPricing } from '../utils/receiptPricing';
 
 interface ReceiptProps {
@@ -13,6 +16,7 @@ interface ReceiptProps {
   medicines?: MedicineSale[];
   paymentAmount?: number;
   paymentMethod?: PaymentMethod;
+  paymentAllocations?: PaymentAllocation[];
   receiptNumber?: string;
   paymentReceiptSnapshot?: PaymentReceiptSnapshot | null;
   treatmentTypes?: TreatmentType[];
@@ -30,6 +34,7 @@ const Receipt: React.FC<ReceiptProps> = ({
   medicines = [],
   paymentAmount,
   paymentMethod,
+  paymentAllocations,
   receiptNumber: persistedReceiptNumber,
   paymentReceiptSnapshot,
   treatmentTypes = [],
@@ -128,16 +133,28 @@ const Receipt: React.FC<ReceiptProps> = ({
       : 'Service Fee';
   const grandTotal = totalTreatmentCost + totalMedicineCost + paymentServiceFeeAmount;
   const totalPaid = paymentSnapshot?.payment.amountPaid || paymentAmount || 0;
+  const receiptPaymentAllocations = normalizePaymentAllocations(
+    paymentSnapshot?.payment.allocations || paymentAllocations,
+    paymentSnapshot?.payment.method || paymentMethod,
+    totalPaid
+  );
+  const renderPaymentAllocationRows = () => receiptPaymentAllocations.map((allocation) => (
+    <div key={allocation.method} className="flex justify-between text-sm mt-1">
+      <span className="text-gray-600">{formatPaymentMethod(allocation.method)}:</span>
+      <span className="font-semibold text-gray-900">{formatCurrency(allocation.amount, effectiveCurrency)}</span>
+    </div>
+  ));
+  const renderThermalPaymentAllocations = () => receiptPaymentAllocations.map((allocation) => (
+    <React.Fragment key={allocation.method}>
+      {thermalLine(`${formatPaymentMethod(allocation.method)}:`, formatCurrency(allocation.amount, effectiveCurrency))}
+    </React.Fragment>
+  ));
   
   // If this is a payment receipt (paymentAmount > 0), show patient's remaining balance
   // Otherwise, calculate balance based on selected treatments
   const remainingBalance = totalPaid > 0 
     ? (paymentSnapshot?.payment.balanceAfter ?? patient.balance)
     : Math.max(0, grandTotal - totalPaid); // For invoice, calculate from selected services and medicines
-
-  const handlePrint = () => {
-    window.print();
-  };
 
   const isThermal = receiptSize === 'THERMAL_55MM' || receiptSize === 'THERMAL_80MM';
   const isThermal80 = receiptSize === 'THERMAL_80MM';
@@ -149,6 +166,34 @@ const Receipt: React.FC<ReceiptProps> = ({
   const thermalSmallFontSize = isThermal80 ? '8px' : '7px';
   const thermalHeaderFontSize = isThermal80 ? '14px' : '12px';
   const thermalAmountFontSize = isThermal80 ? '16px' : '14px';
+  const thermalPrintContentRef = React.useRef<HTMLDivElement>(null);
+  const [thermalPageHeightMm, setThermalPageHeightMm] = React.useState(20);
+
+  const measureThermalPage = React.useCallback(() => {
+    if (!isThermal || !thermalPrintContentRef.current) return;
+    setThermalPageHeightMm(getThermalPageHeightMm(thermalPrintContentRef.current.scrollHeight));
+  }, [isThermal]);
+
+  React.useLayoutEffect(() => {
+    if (!isThermal || !thermalPrintContentRef.current) return;
+
+    measureThermalPage();
+    const content = thermalPrintContentRef.current;
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(measureThermalPage);
+    resizeObserver?.observe(content);
+
+    return () => resizeObserver?.disconnect();
+  }, [isThermal, measureThermalPage, paymentSnapshot, receiptTreatments.length, receiptMedicines.length]);
+
+  const handlePrint = async () => {
+    measureThermalPage();
+    // Allow the measured @page height to reach the stylesheet before Chrome
+    // builds its print preview. This also covers late font/layout rounding.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    window.print();
+  };
 
   const renderServicesTable = (isPrint = false) => (
     <div className="mb-8">
@@ -443,10 +488,7 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <span className="text-gray-600">Payment Date:</span>
                 <span className="font-semibold text-gray-900">{today}</span>
               </div>
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-gray-600">Payment Type:</span>
-                <span className="font-semibold text-gray-900">{formatPaymentMethod(paymentMethod)}</span>
-              </div>
+              {renderPaymentAllocationRows()}
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-gray-600">Payment Status:</span>
                 <span className="font-semibold text-green-600">Paid</span>
@@ -568,7 +610,7 @@ const Receipt: React.FC<ReceiptProps> = ({
               <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
               {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
               {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
-              {thermalLine('Payment Type:', formatPaymentMethod(paymentMethod))}
+              {renderThermalPaymentAllocations()}
               {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
             </div>
           )}
@@ -592,7 +634,7 @@ const Receipt: React.FC<ReceiptProps> = ({
   // ─── A4 Print Version ──────────────────────────────────────────────────
 
   const renderA4Print = () => (
-    <div className="receipt-print hidden print:block">
+    <div className="receipt-print">
       <div className="receipt-content" style={{ 
         width: '210mm', 
         minHeight: '297mm',
@@ -686,10 +728,7 @@ const Receipt: React.FC<ReceiptProps> = ({
               <span className="text-gray-600">Payment Date:</span>
               <span className="font-semibold text-gray-900">{today}</span>
             </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">Payment Type:</span>
-              <span className="font-semibold text-gray-900">{formatPaymentMethod(paymentMethod)}</span>
-            </div>
+            {renderPaymentAllocationRows()}
             <div className="flex justify-between text-sm mt-1">
               <span className="text-gray-600">Payment Status:</span>
               <span className="font-semibold text-green-600">Paid</span>
@@ -716,8 +755,8 @@ const Receipt: React.FC<ReceiptProps> = ({
   // ─── Thermal Print Version ─────────────────────────────────────────────
 
   const renderThermalPrint = () => (
-    <div className="receipt-print hidden print:block">
-      <div className="thermal-receipt-content" style={{
+    <div className="receipt-print">
+      <div ref={thermalPrintContentRef} className="thermal-receipt-content" style={{
         width: thermalPaperWidth,
         boxSizing: 'border-box',
         margin: '0 auto',
@@ -789,7 +828,7 @@ const Receipt: React.FC<ReceiptProps> = ({
             <div style={{ fontSize: '8.5px', fontWeight: 700, marginBottom: '3px', letterSpacing: '0.3px' }}>-- PAYMENT DETAILS --</div>
             {thermalLine('Amount Paid:', formatCurrency(totalPaid, currency), { fontSize: '8px' }, { fontSize: '8px', fontWeight: 700 })}
             {thermalLine('Date:', today, { fontSize: '8px' }, { fontSize: '8px' })}
-            {thermalLine('Payment Type:', formatPaymentMethod(paymentMethod))}
+            {renderThermalPaymentAllocations()}
             {thermalLine('Status:', 'Paid', undefined, { color: '#16a34a' })}
           </div>
         )}
@@ -967,11 +1006,12 @@ const Receipt: React.FC<ReceiptProps> = ({
     );
   };
 
-  const renderPaymentThermalContent = () => {
+  const renderPaymentThermalContent = (isPrint = false) => {
     if (!paymentSnapshot) return null;
 
     return (
       <div
+        ref={isPrint ? thermalPrintContentRef : undefined}
         className="thermal-receipt-content"
         style={{
           width: thermalPaperWidth,
@@ -1087,7 +1127,7 @@ const Receipt: React.FC<ReceiptProps> = ({
   );
 
   const renderPaymentA4Print = () => (
-    <div className="receipt-print hidden print:block">
+    <div className="receipt-print">
       {renderPaymentA4Content(true)}
     </div>
   );
@@ -1122,60 +1162,119 @@ const Receipt: React.FC<ReceiptProps> = ({
   );
 
   const renderPaymentThermalPrint = () => (
-    <div className="receipt-print hidden print:block">
-      {renderPaymentThermalContent()}
+    <div className="receipt-print">
+      {renderPaymentThermalContent(true)}
     </div>
   );
 
   // ─── Main Return ───────────────────────────────────────────────────────
+
+  const printReceipt = paymentSnapshot
+    ? (isThermal ? renderPaymentThermalPrint() : renderPaymentA4Print())
+    : (isThermal ? renderThermalPrint() : renderA4Print());
+  const printPageSize = getReceiptPageSize(receiptSize, thermalPageHeightMm);
+  const printPosition = getReceiptPrintPosition(receiptSize);
+  const printPortal = typeof document === 'undefined'
+    ? null
+    : createPortal(
+      <>
+        {printReceipt}
+        <style>{`
+        /* Keep the print copy measurable so its roll-paper height is exact,
+           but move it completely outside the visible application canvas. */
+        .receipt-print {
+          position: fixed;
+          left: -10000px;
+          top: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
+
+        @media print {
+          html,
+          body {
+            width: auto !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+
+          /* Remove the application and every modal portal from print layout.
+             visibility:hidden preserves their height and creates blank pages. */
+          body > * {
+            display: none !important;
+          }
+
+          body > .receipt-print {
+            display: block !important;
+            /* Fixed elements have special paged-media behavior in Chromium and
+               can be centered or repeated when a thermal driver substitutes a
+               longer roll page. Anchor the one thermal copy to page one instead;
+               keep A4 in normal flow. */
+            position: ${printPosition} !important;
+            top: 0 !important;
+            left: 0 !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+            width: ${isThermal ? thermalPaperWidth : '210mm'} !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
+
+          .receipt-content {
+            position: relative;
+            margin: 0 auto;
+          }
+
+          .thermal-receipt-content {
+            position: relative;
+            display: block !important;
+            width: ${thermalPaperWidth} !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            color: #000 !important;
+            font-weight: 600 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          /* Low-cost thermal heads lose gray pixels. Print every receipt glyph
+             and rule as solid black while preserving the softer screen preview. */
+          .thermal-receipt-content,
+          .thermal-receipt-content * {
+            color: #000 !important;
+            border-color: #000 !important;
+            text-shadow: 0 0 0 #000;
+          }
+
+          .thermal-receipt-content > * {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          @page {
+            size: ${printPageSize};
+            margin: 0;
+          }
+        }
+      `}</style>
+      </>,
+      document.body
+    );
 
   return (
     <>
       {paymentSnapshot
         ? (isThermal ? renderPaymentThermalPreview() : renderPaymentA4Preview())
         : (isThermal ? renderThermalPreview() : renderA4Preview())}
-      {paymentSnapshot
-        ? (isThermal ? renderPaymentThermalPrint() : renderPaymentA4Print())
-        : (isThermal ? renderThermalPrint() : renderA4Print())}
-
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .receipt-print,
-          .receipt-print * {
-            visibility: visible;
-          }
-          .receipt-print {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-          }
-          .receipt-content {
-            position: relative;
-            margin: 0 auto;
-          }
-          .thermal-receipt-content {
-            position: relative;
-            margin: 0 auto;
-          }
-        }
-
-        /* Page setup */
-        @media print {
-          @page {
-            size: ${isThermal ? `${isThermal80 ? '80mm' : '58mm'} 297mm` : 'A4'};
-            margin: 0;
-          }
-          body {
-            margin: 0;
-            padding: 0;
-          }
-        }
-      `}</style>
+      {printPortal}
     </>
   );
 };

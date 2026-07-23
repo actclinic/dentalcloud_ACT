@@ -128,4 +128,48 @@ describe('finance.processPayment', () => {
     expect(supabaseMock.rpcCalls[1].payload).not.toHaveProperty('p_submission_key');
     expect(result.payment.id).toBe('payment-1');
   });
+
+  it('posts split allocations through the dedicated atomic RPC', async () => {
+    supabaseMock.rpcResults.push({ data: [{ ...paymentRow, payment_method: 'MIXED' }], error: null });
+
+    const result = await api.finance.processPayment({
+      patientId: 'patient-1',
+      amount: 100,
+      paymentMethod: 'MIXED',
+      allocations: [{ method: 'CASH', amount: 40 }, { method: 'KPAY', amount: 60 }],
+      submissionKey: 'split-123'
+    });
+
+    expect(supabaseMock.rpcCalls).toHaveLength(1);
+    expect(supabaseMock.rpcCalls[0]).toMatchObject({
+      functionName: 'process_patient_split_payment',
+      payload: {
+        p_amount: 100,
+        p_submission_key: 'split-123',
+        p_allocations: [
+          { method: 'CASH', amount: 40, reference: null },
+          { method: 'KPAY', amount: 60, reference: null }
+        ]
+      }
+    });
+    expect(result.payment.paymentMethod).toBe('MIXED');
+    expect(result.payment.allocations).toEqual([
+      { method: 'CASH', amount: 40 },
+      { method: 'KPAY', amount: 60 }
+    ]);
+  });
+
+  it('never downgrades a split payment when its migration is missing', async () => {
+    supabaseMock.rpcResults.push({ data: null, error: { code: 'PGRST202', message: 'Could not find process_patient_split_payment' } });
+
+    await expect(api.finance.processPayment({
+      patientId: 'patient-1',
+      amount: 100,
+      paymentMethod: 'MIXED',
+      allocations: [{ method: 'CASH', amount: 40 }, { method: 'KPAY', amount: 60 }]
+    })).rejects.toThrow(/split payment storage is not installed/i);
+
+    expect(supabaseMock.rpcCalls).toHaveLength(1);
+    expect(supabaseMock.rpcCalls[0].functionName).toBe('process_patient_split_payment');
+  });
 });

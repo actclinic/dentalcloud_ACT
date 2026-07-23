@@ -146,6 +146,25 @@ The main component responsible for AI interactions, featuring:
 - Clinical protocol guidance
 - Insurance claim preparation
 
+### Detailed Treatment Analysis Workflow
+**Navigation and scope:**
+- Open **Overview**, find **Treatment Mix (Range)**, then select **More Detail**.
+- The read-only report uses the inclusive **Date From**, **Date To**, and **Report Scope** controls from Overview. Date changes reload an open report; changing Report Scope returns to Overview, where **More Detail** must be selected again.
+- Loli can explain the screen, but no assistant action opens it or changes its filters.
+
+**Metric meanings:**
+- **Performed** is the number of saved treatment records, not appointments, teeth, or unique visits.
+- The multiple-treatment-record patient share is the percentage of distinct patients with more than one treatment record in range. Multiple records can be from one visit, so this is not a return, retention, repeat-visit, or loyalty rate without separate visit evidence.
+- **Patients** is distinct patients for each treatment. **Production** is recorded treatment value, **Average** is production per performance, and **Share** is the treatment's percentage of all performances in scope.
+- Discounted and FOC records are separate. FOC is not also counted as discounted, and Unassigned is visible in the doctor breakdown without increasing distinct-doctor totals.
+- Tooth frequency counts a tooth once per treatment record. The time trend plots dates that contain treatment activity.
+- Single-branch reports preserve treatment-type identity and support legacy name-based records. **All Branches** combines matching branch-local services by normalized treatment name.
+
+**Data boundaries and errors:**
+- The screen pages through the complete selected date range. Assistant Practice Data can contain only a recent subset and must not be presented as an exact copy of the screen totals.
+- The screen does not calculate clinical success rates, outcomes, diagnoses, profit, collections, or seasonal comparisons. Production must not be described as collected payment.
+- A genuine empty range asks the user to widen the dates. Loading failures show **Try again** and must not be reported as zero activity.
+
 ### 4. Inventory Management Workflow
 **Primary Operations:**
 - Medicine/Supply tracking

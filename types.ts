@@ -113,10 +113,13 @@ export interface AuditLogEntry {
   created_at?: string;
 }
 
+export type TreatmentCostType = 'material' | 'lab';
+
 export interface PatientMaterialCost {
   id: string;
   auditLogId: string;
   materialName: string;
+  costType: TreatmentCostType;
   costAmount: number;
   quantity: number;
   totalAmount: number;
@@ -128,8 +131,19 @@ export interface PatientMaterialCost {
 
 export interface PatientMaterialCostInput {
   materialName: string;
+  costType: TreatmentCostType;
   costAmount: number;
   quantity: number;
+}
+
+export interface TreatmentCostSummary {
+  auditLogId: string;
+  materialTotal: number;
+  materialItemCount: number;
+  labTotal: number;
+  labItemCount: number;
+  totalAmount: number;
+  itemCount: number;
 }
 
 export interface PaymentRecord {
@@ -148,6 +162,7 @@ export interface PaymentRecord {
   remainingBalance: number;
   patientCurrentBalance?: number;
   paymentMethod?: PaymentMethod;
+  allocations?: PaymentAllocation[];
   receiptNumber?: string;
   receiptSnapshot?: PaymentReceiptSnapshot | null;
   createdAt?: string;
@@ -163,10 +178,20 @@ export interface PaymentCorrection {
   newAmount: number;
   oldMethod?: PaymentMethod | null;
   newMethod?: PaymentMethod | null;
+  oldAllocations?: PaymentAllocation[];
+  newAllocations?: PaymentAllocation[];
   reason: string;
   editedBy: string;
   editedAt: string;
   editorName?: string | null;
+}
+
+export interface PaymentAllocation {
+  id?: string;
+  paymentId?: string;
+  method: PaymentMethod;
+  amount: number;
+  reference?: string | null;
 }
 
 export interface PaymentReceiptTreatmentLine {
@@ -190,7 +215,7 @@ export interface PaymentReceiptMedicineLine {
 }
 
 export interface PaymentReceiptSnapshot {
-  version: 1;
+  version: 1 | 2;
   receiptType: 'PAYMENT';
   receiptNumber: string;
   receiptDate: string;
@@ -212,6 +237,7 @@ export interface PaymentReceiptSnapshot {
   payment: {
     amountPaid: number;
     method: PaymentMethod;
+    allocations?: PaymentAllocation[];
     status: 'FULL' | 'PARTIAL';
     balanceBefore: number;
     balanceAfter: number;
@@ -232,6 +258,7 @@ export type PaymentMethod =
   | 'CREDIT_CARD'
   | 'AYA_PAY'
   | 'UAB_PAY'
+  | 'MIXED'
   | 'UNKNOWN';
 
 export interface DoctorSchedule {
@@ -366,6 +393,7 @@ export interface User {
   location_id: string | null; // null for global admins
   doctor_id?: string | null;
   username: string;
+  auth_session_token?: string;
   password?: string; // Only for creation/update, not returned in queries
   role: 'admin' | 'normal';
   allowed_tabs?: AppTabPermission[];
@@ -410,11 +438,13 @@ export interface MedicineSale {
   patient_name?: string;
   medicine_id: string;
   medicine_name?: string;
+  medicine_unit?: string;
   quantity: number;
   unit_price: number;
   total_price: number;
   date: string;
   treatment_id?: string; // Optional: link to treatment if sold with treatment
+  created_at?: string;
 }
 
 export interface ClinicSettings {

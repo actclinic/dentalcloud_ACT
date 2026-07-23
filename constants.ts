@@ -69,8 +69,8 @@ export const FLEXIBLE_STAFF_TABS = [
   },
   {
     key: 'material-cost',
-    label: 'Material Cost',
-    description: 'Track treatment material costs and linked expense impact.'
+    label: 'Material & Lab',
+    description: 'Track treatment material and lab costs with linked expense impact.'
   },
   {
     key: 'records',
@@ -96,6 +96,11 @@ export const FLEXIBLE_STAFF_TABS = [
     key: 'ai-assistant',
     label: 'AI Assistant',
     description: 'Loli AI assistant workspace.'
+  },
+  {
+    key: 'branch-switching',
+    label: 'Branch Switching',
+    description: 'Switch the active branch without access to system settings.'
   }
 ] as const;
 
@@ -119,7 +124,9 @@ export const ALL_APP_TAB_PERMISSIONS: AppTabPermission[] = [
   ...MANAGER_ONLY_TABS
 ];
 
-export const FULL_ACCESS_TAB_PERMISSIONS: AppTabPermission[] = [...ALL_APP_TAB_PERMISSIONS];
+export const FULL_ACCESS_TAB_PERMISSIONS: AppTabPermission[] = ALL_APP_TAB_PERMISSIONS.filter(
+  (tab) => tab !== 'branch-switching'
+);
 
 export const DOCTOR_DASHBOARD_TABS: AppTabPermission[] = [
   'dashboard',

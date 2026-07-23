@@ -262,6 +262,20 @@ DETAILED FINANCIAL ANALYSIS:
 7. REPORTING AND ANALYTICS
 ==========================
 
+DETAILED TREATMENT ANALYSIS (READ-ONLY SCREEN):
+- Go to Overview > Treatment Mix (Range) and select More Detail.
+- The report follows Overview's inclusive Date From, Date To, and Report Scope controls.
+- Performed is the number of saved treatment records. It is not appointment count, tooth count, or unique visit count.
+- The report shows distinct patients, multiple-treatment-record patient share, recorded treatment production, average value, discounts, FOC treatments, frequency over time, doctor distribution, most-treated teeth, and a searchable/sortable treatment table.
+- Multiple-treatment-record patient share is the percentage of distinct patients with more than one saved treatment record in range. Those records may belong to one visit, so it is not automatically a return, retention, repeat-visit, or loyalty rate.
+- In the table, Patients is distinct patients for that treatment, Production is recorded treatment value, Average is production per performance, and Share is the treatment's percentage of all performances in the selected scope.
+- Discounts and FOC are separate. Unassigned remains visible in the doctor breakdown but is not counted as a distinct doctor.
+- All Branches combines matching branch-local services by normalized treatment name. A single branch preserves treatment-type identity and supports legacy name-based records.
+- This screen does not report clinical success rates, outcomes, profit, collections, or seasonal comparisons.
+- Loli can explain how to use and interpret the screen, but there is no assistant action that opens it. Assistant Practice Data may contain only a recent subset, so use the screen for authoritative selected-range totals.
+- No matching records and report-loading failures are different states. Widen the date range for a genuine empty result; use Try again after a loading error.
+- Date changes reload Treatment Analysis while it is open. Changing Report Scope returns to Overview; select More Detail again for the new branch scope.
+
 STAFF AVAILABILITY:
 { "action": "staff_availability", "params": { "date": "2024-02-15" } }
 
