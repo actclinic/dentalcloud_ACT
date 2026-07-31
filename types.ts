@@ -136,6 +136,24 @@ export interface PatientMaterialCostInput {
   quantity: number;
 }
 
+export interface MaterialLabCostPreset {
+  id: string;
+  costType: TreatmentCostType;
+  label: string;
+  amount: number;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MaterialLabCostPresetInput {
+  id: string;
+  costType: TreatmentCostType;
+  label: string;
+  amount: number;
+  sortOrder: number;
+}
+
 export interface TreatmentCostSummary {
   auditLogId: string;
   materialTotal: number;
@@ -335,6 +353,8 @@ export interface Appointment {
   time: string; // HH:MM
   type: string;
   status: 'Scheduled' | 'Completed' | 'Cancelled';
+  cancellation_outcome?: CancellationOutcome | null;
+  completed_later_appointment_id?: string | null;
   notes?: string;
   guest_name?: string | null;
   guest_phone?: string | null;
@@ -349,6 +369,8 @@ export interface Appointment {
   clinical_fee_patient_category?: 'NEW' | 'RETURNING' | null;
   clinical_fee_applied_at?: string | null;
 }
+
+export type CancellationOutcome = 'NO_SHOW' | 'RESCHEDULED' | 'COMPLETED_LATER';
 
 export interface AppointmentRescheduleLog {
   id: string;

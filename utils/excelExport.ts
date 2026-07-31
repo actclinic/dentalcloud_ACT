@@ -47,6 +47,8 @@ const applyColumnFormatting = (
 };
 
 export const EXCEL_HEADER_ROW_HEIGHT_POINTS = 20;
+export const RECALLS_CANCELS_EXCEL_HEADERS = ['Date', 'Time', 'Patient', 'Type', 'Phone', 'Source', 'Appt.', 'Doctor', 'Focus', 'Notes', 'Status', 'Done date'] as const;
+export const RECALLS_CANCELS_EXCEL_COLUMN_WIDTHS = [14, 10, 26, 16, 18, 18, 20, 22, 30, 38, 18, 16] as const;
 
 interface WorksheetLayoutOptions {
   compactHeader?: boolean;
@@ -229,7 +231,7 @@ export const exportRecallsCancelsToExcel = async (
   const sections = buildRecallsCancelsExportRows(appointments, todayKey);
   const workbook = XLSX.utils.book_new();
   const generatedAt = new Date().toLocaleString();
-  const total = sections.recalls.length + sections.late.length + sections.cancelled.length;
+  const total = sections.recalls.length + sections.late.length + sections.cancelled.length + sections.noShow.length + sections.rescheduled.length + sections.completedLater.length;
   const summarySheet = XLSX.utils.aoa_to_sheet([
     ['Recalls & Cancels Report'],
     ['Report Scope', locationName],
@@ -239,40 +241,55 @@ export const exportRecallsCancelsToExcel = async (
     ['Category', 'Count'],
     ['Upcoming Recalls', sections.recalls.length],
     ['Late / No-show', sections.late.length],
-    ['Cancelled Appointments', sections.cancelled.length],
+    ['Cancelled - Needs Follow-up', sections.cancelled.length],
+    ['Cancelled - No Show', sections.noShow.length],
+    ['Cancelled - Rescheduled', sections.rescheduled.length],
+    ['Cancelled - Completed Later', sections.completedLater.length],
     ['Total', total]
   ]);
   summarySheet['!cols'] = [{ wch: 28 }, { wch: 34 }];
   summarySheet['!merges'] = [XLSX.utils.decode_range('A1:B1')];
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
-  const headers = ['Date', 'Time', 'Patient', 'Patient Type', 'Phone', 'Source', 'Appointment Type', 'Doctor', 'Clinical Focus', 'Notes'];
+  const headers = [...RECALLS_CANCELS_EXCEL_HEADERS];
   const appendSectionSheet = (sheetName: string, rows: RecallsCancelsExportRow[]) => {
     const data = rows.map(row => ({
       Date: row.date,
       Time: row.time,
       Patient: row.patient,
-      'Patient Type': row.patientType,
+      Type: row.patientType,
       Phone: row.phone,
       Source: row.source,
-      'Appointment Type': row.appointmentType,
+      'Appt.': row.appointmentType,
       Doctor: row.doctor,
-      'Clinical Focus': row.clinicalFocus,
-      Notes: row.notes
+      Focus: row.clinicalFocus,
+      Notes: row.notes,
+      Status: row.cancellationOutcome ? row.cancellationOutcome.replaceAll('_', ' ') : '',
+      'Done date': row.completedLaterDate
     }));
     const worksheet = XLSX.utils.json_to_sheet(data, { header: headers });
-    worksheet['!cols'] = [
-      { wch: 14 }, { wch: 10 }, { wch: 26 }, { wch: 20 }, { wch: 18 },
-      { wch: 20 }, { wch: 22 }, { wch: 24 }, { wch: 36 }, { wch: 44 }
-    ];
-    worksheet['!autofilter'] = { ref: `A1:J${Math.max(rows.length + 1, 1)}` };
+    worksheet['!cols'] = RECALLS_CANCELS_EXCEL_COLUMN_WIDTHS.map((wch) => ({ wch }));
+    worksheet['!rows'] = [{ hpt: EXCEL_HEADER_ROW_HEIGHT_POINTS }];
+    headers.forEach((_, columnIndex) => {
+      const cellAddress = `${String.fromCharCode(65 + columnIndex)}1`;
+      const cell = worksheet[cellAddress];
+      if (!cell) return;
+      cell.s = {
+        ...(cell.s || {}),
+        alignment: { ...(cell.s?.alignment || {}), vertical: 'center', wrapText: false }
+      };
+    });
+    worksheet['!autofilter'] = { ref: `A1:L${Math.max(rows.length + 1, 1)}` };
     worksheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   };
 
   appendSectionSheet('Upcoming Recalls', sections.recalls);
   appendSectionSheet('Late-No-show', sections.late);
-  appendSectionSheet('Cancelled', sections.cancelled);
+  appendSectionSheet('Cancelled - Follow-up', sections.cancelled);
+  appendSectionSheet('Cancelled - No Show', sections.noShow);
+  appendSectionSheet('Cancelled - Rescheduled', sections.rescheduled);
+  appendSectionSheet('Cancelled - Completed', sections.completedLater);
   XLSX.writeFile(workbook, `recalls-cancels-${todayKey}.xlsx`);
 };
 
