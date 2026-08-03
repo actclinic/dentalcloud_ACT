@@ -44,13 +44,19 @@ export const getPaymentTreatmentShare = (payment: PaymentRecord): number => {
     0
   );
   const serviceFee = positiveMoney(snapshot.payment.serviceFeeAmount);
-  const capturedValue = treatmentValue + medicineValue + serviceFee;
+  const nonServiceFeePayment = Math.max(0, collected - serviceFee);
+  const billableValue = treatmentValue + medicineValue;
   const hasPricedReceiptLines = treatmentValue + medicineValue > 0;
 
-  // A populated receipt snapshot is the immutable source of truth for mixed
-  // receipts. Legacy/partial snapshots without priced lines retain the older
-  // service-fee-only fallback instead of making the whole payment disappear.
-  return hasPricedReceiptLines && capturedValue > 0
-    ? roundMoney(collected * treatmentValue / capturedValue)
+  // Service fees are separate charges, never a proportional part of treatment
+  // collection. A treatment-only receipt therefore always contributes the full
+  // payment remainder to treatment collection.
+  if (treatmentValue > 0 && medicineValue === 0) return roundMoney(nonServiceFeePayment);
+
+  // For a receipt that genuinely mixes treatment and medicine, split only the
+  // remainder after the service fee across those billable receipt lines.
+  // Legacy/partial snapshots without priced lines retain the fee-only fallback.
+  return hasPricedReceiptLines && billableValue > 0
+    ? roundMoney(nonServiceFeePayment * treatmentValue / billableValue)
     : roundMoney(Math.max(0, collected - serviceFee));
 };

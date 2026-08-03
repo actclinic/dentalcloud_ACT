@@ -43,6 +43,19 @@ describe('material cost calculations', () => {
     )).toEqual({ 'treatment-1': 90_000 });
   });
 
+  it('removes the full service fee before allocating a treatment-only receipt', () => {
+    const receiptSnapshot = {
+      payment: { serviceFeeAmount: 10_000 },
+      treatments: [{ id: 'treatment-1', finalCost: 1_300_000 }],
+      medicines: []
+    } as PaymentRecord['receiptSnapshot'];
+
+    expect(calculateCollectedByTreatmentId(
+      [treatment({ cost: 1_300_000 })],
+      [payment({ amount: 660_000, clearedAmount: 660_000, receiptSnapshot })]
+    )).toEqual({ 'treatment-1': 650_000 });
+  });
+
   it('caps collected treatment amounts at treatment debt', () => {
     expect(calculateCollectedByTreatmentId(
       [treatment({ cost: 100_000 })],
@@ -90,7 +103,7 @@ describe('material cost calculations', () => {
     expect(calculateCollectedByTreatmentId(
       [treatment()],
       [payment({ amount: 50_000, clearedAmount: 50_000, receiptSnapshot })]
-    )).toEqual({ 'treatment-1': 30_000 });
+    )).toEqual({ 'treatment-1': 26_666.67 });
   });
 
   it('does not reassign an explicitly linked payment outside the loaded scope', () => {
