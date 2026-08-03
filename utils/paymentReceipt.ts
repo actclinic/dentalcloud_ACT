@@ -206,6 +206,23 @@ export const buildPaymentReceiptSnapshot = (params: {
   };
 };
 
+export const getPaymentReceiptCapturedValue = (
+  snapshot: Pick<PaymentReceiptSnapshot, 'payment' | 'treatments' | 'medicines'>
+): number => Math.round((
+  Math.max(0, normalizeNumber(snapshot.payment.serviceFeeAmount))
+  + (snapshot.treatments || []).reduce((sum, item) => sum + Math.max(0, normalizeNumber(item.finalCost)), 0)
+  + (snapshot.medicines || []).reduce((sum, item) => sum + Math.max(0, normalizeNumber(item.totalPrice)), 0)
+) * 100) / 100;
+
+export const mergePaymentTreatmentBatch = (
+  current: ClinicalRecord[],
+  added: ClinicalRecord[],
+  patientId: string
+): ClinicalRecord[] => Array.from(new Map(
+  [...current.filter((record) => record.patient_id === patientId), ...added]
+    .map((record) => [record.id, record])
+).values());
+
 export const buildLegacyPaymentReceiptSnapshot = (
   payment: PaymentRecord,
   clinic: ReceiptClinicContext

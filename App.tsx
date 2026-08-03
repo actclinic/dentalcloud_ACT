@@ -79,7 +79,7 @@ import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
 import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTotal, getPaymentHeaderMethod, isSelectablePaymentMethod, normalizePaymentAllocations, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS, validatePaymentAllocations } from './utils/paymentMethods';
-import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
+import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaymentReceiptCapturedValue, mergePaymentTreatmentBatch, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
 import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 import { getPaymentDedupeKey } from './utils/paymentTreatmentAllocation';
 import { toLocalDateInputValue } from './utils/patientCreationDate';
@@ -3145,7 +3145,7 @@ const App: React.FC = () => {
 
       const latestResponse = recordedResponses[recordedResponses.length - 1];
       const newRecords = recordedResponses.map((response) => response.record);
-      setLatestTreatmentBatch(newRecords);
+      setLatestTreatmentBatch((current) => mergePaymentTreatmentBatch(current, newRecords, selectedPatient.id));
       treatmentHistoryRequestRef.current += 1;
       
       setSelectedPatient({ ...selectedPatient, balance: latestResponse?.new_balance ?? selectedPatient.balance });
@@ -3343,14 +3343,34 @@ const App: React.FC = () => {
         selectedPaymentTreatments,
         paymentDate
       );
-      const provisionalReceiptSnapshot = paymentServiceFeeAmount > 0
-        ? {
-            payment: {
-              serviceFeeAmount: paymentServiceFeeAmount,
-              serviceFeeCategory: paymentDraft.serviceFeeCategory
-            }
-          }
-        : null;
+      const provisionalReceiptSnapshot = buildPaymentReceiptSnapshot({
+        patient: selectedPatient,
+        amountPaid: paymentAmountTendered,
+        paymentMethod: getPaymentHeaderMethod(effectivePaymentAllocations),
+        allocations: effectivePaymentAllocations,
+        paymentDate,
+        receiptNumber: `PENDING-${submissionKey}`,
+        balanceBefore: paymentOriginalAmount,
+        balanceAfter: Math.max(0, paymentOriginalAmount - paymentAmountTendered),
+        paymentStatus: paymentAmountTendered >= paymentOriginalAmount ? 'FULL' : 'PARTIAL',
+        recordedByUserName: currentUser || session?.username || null,
+        serviceFeeAmount: paymentServiceFeeAmount,
+        serviceFeeCategory: paymentDraft.serviceFeeCategory,
+        treatments: selectedPaymentTreatments,
+        medicines: matchedMedicineSales,
+        clinic: {
+          appName,
+          receiptHeaderTitle,
+          receiptInfo,
+          currency
+        }
+      });
+      const capturedReceiptValue = getPaymentReceiptCapturedValue(provisionalReceiptSnapshot);
+      const enforceReceiptReconciliation = selectedPaymentTreatments.length > 0;
+      const missingReceiptValue = Math.round((paymentAmountTendered - capturedReceiptValue) * 100) / 100;
+      if (enforceReceiptReconciliation && missingReceiptValue > 0) {
+        throw new Error(`Payment details are missing ${formatCurrency(missingReceiptValue, currency)} of billable items. Reload the patient and try again.`);
+      }
       const res = await api.finance.processPayment({
         patientId: selectedPatient.id,
         amount: paymentAmountTendered,
@@ -3359,7 +3379,9 @@ const App: React.FC = () => {
         treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
         paymentDate,
         submissionKey,
-        receiptSnapshot: provisionalReceiptSnapshot,
+        receiptSnapshot: enforceReceiptReconciliation
+          ? { ...provisionalReceiptSnapshot, reconciliation: { version: 1 } }
+          : provisionalReceiptSnapshot,
         createdByUserId: null,
         createdByUserName: currentUser || session?.username || null
       });

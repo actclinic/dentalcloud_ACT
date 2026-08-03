@@ -3,6 +3,8 @@ import type { Patient, PaymentRecord } from '../types';
 import {
   buildLegacyPaymentReceiptSnapshot,
   buildPaymentReceiptSnapshot,
+  getPaymentReceiptCapturedValue,
+  mergePaymentTreatmentBatch,
   normalizePaymentReceiptSnapshot
 } from './paymentReceipt';
 
@@ -16,6 +18,27 @@ describe('paymentReceipt', () => {
     },
     currency: 'MMK' as const
   };
+
+  it('keeps every treatment recorded for the same patient before payment', () => {
+    const base = {
+      location_id: 'location-1', patient_id: 'patient-1', teeth: [], date: '2026-08-03'
+    };
+    const first = { ...base, id: 'treatment-1', description: 'ELA', cost: 100_000 } as any;
+    const second = { ...base, id: 'treatment-2', description: 'Impaction Out', cost: 200_000 } as any;
+
+    expect(mergePaymentTreatmentBatch([first], [second], 'patient-1').map((record) => record.id))
+      .toEqual(['treatment-1', 'treatment-2']);
+  });
+
+  it('reconciles treatment, medicine, and service-fee receipt value', () => {
+    const snapshot = {
+      payment: { serviceFeeAmount: 10_000 },
+      treatments: [{ finalCost: 100_000 }, { finalCost: 200_000 }],
+      medicines: [{ totalPrice: 87_000 }]
+    } as any;
+
+    expect(getPaymentReceiptCapturedValue(snapshot)).toBe(397_000);
+  });
 
   it('builds an immutable payment receipt snapshot from payment facts', () => {
     const patient: Patient = {
