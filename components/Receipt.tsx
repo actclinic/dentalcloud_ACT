@@ -109,6 +109,9 @@ const Receipt: React.FC<ReceiptProps> = ({
         quantity: medicine.quantity,
         unit_price: medicine.unitPrice,
         total_price: medicine.totalPrice,
+        standard_total_price: medicine.standardTotalPrice,
+        discount_amount: medicine.discountAmount,
+        pricing_note: medicine.pricingNote || null,
         date: medicine.date
       }))
     : medicines;
@@ -269,13 +272,14 @@ const Receipt: React.FC<ReceiptProps> = ({
             <th className="text-left py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Item</th>
             <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Qty</th>
             <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Unit Price</th>
+            <th className="text-center py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Note</th>
             <th className="text-right py-3 px-4 text-sm font-bold text-gray-900" style={isPrint ? { borderBottom: '2px solid #1f2937' } : undefined}>Amount</th>
           </tr>
         </thead>
         <tbody>
           {receiptMedicines.length === 0 ? (
             <tr>
-              <td colSpan={5} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
+              <td colSpan={6} className="py-6 text-center text-gray-500 italic" style={isPrint ? { padding: '24px 16px' } : undefined}>
                 No medicines or items recorded
               </td>
             </tr>
@@ -293,6 +297,14 @@ const Receipt: React.FC<ReceiptProps> = ({
                 <td className="py-3 px-4 text-sm text-gray-600 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>{medicine.quantity}</td>
                 <td className="py-3 px-4 text-sm text-gray-600 text-right" style={isPrint ? { padding: '12px 16px' } : undefined}>
                   {formatCurrency(medicine.unit_price || 0, effectiveCurrency)}
+                </td>
+                <td className="py-3 px-4 text-sm text-center" style={isPrint ? { padding: '12px 16px' } : undefined}>
+                  {'pricing_note' in medicine && (medicine as any).pricing_note
+                    ? ((medicine as any).pricing_note === 'FOC'
+                      ? <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-black bg-amber-100 text-amber-700">FOC</span>
+                      : <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-black bg-emerald-100 text-emerald-700">DISCOUNT</span>)
+                    : <span className="text-gray-300">&mdash;</span>
+                  }
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-900 text-right font-semibold" style={isPrint ? { padding: '12px 16px' } : undefined}>
                   {formatCurrency(medicine.total_price || 0, effectiveCurrency)}
@@ -367,6 +379,7 @@ const Receipt: React.FC<ReceiptProps> = ({
             </div>
             <div style={{ fontSize: thermalSmallFontSize, color: '#555' }}>
               @ {formatCurrency(med.unit_price || 0, effectiveCurrency)}/ea
+              {'pricing_note' in med && (med as any).pricing_note ? ` — ${(med as any).pricing_note}` : ''}
             </div>
           </div>
         ))

@@ -907,20 +907,21 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                   <th className="px-5 py-4">Medicine / Item</th>
                   <th className="px-5 py-4">Quantity given</th>
                   <th className="px-5 py-4 text-right">Unit price</th>
+                  <th className="px-5 py-4 text-center">Note</th>
                   <th className="px-5 py-4 text-right md:pr-7">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {medicineHistoryLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                    <td colSpan={6} className="px-5 py-12 text-center md:px-7">
                       <Loader2 className="mx-auto mb-3 animate-spin text-emerald-500" size={30} aria-hidden="true" />
                       <p className="font-semibold text-gray-500">Loading medicine history…</p>
                     </td>
                   </tr>
                 ) : medicineHistoryError ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                    <td colSpan={6} className="px-5 py-12 text-center md:px-7">
                       <AlertCircle className="mx-auto mb-3 text-red-400" size={32} aria-hidden="true" />
                       <p className="font-semibold text-red-700">Medicine history could not be loaded.</p>
                       <p className="mt-1 text-sm text-gray-500">{medicineHistoryError}</p>
@@ -928,7 +929,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                   </tr>
                 ) : medicineHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center md:px-7">
+                    <td colSpan={6} className="px-5 py-12 text-center md:px-7">
                       <Package className="mx-auto mb-3 text-emerald-200" size={34} aria-hidden="true" />
                       <p className="font-semibold text-gray-500">No medicine records for this patient yet.</p>
                       <p className="mt-1 text-sm text-gray-400">Items added to the patient’s bill will appear here.</p>
@@ -944,6 +945,15 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-5 py-4 text-right text-gray-600">{formatCurrency(Number(sale.unit_price || 0), currency)}</td>
+                    <td className="whitespace-nowrap px-5 py-4 text-center">
+                      {sale.pricing_note ? (
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${sale.pricing_note === 'FOC' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {sale.pricing_note}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">&mdash;</span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-5 py-4 text-right font-black text-gray-900 md:pr-7">{formatCurrency(Number(sale.total_price || 0), currency)}</td>
                   </tr>
                 ))}

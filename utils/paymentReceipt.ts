@@ -65,7 +65,14 @@ const normalizeMedicineLine = (value: any): PaymentReceiptMedicineLine | null =>
     medicineName,
     quantity: normalizeNumber(value.quantity),
     unitPrice: normalizeNumber(value.unitPrice ?? value.unit_price),
-    totalPrice: normalizeNumber(value.totalPrice ?? value.total_price)
+    totalPrice: normalizeNumber(value.totalPrice ?? value.total_price),
+    standardTotalPrice: normalizeNumber(value.standardTotalPrice ?? value.standard_total_price),
+    discountAmount: normalizeNumber(value.discountAmount ?? value.discount_amount),
+    pricingNote: value.pricingNote === 'FOC' || value.pricingNote === 'DISCOUNT'
+      ? value.pricingNote
+      : value.pricing_note === 'FOC' || value.pricing_note === 'DISCOUNT'
+        ? value.pricing_note
+        : null
   };
 };
 
@@ -88,7 +95,10 @@ const buildMedicineLines = (medicines: MedicineSale[] = []): PaymentReceiptMedic
     medicineName: normalizeString(medicine.medicine_name) || 'Medicine',
     quantity: normalizeNumber(medicine.quantity),
     unitPrice: normalizeNumber(medicine.unit_price),
-    totalPrice: normalizeNumber(medicine.total_price)
+    totalPrice: normalizeNumber(medicine.total_price),
+    standardTotalPrice: normalizeNumber(medicine.standard_total_price),
+    discountAmount: normalizeNumber(medicine.discount_amount),
+    pricingNote: medicine.pricing_note || null
   }));
 
 export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptSnapshot | null => {

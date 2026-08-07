@@ -83,6 +83,7 @@ import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaym
 import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 import { getPaymentDedupeKey } from './utils/paymentTreatmentAllocation';
 import { toLocalDateInputValue } from './utils/patientCreationDate';
+import type { MedicineSelectionItem } from './components/MedicineSelectionModal';
 
 // Lazy Load Views
 const DashboardView = React.lazy(() => import('./components/DashboardView'));
@@ -3209,7 +3210,7 @@ const App: React.FC = () => {
     setShowMedicineSelectionModal(true);
   };
 
-  const handleMedicineSelectionConfirm = async (selectedMedicines: { medicine: Medicine; quantity: number }[]) => {
+  const handleMedicineSelectionConfirm = async (selectedMedicines: MedicineSelectionItem[]) => {
     if (!selectedPatient) return;
     const salePatient = selectedPatient;
     const salePatientRequestId = medicineHistoryRequestRef.current;
@@ -3223,17 +3224,23 @@ const App: React.FC = () => {
     
     setShowMedicineSelectionModal(false);
     
-    // Calculate medicine cost
-    const medicineCost = selectedMedicines.reduce((sum, item) => sum + (item.medicine.price * item.quantity), 0);
+    // Calculate the actual (discounted) medicine cost
+    const medicineCost = selectedMedicines.reduce((sum, item) => sum + item.finalTotal, 0);
     
     try {
-      // Record medicine sales
+      // Record medicine sales with discount info
       for (const item of selectedMedicines) {
         await api.medicines.sell(
           salePatient.id,
           item.medicine.id,
           item.quantity,
-          saleLocationId
+          saleLocationId,
+          undefined, // treatmentId
+          {
+            finalTotal: item.finalTotal,
+            discountAmount: item.discountAmount,
+            pricingNote: item.pricingNote
+          }
         );
         successfulSaleCount += 1;
       }

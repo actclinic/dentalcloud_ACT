@@ -231,6 +231,9 @@ export interface PaymentReceiptMedicineLine {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  standardTotalPrice?: number;
+  discountAmount?: number;
+  pricingNote?: 'FOC' | 'DISCOUNT' | null;
 }
 
 export interface PaymentReceiptSnapshot {
@@ -467,6 +470,9 @@ export interface MedicineSale {
   quantity: number;
   unit_price: number;
   total_price: number;
+  standard_total_price?: number;   // full price (unit_price × quantity) before any discount
+  discount_amount?: number;         // amount discounted (0 = no discount, = standard_total_price → FOC)
+  pricing_note?: 'FOC' | 'DISCOUNT' | null;
   date: string;
   treatment_id?: string; // Optional: link to treatment if sold with treatment
   created_at?: string;

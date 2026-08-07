@@ -548,6 +548,9 @@ CREATE TABLE medicine_sales (
   quantity DECIMAL(12,2) NOT NULL CHECK (quantity > 0),
   unit_price DECIMAL(12,2) NOT NULL,
   total_price DECIMAL(12,2) NOT NULL,
+  standard_total_price DECIMAL(12,2),
+  discount_amount DECIMAL(12,2) DEFAULT 0,
+  pricing_note VARCHAR(20),
   date DATE DEFAULT CURRENT_DATE,
   treatment_id UUID REFERENCES treatments(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

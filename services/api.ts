@@ -6327,7 +6327,14 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
-    sell: async (patientId: string, medicineId: string, quantity: number, locationId: string, treatmentId?: string): Promise<{ sale: MedicineSale; new_stock: number }> => {
+    sell: async (
+      patientId: string,
+      medicineId: string,
+      quantity: number,
+      locationId: string,
+      treatmentId?: string,
+      discountOptions?: { finalTotal?: number; discountAmount?: number; pricingNote?: 'FOC' | 'DISCOUNT' | null }
+    ): Promise<{ sale: MedicineSale; new_stock: number }> => {
       if (!locationId) throw new Error('locationId is required for medicine sales');
       const parsedQuantity = Number(quantity);
       if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
@@ -6356,7 +6363,15 @@ export const api = {
 
       if (pError || !patient) throw new Error('Patient not found in this location');
 
-      const totalPrice = Number(medicine.price) * parsedQuantity;
+      const fullPrice = Number(medicine.price) * parsedQuantity;
+      const discountAmount = Math.max(0, Math.min(fullPrice, Number(discountOptions?.discountAmount || 0)));
+      const finalTotal = discountOptions?.finalTotal !== undefined
+        ? Math.max(0, Math.min(fullPrice, Number(discountOptions.finalTotal)))
+        : fullPrice - discountAmount;
+      const pricingNote = discountOptions?.pricingNote
+        || (finalTotal === 0 && fullPrice > 0 ? 'FOC' as const : finalTotal < fullPrice ? 'DISCOUNT' as const : null);
+      const usedTotal = finalTotal;
+      const usedDiscount = Math.max(0, fullPrice - usedTotal);
       const newStock = Number(medicine.stock) - parsedQuantity;
 
       // 2. Create sale record
@@ -6366,7 +6381,10 @@ export const api = {
         medicine_id: medicineId,
         quantity: parsedQuantity,
         unit_price: medicine.price,
-        total_price: totalPrice,
+        total_price: usedTotal,
+        standard_total_price: fullPrice,
+        discount_amount: usedDiscount,
+        pricing_note: pricingNote,
         date: new Date().toISOString().split('T')[0],
         treatment_id: treatmentId || null
       };
@@ -6388,18 +6406,18 @@ export const api = {
 
       if (stockError) throw new Error(`Stock update failed: ${stockError.message}`);
 
-      // 4. Update patient balance and points
-      const newBalance = (patient.balance || 0) + totalPrice;
+      // 4. Update patient balance and points — use discounted final total
+      const newBalance = (patient.balance || 0) + usedTotal;
       
-      // Calculate points based on active rules
+      // Calculate points based on active rules (on discounted total)
       const rules = await api.loyalty.getRules(locationId);
       const purchaseRule = rules.find(r => r.event_type === 'PURCHASE' && r.active);
       const pointsPerUnit = purchaseRule ? purchaseRule.points_per_unit : 0.001;
       const minAmount = purchaseRule?.min_amount || 0;
       
       let earnedPoints = 0;
-      if (totalPrice >= minAmount) {
-        earnedPoints = Math.floor(totalPrice * pointsPerUnit);
+      if (usedTotal >= minAmount) {
+        earnedPoints = Math.floor(usedTotal * pointsPerUnit);
       }
       
       const newPoints = (patient.loyalty_points || 0) + earnedPoints;
@@ -6433,6 +6451,9 @@ export const api = {
           quantity: saleResult.quantity,
           unit_price: saleResult.unit_price,
           total_price: saleResult.total_price,
+          standard_total_price: saleResult.standard_total_price,
+          discount_amount: saleResult.discount_amount,
+          pricing_note: saleResult.pricing_note,
           date: saleResult.date,
           treatment_id: saleResult.treatment_id,
           created_at: saleResult.created_at
@@ -6487,6 +6508,9 @@ export const api = {
           quantity: sale.quantity,
           unit_price: sale.unit_price,
           total_price: sale.total_price,
+          standard_total_price: sale.standard_total_price,
+          discount_amount: sale.discount_amount,
+          pricing_note: sale.pricing_note,
           date: sale.date,
           treatment_id: sale.treatment_id,
           created_at: sale.created_at
