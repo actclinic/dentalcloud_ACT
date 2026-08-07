@@ -234,11 +234,11 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
             )}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} disabled={isSubmitting}
-              className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors disabled:opacity-50">Cancel</button>
+              className="flex-1 rounded-xl border border-gray-200 px-6 py-3 font-bold text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-70">Cancel</button>
             <button type="button" onClick={handleConfirm} disabled={isSubmitting || selectedMedicines.size === 0}
-              className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors">
+              className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors">
               {isSubmitting ? 'Please wait...' : 'Add to Treatment'}
             </button>
           </div>
@@ -366,19 +366,10 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
             )}
 
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleGoToReview}
-                disabled={selectedMedicines.size === 0}
-                className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
-              >
+              <button type="button" onClick={onClose}
+                className="flex-1 rounded-xl border border-gray-200 px-6 py-3 font-bold text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-70">Cancel</button>
+              <button type="button" onClick={handleGoToReview} disabled={selectedMedicines.size === 0}
+                className="flex-1 rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
                 Continue <ArrowRight size={16} />
               </button>
             </div>
