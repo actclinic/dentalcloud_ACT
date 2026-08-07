@@ -57,6 +57,7 @@ interface ClinicalViewProps {
   onAddMedicines?: () => void;
   onToggleFlatRate: (value: boolean) => void;
   onUndoTreatment?: (record: ClinicalRecord) => void;
+  onUndoMedicine?: (sale: MedicineSale) => void;
   onRedeemPoints?: (points: number, amount: number) => void;
   onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
   onUpdateAccount?: (patient: Patient, password: string) => void;
@@ -105,6 +106,7 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   onAddMedicines,
   onToggleFlatRate,
   onUndoTreatment,
+  onUndoMedicine,
   onRedeemPoints,
   onUpdatePatient,
   onUpdateAccount,
@@ -955,6 +957,17 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                       )}
                     </td>
                     <td className="whitespace-nowrap px-5 py-4 text-right font-black text-gray-900 md:pr-7">{formatCurrency(Number(sale.total_price || 0), currency)}</td>
+                    <td className="px-5 py-4 text-center">
+                      {onUndoMedicine && (
+                        <button
+                          onClick={() => onUndoMedicine(sale)}
+                          className="rounded-lg p-2 text-emerald-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                          title="Undo/Delete Medicine Sale"
+                        >
+                          <RotateCcw size={16} />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

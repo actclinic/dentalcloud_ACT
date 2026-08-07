@@ -3192,6 +3192,36 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUndoMedicineSale = async (sale: MedicineSale) => {
+    if (!selectedPatient) return;
+    const saleLocationId = sale.location_id || currentLocationId;
+
+    try {
+      const res = await api.medicines.undoSale(
+        sale.id,
+        selectedPatient.id,
+        sale.total_price,
+        sale.quantity,
+        sale.medicine_id,
+        saleLocationId
+      );
+
+      setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
+      setPatientMedicineSales(patientMedicineSales.filter(s => s.id !== sale.id));
+
+      // Refresh medicines to update stock
+      safeLoad('Refresh medicines after undoing sale', fetchMedicines(), undefined);
+
+      setToast({
+        message: `Medicine sale undone. Stock restored and balance adjusted.`,
+        type: 'success',
+        show: true
+      });
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const handleUndoTreatment = async (record: ClinicalRecord) => {
     if (!selectedPatient) return;
     
@@ -4322,6 +4352,7 @@ const App: React.FC = () => {
                 onAddMedicines={handleAddMedicines}
                 onToggleFlatRate={setUseFlatRate}
                 onUndoTreatment={handleUndoTreatment}
+                onUndoMedicine={handleUndoMedicineSale}
                 onRedeemPoints={handleRedeemPoints}
                 onUpdatePatient={async (id, data) => {
                   try {
