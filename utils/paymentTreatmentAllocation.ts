@@ -45,18 +45,10 @@ export const getPaymentTreatmentShare = (payment: PaymentRecord): number => {
   );
   const serviceFee = positiveMoney(snapshot.payment.serviceFeeAmount);
   const nonServiceFeePayment = Math.max(0, collected - serviceFee);
-  const billableValue = treatmentValue + medicineValue;
-  const hasPricedReceiptLines = treatmentValue + medicineValue > 0;
-
-  // Service fees are separate charges, never a proportional part of treatment
-  // collection. A treatment-only receipt therefore always contributes the full
-  // payment remainder to treatment collection.
-  if (treatmentValue > 0 && medicineValue === 0) return roundMoney(nonServiceFeePayment);
-
-  // For a receipt that genuinely mixes treatment and medicine, split only the
-  // remainder after the service fee across those billable receipt lines.
-  // Legacy/partial snapshots without priced lines retain the fee-only fallback.
-  return hasPricedReceiptLines && billableValue > 0
-    ? roundMoney(nonServiceFeePayment * treatmentValue / billableValue)
+  // Medicine and service fees are recovered before any treatment payment is
+  // commissionable. A partial mixed receipt must not allocate medicine value
+  // proportionally into the treatment collection.
+  return treatmentValue > 0
+    ? roundMoney(Math.max(0, nonServiceFeePayment - medicineValue))
     : roundMoney(Math.max(0, collected - serviceFee));
 };
