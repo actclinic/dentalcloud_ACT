@@ -263,6 +263,7 @@ CREATE TABLE treatments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   location_id UUID REFERENCES locations(id),
   patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+  appointment_id UUID,
   doctor_id UUID REFERENCES doctors(id) ON DELETE SET NULL,
   treatment_type_id UUID REFERENCES treatment_types(id) ON DELETE SET NULL,
   teeth INTEGER[],
@@ -411,6 +412,12 @@ CREATE TABLE appointments (
     )
   )
 );
+
+ALTER TABLE treatments
+ADD CONSTRAINT treatments_appointment_id_fkey
+FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_treatments_appointment_id ON treatments(appointment_id);
 
 ALTER TABLE appointments
 ADD CONSTRAINT appointments_converted_patient_id_fkey

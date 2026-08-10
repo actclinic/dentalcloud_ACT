@@ -66,6 +66,7 @@ export interface ClinicalRecord {
   id: string;
   location_id: string;
   patient_id: string;
+  appointment_id?: string | null;
   patient_name?: string; // Joined field for global view
   patient_type?: string | null; // Joined field for audit log patient type display
   patient_balance?: number; // Joined field for audit log balance/debt display
@@ -374,6 +375,28 @@ export interface Appointment {
   clinical_fee_amount?: number;
   clinical_fee_patient_category?: 'NEW' | 'RETURNING' | null;
   clinical_fee_applied_at?: string | null;
+}
+
+export interface DoctorAssignmentTreatmentCandidate extends ClinicalRecord {
+  linkStatus: 'linked' | 'same_day_unlinked';
+}
+
+export interface DoctorAssignmentCorrectionInput {
+  appointmentId: string;
+  expectedOldDoctorId: string | null;
+  newDoctorId: string;
+  treatmentIds: string[];
+  reason: string;
+  adminUserId: string;
+  sessionToken: string;
+}
+
+export interface DoctorAssignmentCorrectionResult {
+  correctionId: string;
+  patientId: string;
+  correctedTreatmentCount: number;
+  commissionRefreshPending: boolean;
+  commissionRequestToken?: string;
 }
 
 export type CancellationOutcome = 'NO_SHOW' | 'RESCHEDULED' | 'COMPLETED_LATER';

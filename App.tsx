@@ -109,6 +109,7 @@ const ExpensesView = React.lazy(() => import('./components/ExpensesView'));
 const DoctorProfileView = React.lazy(() => import('./components/DoctorProfileView'));
 const DoctorHomeView = React.lazy(() => import('./components/DoctorHomeView'));
 const BranchSwitcherView = React.lazy(() => import('./components/BranchSwitcherView'));
+const DoctorAssignmentCorrectionModal = React.lazy(() => import('./components/DoctorAssignmentCorrectionModal'));
 
 const ALL_BRANCHES_VALUE = '__all_branches__';
 const PAYMENT_RECORDS_STORAGE_KEY = 'dentalcloud_payment_records_v1';
@@ -469,6 +470,7 @@ const App: React.FC = () => {
   const [useFlatRate, setUseFlatRate] = useState(false);
   const [editingTreatmentType, setEditingTreatmentType] = useState<TreatmentType | null>(null);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [doctorCorrectionAppointment, setDoctorCorrectionAppointment] = useState<Appointment | null>(null);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -1731,6 +1733,7 @@ const App: React.FC = () => {
     setPatientMedicineHistoryError(null);
     setShowPatientModal(false);
     setShowAppointmentModal(false);
+    setDoctorCorrectionAppointment(null);
     setShowPaymentModal(false);
     setShowReceipt(false);
     setShowTreatmentSelection(false);
@@ -2555,6 +2558,19 @@ const App: React.FC = () => {
         converted_patient_id: newAppointmentData.converted_patient_id || null
       };
       if (editingAppointment) {
+        const originalDoctorId = editingAppointment.doctor_id || null;
+        const requestedDoctorId = payload.doctor_id || null;
+        if (originalDoctorId !== requestedDoctorId) {
+          const session = auth.getSession();
+          setShowAppointmentModal(false);
+          setEditingAppointment(null);
+          resetAppointmentForm();
+          if (session?.role === 'admin') {
+            setDoctorCorrectionAppointment(editingAppointment);
+            return;
+          }
+          throw new Error('Only administrators can correct the doctor on an existing appointment.');
+        }
         const isDateRescheduled = editingAppointment.date !== payload.date;
         const rescheduleReason = getAppointmentRescheduleReason();
         if (isDateRescheduled && !rescheduleReason) {
@@ -4159,6 +4175,7 @@ const App: React.FC = () => {
                   setAppointmentRescheduleReasonCustom('');
                   setShowAppointmentModal(true);
                 }} 
+                onCorrectDoctor={isAdmin ? setDoctorCorrectionAppointment : undefined}
                 onDeleteAppointment={handleDeleteAppointment} 
                 onUpdateStatus={handleUpdateAppointmentStatus} 
                 currency={currency}
@@ -4989,6 +5006,20 @@ const App: React.FC = () => {
           </form>
         </Modal>
       )}
+
+      <DoctorAssignmentCorrectionModal
+        appointment={doctorCorrectionAppointment}
+        doctors={doctors}
+        onClose={() => setDoctorCorrectionAppointment(null)}
+        onSaved={async (message) => {
+          await fetchInitialData(currentLocationId || undefined);
+          setToast({
+            message,
+            type: message.includes('pending') ? 'info' : 'success',
+            show: true
+          });
+        }}
+      />
 
       {showDoctorModal && (
         <Modal

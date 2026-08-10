@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Calendar, Plus, Loader2, Trash2, Clock, User, FileText, ChevronLeft, ChevronRight, List, CalendarDays, ClipboardList, UserRoundCog, CalendarCog, RotateCw } from 'lucide-react';
+import { Calendar, Plus, Loader2, Trash2, Clock, User, FileText, ChevronLeft, ChevronRight, List, CalendarDays, ClipboardList, UserRoundCog, CalendarCog, RotateCw, ShieldCheck } from 'lucide-react';
 import { Appointment, Doctor, Patient, TreatmentType } from '../types';
 import { exportAppointmentsToPDF } from '../utils/pdfExport';
 import { exportAppointmentsToExcel } from '../utils/excelExport';
@@ -20,6 +20,7 @@ interface AppointmentsViewProps {
   loading: boolean;
   onAddAppointment: () => void;
   onEditAppointment: (appointment: Appointment) => void;
+  onCorrectDoctor?: (appointment: Appointment) => void;
   onDeleteAppointment: (id: string) => void;
   onUpdateStatus: (
     id: string,
@@ -52,6 +53,7 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   loading,
   onAddAppointment,
   onEditAppointment,
+  onCorrectDoctor,
   onDeleteAppointment,
   onUpdateStatus,
   onViewChart,
@@ -270,6 +272,17 @@ const AppointmentsView: React.FC<AppointmentsViewProps> = ({
           >
             <CalendarCog className={iconClassName} />
             Edit Appointment Info
+          </button>
+        )}
+        {onCorrectDoctor && appointment.patient_id && (
+          <button
+            type="button"
+            onClick={() => onCorrectDoctor(appointment)}
+            className={`${buttonClassName} border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100`}
+            title="Correct doctor across the appointment and selected treatments"
+          >
+            <ShieldCheck className={iconClassName} />
+            Correct Doctor
           </button>
         )}
       </>

@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult } from '../types';
 import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -2400,6 +2400,101 @@ export const api = {
   },
 
   appointments: {
+    getDoctorCorrectionCandidates: async (appointment: Appointment): Promise<DoctorAssignmentTreatmentCandidate[]> => {
+      if (!appointment.patient_id) return [];
+
+      const { data, error } = await supabase
+        .from('treatments')
+        .select('*, doctors(name, specialization, commission_type, commission_percentage, commission_per_visit)')
+        .eq('patient_id', appointment.patient_id)
+        .eq('location_id', appointment.location_id)
+        .eq('date', appointment.date)
+        .order('created_at', { ascending: true });
+      if (error) throw new Error(error.message);
+
+      return (data || [])
+        .filter((row: any) => (
+          (row.doctor_id || null) === (appointment.doctor_id || null) &&
+          (!row.appointment_id || row.appointment_id === appointment.id)
+        ))
+        .map((row: any) => ({
+          ...row,
+          standardCost: row.standard_cost ?? null,
+          discountAmount: Number(row.discount_amount || 0),
+          pricingNote: row.pricing_note || null,
+          doctorEarnings: Number(row.doctor_earnings || 0),
+          doctor_name: row.doctors?.name || appointment.doctor_name,
+          linkStatus: row.appointment_id === appointment.id ? 'linked' : 'same_day_unlinked'
+        }));
+    },
+    correctDoctorAssignment: async (input: DoctorAssignmentCorrectionInput): Promise<DoctorAssignmentCorrectionResult> => {
+      const reason = trimRequired(input.reason, 'Correction reason', { maxLength: 1000 });
+      if (reason.length < 10) throw new Error('Correction reason must be at least 10 characters.');
+      const appointmentId = trimRequired(input.appointmentId, 'Appointment');
+      const newDoctorId = trimRequired(input.newDoctorId, 'New doctor');
+      const adminUserId = trimRequired(input.adminUserId, 'Administrator');
+      const sessionToken = trimRequired(input.sessionToken, 'Staff session');
+      const treatmentIds = Array.from(new Set(input.treatmentIds.map((id) => trimRequired(id, 'Treatment'))));
+      if (treatmentIds.length !== input.treatmentIds.length) {
+        throw new Error('Treatment selection contains duplicates.');
+      }
+
+      const { data, error } = await supabase.rpc('correct_doctor_assignment', {
+        p_appointment_id: appointmentId,
+        p_expected_old_doctor_id: input.expectedOldDoctorId || null,
+        p_new_doctor_id: newDoctorId,
+        p_treatment_ids: treatmentIds,
+        p_reason: reason,
+        p_admin_user_id: adminUserId,
+        p_session_token: sessionToken
+      });
+      if (error) {
+        if (isMissingFunctionError(error, 'correct_doctor_assignment')) {
+          throw new Error('Doctor correction is not installed. Apply the doctor assignment correction migration first.');
+        }
+        throw new Error(error.message);
+      }
+
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.correction_id || !row?.patient_id) {
+        throw new Error('Doctor correction did not return a valid result.');
+      }
+
+      let commissionRefreshPending = Boolean(row.request_token);
+      if (row.request_token) {
+        try {
+          await processPendingCommissionRecalculation(String(row.patient_id), String(row.request_token), {
+            userId: adminUserId,
+            authToken: sessionToken
+          });
+          commissionRefreshPending = false;
+        } catch (commissionError) {
+          console.warn('Doctor assignment was corrected, but commission recalculation remains pending:', commissionError);
+        }
+      }
+
+      return {
+        correctionId: String(row.correction_id),
+        patientId: String(row.patient_id),
+        correctedTreatmentCount: Number(row.corrected_treatment_count || 0),
+        commissionRefreshPending,
+        commissionRequestToken: commissionRefreshPending ? String(row.request_token) : undefined
+      };
+    },
+    retryDoctorCommissionRecalculation: async (
+      patientId: string,
+      requestToken: string,
+      admin: { userId: string; sessionToken: string }
+    ): Promise<void> => {
+      await processPendingCommissionRecalculation(
+        trimRequired(patientId, 'Patient'),
+        trimRequired(requestToken, 'Commission request'),
+        {
+          userId: trimRequired(admin.userId, 'Administrator'),
+          authToken: trimRequired(admin.sessionToken, 'Staff session')
+        }
+      );
+    },
     getAll: async (locationId?: string): Promise<Appointment[]> => {
       try {
         let query = supabase
@@ -2727,6 +2822,13 @@ export const api = {
         if (changesFeeIdentity) {
           throw new Error('This visit has an applied clinical fee. Patient, branch, date, and time cannot be changed without a financial adjustment.');
         }
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(data, 'doctor_id') &&
+        (data.doctor_id || null) !== (existingAppointment.doctor_id || null)
+      ) {
+        throw new Error('Use the admin Correct Doctor workflow so treatment ownership, audit data, and commissions stay consistent.');
       }
 
       const {
@@ -3794,7 +3896,7 @@ export const api = {
       } catch (appointmentCompletionError) {
         console.warn('Appointment auto-completion failed after treatment recording:', appointmentCompletionError);
       }
-      
+
       // Fetch final state for return
       const { data: finalPatient } = await supabase.from('patients').select('balance').eq('id', data.patient_id).single();
 
