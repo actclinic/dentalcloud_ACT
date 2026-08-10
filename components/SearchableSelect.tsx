@@ -7,6 +7,8 @@ interface SearchableSelectProps {
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   placeholder?: string;
+  searchPlaceholder?: string;
+  ariaLabel?: string;
   emptyMessage?: string;
   className?: string;
 }
@@ -16,6 +18,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   onChange,
   options,
   placeholder = 'Select an option',
+  searchPlaceholder = 'Search...',
+  ariaLabel,
   emptyMessage = 'No options found',
   className = ''
 }) => {
@@ -112,6 +116,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         onKeyDown={handleKeyDown}
         tabIndex={0}
         role="combobox"
+        aria-label={ariaLabel || placeholder}
         aria-controls={listboxId}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
@@ -152,11 +157,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search..."
+                placeholder={searchPlaceholder}
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={handleKeyDown}
                 role="searchbox"
+                aria-label={searchPlaceholder}
               />
             </div>
           </div>

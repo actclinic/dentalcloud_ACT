@@ -4,6 +4,7 @@ import type { Appointment, Doctor, DoctorAssignmentTreatmentCandidate } from '..
 import { api } from '../services/api';
 import { auth } from '../services/auth';
 import { formatDoctorName } from '../utils/doctorName';
+import { SearchableSelect } from './SearchableSelect';
 
 interface DoctorAssignmentCorrectionModalProps {
   appointment: Appointment | null;
@@ -48,7 +49,7 @@ const DoctorAssignmentCorrectionModal: React.FC<DoctorAssignmentCorrectionModalP
   const availableDoctors = doctors.filter((doctor) => (
     doctor.id !== appointment.doctor_id &&
     (doctor.location_id === appointment.location_id || doctor.location_ids?.includes(appointment.location_id))
-  ));
+  )).sort((left, right) => formatDoctorName(left.name).localeCompare(formatDoctorName(right.name)));
   const selectedDoctor = doctors.find((doctor) => doctor.id === newDoctorId);
   const normalizedReason = reason.trim();
   const canSubmit = !loading && !submitting && Boolean(newDoctorId) && normalizedReason.length >= 10;
@@ -157,11 +158,17 @@ const DoctorAssignmentCorrectionModal: React.FC<DoctorAssignmentCorrectionModalP
             </div>
             <div className="flex items-center text-teal-600"><ArrowRight size={22} /></div>
             <div className="rounded-xl border border-teal-200 bg-white p-3">
-              <label htmlFor="correct-doctor" className="text-[10px] font-black uppercase tracking-wider text-teal-700">Correct doctor</label>
-              <select id="correct-doctor" value={newDoctorId} onChange={(event) => setNewDoctorId(event.target.value)} className="mt-2 w-full rounded-lg border border-teal-200 px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                <option value="">Choose doctor</option>
-                {availableDoctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorName(doctor.name)}</option>)}
-              </select>
+              <span className="text-[10px] font-black uppercase tracking-wider text-teal-700">Correct doctor</span>
+              <SearchableSelect
+                value={newDoctorId}
+                onChange={setNewDoctorId}
+                options={availableDoctors.map((doctor) => ({ value: doctor.id, label: formatDoctorName(doctor.name) }))}
+                placeholder="Choose doctor"
+                searchPlaceholder="Search doctor name..."
+                ariaLabel="Correct doctor"
+                emptyMessage="No doctors match this search."
+                className="mt-2"
+              />
             </div>
           </section>
 
