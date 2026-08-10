@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2, FileHeart } from 'lucide-react';
+import { User, X, Upload, Trash2, FileText, Receipt as ReceiptIcon, Package, RotateCcw, Award, Zap, Key, Edit, Download, Eye, MoreVertical, Calendar, CheckCircle2, AlertCircle, ArrowLeft, Search, Loader2, FileHeart, WalletCards, Printer } from 'lucide-react';
 import { ToothSelector } from './ToothSelector';
 import { Patient, TreatmentType, ClinicalRecord, PatientFile, LoyaltyTransaction, LoyaltyRule, Doctor, Appointment, TreatmentChargeLine, AppointmentType, Location, MedicineSale, PaymentRecord } from '../types';
 import { formatCurrency, getCurrencySymbol, Currency } from '../utils/currency';
@@ -12,6 +12,8 @@ import { calculateAppointmentShortcutDate, type AppointmentDateShortcut } from '
 import { getNextTreatmentOptionIndex } from '../utils/treatmentSelectorKeyboard';
 import { formatMedicineQuantity, getPatientMedicineHistory } from '../utils/medicineHistory';
 import { distributeOverallTreatmentDiscount } from '../utils/treatmentDiscount';
+import { getPatientPaymentHistory } from '../utils/patientPaymentHistory';
+import { formatPaymentAllocations, formatPaymentMethod } from '../utils/paymentMethods';
 
 const AboutPatientReport = React.lazy(() => import('./AboutPatientReport'));
 
@@ -35,7 +37,10 @@ interface ClinicalViewProps {
   medicineHistoryLoading?: boolean;
   medicineHistoryError?: string | null;
   paymentRecords: PaymentRecord[];
+  paymentHistoryLoading?: boolean;
+  paymentHistoryError?: string | null;
   paymentsAvailable?: boolean;
+  onOpenPaymentReceipt?: (payment: PaymentRecord) => void;
   patientFiles: PatientFile[];
   uploadingFiles: boolean;
   useFlatRate: boolean;
@@ -84,7 +89,10 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
   medicineHistoryLoading = false,
   medicineHistoryError = null,
   paymentRecords,
+  paymentHistoryLoading = false,
+  paymentHistoryError,
   paymentsAvailable = true,
+  onOpenPaymentReceipt,
   patientFiles,
   uploadingFiles,
   useFlatRate,
@@ -123,6 +131,15 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
     () => selectedPatient ? getPatientMedicineHistory(medicineSales, selectedPatient.id) : [],
     [medicineSales, selectedPatient]
   );
+  const paymentHistory = React.useMemo(
+    () => selectedPatient && paymentsAvailable ? getPatientPaymentHistory(paymentRecords, selectedPatient.id) : [],
+    [paymentRecords, paymentsAvailable, selectedPatient]
+  );
+  const formatPaymentHistoryDate = (payment: PaymentRecord) => {
+    if (!payment.createdAt) return payment.date || 'Unknown';
+    const createdAt = new Date(payment.createdAt);
+    return Number.isNaN(createdAt.getTime()) ? payment.date || payment.createdAt : createdAt.toLocaleString();
+  };
   const appointmentTypeOptions = React.useMemo(() => {
     const activeNames = appointmentTypes
       .filter((type) => type.is_active)
@@ -965,6 +982,100 @@ const ClinicalView: React.FC<ClinicalViewProps> = ({
                           title="Undo/Delete Medicine Sale"
                         >
                           <RotateCcw size={16} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {selectedPatient && paymentsAvailable && (
+        <div className="overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 via-purple-50/60 to-white px-5 py-5 sm:flex-row sm:items-center sm:justify-between md:px-7">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-200">
+                <WalletCards size={19} aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-xl font-black text-gray-900">Payment History</h3>
+                <p className="mt-0.5 text-sm text-violet-800">Read-only payments with saved receipts; older records are clearly marked when reconstructed.</p>
+              </div>
+            </div>
+            <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-violet-700 ring-1 ring-violet-200">
+              {paymentHistory.length} {paymentHistory.length === 1 ? 'payment' : 'payments'}
+            </span>
+          </div>
+
+          <div className="max-h-[28rem] min-h-[12rem] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[58rem] text-left text-[15px]">
+              <thead className="sticky top-0 border-b border-violet-100 bg-violet-50/90 text-xs uppercase tracking-wide text-violet-700 backdrop-blur-sm">
+                <tr>
+                  <th className="px-5 py-4 md:px-7">Date</th>
+                  <th className="px-5 py-4 text-right">Amount</th>
+                  <th className="px-5 py-4">Type</th>
+                  <th className="px-5 py-4">Method</th>
+                  <th className="px-5 py-4">Receipt</th>
+                  <th className="px-5 py-4 text-right">Balance After</th>
+                  <th className="px-5 py-4">Recorded By</th>
+                  <th className="px-5 py-4 text-center md:pr-7">Receipt</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-violet-50">
+                {paymentHistoryLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-12 text-center md:px-7">
+                      <Loader2 className="mx-auto mb-3 animate-spin text-violet-500" size={30} aria-hidden="true" />
+                      <p className="font-semibold text-gray-500">Loading payment history…</p>
+                    </td>
+                  </tr>
+                ) : paymentHistoryError ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-12 text-center md:px-7">
+                      <AlertCircle className="mx-auto mb-3 text-red-400" size={32} aria-hidden="true" />
+                      <p className="font-semibold text-red-700">Payment history could not be loaded.</p>
+                      <p className="mt-1 text-sm text-gray-500">{paymentHistoryError}</p>
+                    </td>
+                  </tr>
+                ) : paymentHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-12 text-center md:px-7">
+                      <WalletCards className="mx-auto mb-3 text-violet-200" size={34} aria-hidden="true" />
+                      <p className="font-semibold text-gray-500">No payment records for this patient yet.</p>
+                      <p className="mt-1 text-sm text-gray-400">Completed patient payments will appear here.</p>
+                    </td>
+                  </tr>
+                ) : paymentHistory.map((payment) => (
+                  <tr key={payment.id} className="transition-colors hover:bg-violet-50/40">
+                    <td className="whitespace-nowrap px-5 py-4 text-gray-600 md:px-7">
+                      {formatPaymentHistoryDate(payment)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-right font-black text-violet-800">{formatCurrency(payment.amount, currency)}</td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black ${payment.type === 'FULL' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {payment.type === 'FULL' ? 'Full' : 'Partial'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-gray-700">
+                      {payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-sm font-semibold text-gray-700">
+                      <span className="block">{payment.receiptNumber || payment.receiptSnapshot?.receiptNumber || 'No receipt number'}</span>
+                      {!payment.receiptSnapshot && <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-amber-700">Legacy reconstructed receipt</span>}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 text-right font-bold text-gray-800">{formatCurrency(payment.remainingBalance, currency)}</td>
+                    <td className="px-5 py-4 text-sm text-gray-600">{payment.createdByUserName || payment.receiptSnapshot?.payment.recordedByUserName || 'Unknown'}</td>
+                    <td className="px-5 py-4 text-center md:pr-7">
+                      {onOpenPaymentReceipt && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenPaymentReceipt(payment)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition-colors hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                        >
+                          <Printer size={14} /> Print Receipt
                         </button>
                       )}
                     </td>

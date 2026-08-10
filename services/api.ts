@@ -4561,6 +4561,42 @@ export const api = {
       }
       return payments;
     },
+    getPatientPayments: async (patientId: string, locationId?: string): Promise<PaymentRecord[]> => {
+      const normalizedPatientId = trimRequired(patientId, 'Patient');
+      const buildQuery = (columns: string) => {
+        let query = supabase
+          .from('payments')
+          .select(columns)
+          .eq('patient_id', normalizedPatientId)
+          .order('created_at', { ascending: false });
+        if (locationId) query = query.eq('location_id', locationId);
+        return query;
+      };
+
+      let { data, error } = await buildQuery(`
+        *,
+        patients(name, balance, patient_type),
+        payment_allocations (id, payment_id, payment_method, amount, reference),
+        payment_corrections (
+          id, payment_id, old_amount, new_amount, old_method, new_method,
+          old_allocations, new_allocations, reason, edited_by, edited_at,
+          editor:users!payment_corrections_edited_by_fkey (username)
+        )
+      `);
+
+      if (error && isOptionalRelationAccessError(error, ['patients', 'payment_allocations', 'payment_corrections', 'users'])) {
+        const fallback = await buildQuery('*');
+        data = fallback.data;
+        error = fallback.error;
+      }
+      if (error) {
+        if (isMissingRelationError(error, 'payments')) {
+          throw new Error('Payment history is unavailable because payment storage is not installed.');
+        }
+        throw new Error(error.message || 'Patient payment history could not be loaded.');
+      }
+      return (data || []).map(mapPaymentRow);
+    },
     getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
       let query = supabase
         .from('payments')
@@ -4640,7 +4676,7 @@ export const api = {
       treatmentIds?: string[];
       paymentDate?: string;
       submissionKey?: string | null;
-      receiptSnapshot?: Record<string, unknown> | null;
+      receiptSnapshot?: PaymentReceiptSnapshot | Record<string, unknown> | null;
       createdByUserId?: string | null;
       createdByUserName?: string | null;
     }) => {

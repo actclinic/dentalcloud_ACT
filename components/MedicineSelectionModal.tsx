@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { X, Plus, Minus, Package, Loader2, ArrowRight, ArrowLeft, Percent } from 'lucide-react';
+import { X, Plus, Minus, Package, Loader2, ArrowRight, ArrowLeft, Percent, Search, SlidersHorizontal } from 'lucide-react';
 import { Medicine } from '../types';
 import { Modal } from './Shared';
 import { formatCurrency, Currency } from '../utils/currency';
+import { filterInventoryItems, getInventoryCategoryOptions, getInventoryItemTypeOptions, type InventoryItemTypeFilter } from '../utils/inventoryItemFilters';
 
 export interface MedicineSelectionItem {
   medicine: Medicine;
@@ -37,8 +38,19 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
   const [chargeInputs, setChargeInputs] = useState<Map<string, string>>(new Map());
   const [overallDiscountInput, setOverallDiscountInput] = useState('0');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [itemTypeFilter, setItemTypeFilter] = useState<InventoryItemTypeFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string | null | undefined>(undefined);
 
-  const availableMedicines = medicines.filter(m => m.stock > 0);
+  const availableMedicines = useMemo(() => medicines.filter(m => m.stock > 0), [medicines]);
+  const itemTypeOptions = useMemo(() => getInventoryItemTypeOptions(availableMedicines), [availableMedicines]);
+  const categoryOptions = useMemo(() => getInventoryCategoryOptions(availableMedicines), [availableMedicines]);
+  const filteredMedicines = useMemo(() => filterInventoryItems(availableMedicines, {
+    searchTerm,
+    itemType: itemTypeFilter,
+    category: categoryFilter
+  }), [availableMedicines, categoryFilter, itemTypeFilter, searchTerm]);
+  const filtersActive = Boolean(searchTerm.trim() || itemTypeFilter !== 'all' || categoryFilter !== undefined);
   const currencySymbol = currency === 'USD' ? '$' : currency === 'MMK' ? 'K' : '';
 
   const formatQuantity = (value: number | undefined) => {
@@ -258,8 +270,55 @@ const MedicineSelectionModal: React.FC<MedicineSelectionModalProps> = ({
           </div>
         ) : (
           <>
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
+              <div className="relative">
+                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search name, description, category, type, or unit..."
+                  aria-label="Search inventory items"
+                  className="w-full rounded-xl border border-indigo-200 bg-white py-2.5 pl-10 pr-10 text-sm text-gray-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+                {searchTerm && (
+                  <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear item search" className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:bg-indigo-50 hover:text-indigo-700">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-indigo-600">Item Type</span>
+                  <select value={itemTypeFilter} onChange={(event) => setItemTypeFilter(event.target.value as InventoryItemTypeFilter)} className="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                    <option value="all">All Types</option>
+                    {itemTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-indigo-600">Category</span>
+                  <select value={categoryFilter === undefined ? '__all__' : categoryFilter === null ? '__none__' : `category:${categoryFilter}`} onChange={(event) => setCategoryFilter(event.target.value === '__all__' ? undefined : event.target.value === '__none__' ? null : event.target.value.slice('category:'.length))} className="w-full rounded-xl border border-indigo-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                    <option value="__all__">All Categories</option>
+                    {categoryOptions.categories.map((category) => (
+                      <option key={category} value={`category:${category}`}>{category}</option>
+                    ))}
+                    {categoryOptions.hasUncategorized && <option value="__none__">Uncategorized</option>}
+                  </select>
+                </label>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 font-bold text-indigo-700"><SlidersHorizontal size={14} />{filteredMedicines.length} of {availableMedicines.length} in-stock items · {selectedMedicines.size} selected</span>
+                {filtersActive && <button type="button" onClick={() => { setSearchTerm(''); setItemTypeFilter('all'); setCategoryFilter(undefined); }} className="font-black text-indigo-700 hover:text-indigo-900">Clear filters</button>}
+              </div>
+            </div>
             <div className="max-h-96 overflow-y-auto space-y-2 border border-gray-200 rounded-xl p-4">
-              {availableMedicines.map((medicine) => {
+              {filteredMedicines.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50 px-4 py-8 text-center">
+                  <Search className="mx-auto mb-2 text-indigo-300" size={30} aria-hidden="true" />
+                  <p className="font-bold text-indigo-800">No items match your search and filters.</p>
+                  <p className="mt-1 text-xs text-indigo-600">Clear filters or try a broader search. Previously selected items remain selected.</p>
+                </div>
+              ) : filteredMedicines.map((medicine) => {
                 const quantity = selectedMedicines.get(medicine.id) || 0;
                 const isLowStock = medicine.min_stock !== undefined && medicine.stock <= medicine.min_stock;
                 const step = Number(medicine.quantity_step || 1);

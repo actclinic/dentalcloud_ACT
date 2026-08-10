@@ -60,6 +60,8 @@ PATIENT LIST AND FILTERING:
 
 CLINICAL FOCUS AND PATIENT SUMMARY:
 - Clinical Focus shows the selected patient's Medicine History, newest first, including dispense date, item, quantity/unit, unit price, and total. It is patient-specific; do not mix in another patient's sales.
+- Clinical Focus shows a read-only Payment History for authorized staff, loaded specifically for the open patient. Staff can reprint the saved immutable receipt, but payment editing is available only through the secured admin Audit Log correction flow.
+- Clinical Focus Add Items supports search by item details plus Item Type and Category filters. Changing filters never clears quantities already selected for the bill.
 - Clinical dropdowns support keyboard use: Arrow Up/Down moves through visible options without wrapping past the ends, Enter selects, and Escape closes where offered.
 - The "About this patient" live summary in Clinical Focus combines the records available to the current role and branch: appointment status/history, unique care-visit dates, treatments, medicines, clinicians, current debt, service fees, and payments when permitted.
 - In that summary, total paid is collected money, while treatment value, medicine value, service fees, care value, and current debt are separate measures. If payment history is restricted for the current role, describe total paid as unavailable, never as zero.

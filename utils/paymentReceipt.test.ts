@@ -142,7 +142,10 @@ describe('paymentReceipt', () => {
           medicineName: 'Pain Killer',
           quantity: 2,
           unitPrice: 1500,
-          totalPrice: 3000
+          totalPrice: 3000,
+          standardTotalPrice: 0,
+          discountAmount: 0,
+          pricingNote: null
         }
       ]
     });
@@ -271,7 +274,10 @@ describe('paymentReceipt', () => {
           medicineName: 'Antibiotic',
           quantity: 3,
           unitPrice: 2000,
-          totalPrice: 6000
+          totalPrice: 6000,
+          standardTotalPrice: 0,
+          discountAmount: 0,
+          pricingNote: null
         }
       ]
     });

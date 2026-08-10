@@ -82,6 +82,7 @@ import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTota
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaymentReceiptCapturedValue, mergePaymentTreatmentBatch, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
 import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 import { getPaymentDedupeKey } from './utils/paymentTreatmentAllocation';
+import { getPatientPaymentHistory } from './utils/patientPaymentHistory';
 import { toLocalDateInputValue } from './utils/patientCreationDate';
 import type { MedicineSelectionItem } from './components/MedicineSelectionModal';
 
@@ -450,6 +451,9 @@ const App: React.FC = () => {
   const [patientMedicineSales, setPatientMedicineSales] = useState<MedicineSale[]>([]);
   const [patientMedicineHistoryLoading, setPatientMedicineHistoryLoading] = useState(false);
   const [patientMedicineHistoryError, setPatientMedicineHistoryError] = useState<string | null>(null);
+  const [patientPaymentRecords, setPatientPaymentRecords] = useState<PaymentRecord[]>([]);
+  const [patientPaymentHistoryLoading, setPatientPaymentHistoryLoading] = useState(false);
+  const [patientPaymentHistoryError, setPatientPaymentHistoryError] = useState<string | null>(null);
   const scheduledTaskProcessorRef = React.useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -461,6 +465,7 @@ const App: React.FC = () => {
   const initialDataFetchRequestRef = React.useRef(0);
   const treatmentHistoryRequestRef = React.useRef(0);
   const medicineHistoryRequestRef = React.useRef(0);
+  const paymentHistoryRequestRef = React.useRef(0);
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -1397,6 +1402,7 @@ const App: React.FC = () => {
 
     treatmentHistoryRequestRef.current += 1;
     medicineHistoryRequestRef.current += 1;
+    paymentHistoryRequestRef.current += 1;
     resetStaffSession();
     setCurrentView('dashboard');
     localStorage.removeItem('currentView');
@@ -1419,6 +1425,9 @@ const App: React.FC = () => {
     setPatientMedicineSales([]);
     setPatientMedicineHistoryLoading(false);
     setPatientMedicineHistoryError(null);
+    setPatientPaymentRecords([]);
+    setPatientPaymentHistoryLoading(false);
+    setPatientPaymentHistoryError(null);
     setDashboardPatients([]);
     setDashboardAppointments([]);
     setDashboardRecords([]);
@@ -1727,10 +1736,14 @@ const App: React.FC = () => {
     const session = auth.getSession();
     treatmentHistoryRequestRef.current += 1;
     medicineHistoryRequestRef.current += 1;
+    paymentHistoryRequestRef.current += 1;
     setSelectedPatient(null);
     setPatientMedicineSales([]);
     setPatientMedicineHistoryLoading(false);
     setPatientMedicineHistoryError(null);
+    setPatientPaymentRecords([]);
+    setPatientPaymentHistoryLoading(false);
+    setPatientPaymentHistoryError(null);
     setShowPatientModal(false);
     setShowAppointmentModal(false);
     setDoctorCorrectionAppointment(null);
@@ -1966,6 +1979,8 @@ const App: React.FC = () => {
   const handlePatientSelect = async (patient: Patient) => {
     const requestId = ++treatmentHistoryRequestRef.current;
     const medicineRequestId = ++medicineHistoryRequestRef.current;
+    const paymentRequestId = ++paymentHistoryRequestRef.current;
+    const canViewPayments = canAccessView('finance') && auth.getSession()?.role !== 'doctor';
     setSelectedPatient(patient);
     setSelectedDoctorId('');
     setSelectedTeeth([]);
@@ -1976,6 +1991,9 @@ const App: React.FC = () => {
     setPatientMedicineSales([]);
     setPatientMedicineHistoryLoading(true);
     setPatientMedicineHistoryError(null);
+    setPatientPaymentRecords([]);
+    setPatientPaymentHistoryLoading(canViewPayments);
+    setPatientPaymentHistoryError(null);
 
     const locationId = patient.location_id || currentLocationId;
     void api.treatments.getHistory(patient.id)
@@ -2001,6 +2019,22 @@ const App: React.FC = () => {
         setPatientMedicineHistoryLoading(false);
         setPatientMedicineHistoryError(err?.message || 'Check the connection and reopen this patient to try again.');
       });
+
+    if (canViewPayments) {
+      void api.finance.getPatientPayments(patient.id, locationId)
+        .then((payments) => {
+          if (paymentRequestId !== paymentHistoryRequestRef.current) return;
+          setPatientPaymentRecords((current) => getPatientPaymentHistory([...payments, ...current], patient.id));
+          setPatientPaymentHistoryLoading(false);
+        })
+        .catch((err: any) => {
+          if (paymentRequestId !== paymentHistoryRequestRef.current) return;
+          console.warn('Error fetching patient payment history:', err);
+          setPatientPaymentRecords([]);
+          setPatientPaymentHistoryLoading(false);
+          setPatientPaymentHistoryError(err?.message || 'Check the connection and reopen this patient to try again.');
+        });
+    }
 
     void api.loyalty.getTransactions(patient.id, locationId)
       .then((transactions) => {
@@ -2061,6 +2095,7 @@ const App: React.FC = () => {
     };
 
     setPaymentRecords((prev) => applyPaymentUpdate(prev));
+    setPatientPaymentRecords((prev) => selectedPatient?.id === updatedPayment.patientId ? applyPaymentUpdate(prev) : prev);
     setDashboardPayments((prev) => applyPaymentUpdate(prev));
     setAssistantPaymentRecords((prev) => applyPaymentUpdate(prev));
     setPatients((prev) => prev.map((patient) => (
@@ -2291,6 +2326,15 @@ const App: React.FC = () => {
     setLastPaymentAmount(payment.amount);
     setLastPaymentRecord(payment);
     setShowReceipt(true);
+  };
+
+  const handleOpenClinicalPaymentReceipt = (payment: PaymentRecord) => {
+    const snapshotPatientId = payment.receiptSnapshot?.patient.id;
+    if (!selectedPatient || payment.patientId !== selectedPatient.id || (snapshotPatientId && snapshotPatientId !== selectedPatient.id)) {
+      setToast({ message: 'This payment does not belong to the open patient chart.', type: 'error', show: true });
+      return;
+    }
+    handleOpenStoredPaymentReceipt(payment);
   };
 
   const openPaymentModalWithCategory = (category: 'NEW' | 'RETURNING' | null, explicitServiceFeeAmount?: number) => {
@@ -3486,6 +3530,7 @@ const App: React.FC = () => {
         setDashboardPayments((prev) => [paymentRecord, ...prev]);
       }
       setPaymentRecords((prev) => [paymentRecord, ...prev]);
+      setPatientPaymentRecords((prev) => getPatientPaymentHistory([paymentRecord, ...prev], selectedPatient.id));
       setAssistantPaymentRecords((prev) => [paymentRecord, ...prev]);
 
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
@@ -3706,10 +3751,14 @@ const App: React.FC = () => {
   const handleClosePatient = () => {
     treatmentHistoryRequestRef.current += 1;
     medicineHistoryRequestRef.current += 1;
+    paymentHistoryRequestRef.current += 1;
     setSelectedPatient(null);
     setPatientMedicineSales([]);
     setPatientMedicineHistoryLoading(false);
     setPatientMedicineHistoryError(null);
+    setPatientPaymentRecords([]);
+    setPatientPaymentHistoryLoading(false);
+    setPatientPaymentHistoryError(null);
     setSelectedDoctorId('');
     setSelectedTeeth([]);
     setTreatmentHistory([]);
@@ -4346,8 +4395,11 @@ const App: React.FC = () => {
                 medicineSales={patientMedicineSales}
                 medicineHistoryLoading={patientMedicineHistoryLoading}
                 medicineHistoryError={patientMedicineHistoryError}
-                paymentRecords={paymentRecords}
-                paymentsAvailable={auth.getSession()?.role !== 'doctor'}
+                paymentRecords={patientPaymentRecords}
+                paymentHistoryLoading={patientPaymentHistoryLoading}
+                paymentHistoryError={patientPaymentHistoryError}
+                paymentsAvailable={canAccessView('finance') && auth.getSession()?.role !== 'doctor'}
+                onOpenPaymentReceipt={handleOpenClinicalPaymentReceipt}
                 patientFiles={patientFiles}
                 uploadingFiles={uploading}
                 useFlatRate={useFlatRate}
