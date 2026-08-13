@@ -428,6 +428,8 @@ const App: React.FC = () => {
   const [dashboardRecords, setDashboardRecords] = useState<ClinicalRecord[]>([]);
   const [dashboardExpenses, setDashboardExpenses] = useState<Expense[]>([]);
   const [dashboardPayments, setDashboardPayments] = useState<PaymentRecord[]>(() => readPaymentRecords());
+  const [dashboardMedicines, setDashboardMedicines] = useState<Medicine[]>([]);
+  const [dashboardMedicineSales, setDashboardMedicineSales] = useState<MedicineSale[]>([]);
   const [dashboardLocationId, setDashboardLocationId] = useState<string>(() => {
     return localStorage.getItem('dashboardLocationId') || ALL_BRANCHES_VALUE;
   });
@@ -1505,12 +1507,14 @@ const App: React.FC = () => {
       : restrictedLocationId || (hasMatchingLocation ? requestedScope : (availableLocations[0]?.id || requestedScope));
     const queryLocationId = sanitizedScope === ALL_BRANCHES_VALUE ? undefined : (sanitizedScope || undefined);
     // Use preloaded data when available; fetch missing dashboard datasets in parallel.
-    const [patData, aptData, recordsData, expenseData, scopedPayments] = await Promise.all([
+    const [patData, aptData, recordsData, expenseData, scopedPayments, medicinesData, medicineSalesData] = await Promise.all([
       preloaded?.patients ? Promise.resolve(preloaded.patients) : safeLoad('Dashboard patients', api.patients.getAll(queryLocationId), []),
       preloaded?.appointments ? Promise.resolve(preloaded.appointments) : safeLoad('Dashboard appointments', api.appointments.getAll(queryLocationId), []),
       preloaded?.records ? Promise.resolve(preloaded.records) : safeLoad('Dashboard treatment records', api.treatments.getAllRecords(queryLocationId), []),
       preloaded?.expenses ? Promise.resolve(preloaded.expenses) : safeLoad('Dashboard expenses', api.expenses.getAll(queryLocationId), []),
-      safeLoad('Dashboard payments', api.finance.getPayments(queryLocationId), [])
+      safeLoad('Dashboard payments', api.finance.getPayments(queryLocationId), []),
+      safeLoad('Dashboard medicines', api.medicines.getAll(queryLocationId), []),
+      safeLoad('Dashboard medicine sales', api.medicines.getSales(queryLocationId), [])
     ]);
 
     if (requestId !== dashboardFetchRequestRef.current) {
@@ -1522,6 +1526,8 @@ const App: React.FC = () => {
     setDashboardRecords(recordsData);
     setDashboardExpenses(expenseData);
     setDashboardPayments(mergeLegacyPaymentRecords(scopedPayments, queryLocationId));
+    setDashboardMedicines(medicinesData);
+    setDashboardMedicineSales(medicineSalesData);
     setDashboardLocationId(sanitizedScope);
     localStorage.setItem('dashboardLocationId', sanitizedScope);
   };
@@ -1793,6 +1799,7 @@ const App: React.FC = () => {
       setDashboardAppointments([]);
       setDashboardRecords([]);
       setDashboardExpenses([]);
+      setDashboardMedicines([]);
       await fetchDashboardData(locId);
     } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
@@ -3363,6 +3370,8 @@ const App: React.FC = () => {
         safeLoad('Refresh medicine sales after inventory sale', fetchMedicineSales(), undefined)
       ]);
 
+      void fetchDashboardData(dashboardLocationId);
+
       if (salePatientRequestId === medicineHistoryRequestRef.current) {
         const medicineRequestId = ++medicineHistoryRequestRef.current;
         setPatientMedicineHistoryLoading(true);
@@ -4079,6 +4088,8 @@ const App: React.FC = () => {
                   treatmentRecords={dashboardRecords}
                   expenses={dashboardExpenses}
                   paymentRecords={dashboardPayments}
+                  medicines={dashboardMedicines}
+                  medicineSales={dashboardMedicineSales}
                   currency={currency}
                   locations={locations}
                   selectedLocationId={dashboardLocationId}

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DollarSign, Activity, Users, Calendar as CalendarIcon, PieChart as PieIcon, MapPin, TrendingDown, LineChart as LineChartIcon, Trophy, AlertTriangle, Clock, XCircle, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
-import { Patient, Appointment, ClinicalRecord, Location, Expense, PaymentRecord, CancellationOutcome } from '../types';
+import { Patient, Appointment, ClinicalRecord, Location, Expense, Medicine, MedicineSale, PaymentRecord, CancellationOutcome } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { formatPaymentMethod } from '../utils/paymentMethods';
 import { appointmentPatientName, buildRecallsCancelsLists } from '../utils/recallsCancels';
@@ -23,6 +23,8 @@ interface DashboardViewProps {
   treatmentRecords: ClinicalRecord[];
   expenses: Expense[];
   paymentRecords: PaymentRecord[];
+  medicines: Medicine[];
+  medicineSales: MedicineSale[];
   currency: Currency;
   locations: Location[];
   selectedLocationId: string;
@@ -49,6 +51,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   treatmentRecords,
   expenses,
   paymentRecords,
+  medicines,
+  medicineSales,
   currency,
   locations,
   selectedLocationId,
@@ -801,41 +805,46 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   }, [filteredTreatmentRecords, filteredExpenses, rangeMonths]);
 
   const serviceMonitorData = useMemo(() => {
-    const monitoredServices = ['X-ray (OBU)', 'X-ray (CBTC)', 'X Ray (Lateral)', 'X-ray (PA)'];
+    const salesByMedicineId = new Map<string, MedicineSale[]>();
+    medicineSales
+      .filter((sale) => sale.date >= dateFrom && sale.date <= dateTo)
+      .forEach((sale) => salesByMedicineId.set(sale.medicine_id, [...(salesByMedicineId.get(sale.medicine_id) || []), sale]));
 
-    return monitoredServices.map((service) => {
-      const serviceRecords = filteredTreatmentRecords.filter((record) => (record.description || '').trim() === service);
-      const count = serviceRecords.length;
-      const revenue = serviceRecords.reduce((sum, record) => sum + (record.cost || 0), 0);
+    return medicines
+      .filter((medicine) => (medicine.category || '').replace(/[\s_-]/g, '').toLowerCase() === 'xray')
+      .map((medicine) => {
+      const sales = salesByMedicineId.get(medicine.id) || [];
+      const count = new Set(sales.map((sale) => sale.patient_id).filter(Boolean)).size;
+      const revenue = sales.reduce((sum, sale) => sum + (sale.total_price || 0), 0);
       return {
-        name: service,
+        name: medicine.name,
         patients: count,
         revenue
       };
     });
-  }, [filteredTreatmentRecords]);
+  }, [dateFrom, dateTo, medicineSales, medicines]);
 
   const serviceMonitorHasData = useMemo(
-    () => serviceMonitorData.some((item) => item.patients > 0),
+    () => serviceMonitorData.length > 0,
     [serviceMonitorData]
   );
 
   const totalXrayPatients = useMemo(
     () => {
-      const monitoredServices = new Set(['X-ray (OBU)', 'X-ray (CBTC)', 'X Ray (Lateral)', 'X-ray (PA)']);
+      const xrayMedicineIds = new Set(medicines
+        .filter((medicine) => (medicine.category || '').replace(/[\s_-]/g, '').toLowerCase() === 'xray')
+        .map((medicine) => medicine.id));
       const uniquePatientIds = new Set<string>();
 
-      filteredTreatmentRecords.forEach((record) => {
-        const serviceName = (record.description || '').trim();
-        if (!monitoredServices.has(serviceName)) return;
-        if (record.patient_id) {
-          uniquePatientIds.add(record.patient_id);
+      medicineSales.forEach((sale) => {
+        if (sale.date >= dateFrom && sale.date <= dateTo && xrayMedicineIds.has(sale.medicine_id) && sale.patient_id) {
+          uniquePatientIds.add(sale.patient_id);
         }
       });
 
       return uniquePatientIds.size;
     },
-    [filteredTreatmentRecords]
+    [dateFrom, dateTo, medicineSales, medicines]
   );
 
   const totalXrayRevenue = useMemo(
@@ -1583,8 +1592,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div className="flex flex-col gap-2 mb-5">
-          <h3 className="text-lg font-semibold text-gray-800">X-Ray Service Monitor</h3>
-          <p className="text-xs text-gray-500">Daily usage visibility for key X-ray services in the selected date range</p>
+          <h3 className="text-lg font-semibold text-gray-800">X-Ray Inventory Monitor</h3>
+          <p className="text-xs text-gray-500">Usage and revenue for Inventory items in the X-Ray category during the selected date range</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -1597,7 +1606,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             <p className="text-2xl font-bold text-emerald-700 mt-1">{formatCurrency(totalXrayRevenue, currency)}</p>
           </div>
           <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-500">Top Service Today</p>
+            <p className="text-[10px] uppercase tracking-wider font-bold text-amber-500">Top X-Ray Item</p>
             <p className="text-sm font-bold text-amber-700 mt-1">{topXrayService?.name || 'N/A'}</p>
             <p className="text-xs text-amber-600 mt-1">{topXrayService?.patients || 0} patient(s)</p>
           </div>
@@ -1644,7 +1653,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             </ResponsiveContainer>
           ) : (
             <div className="h-full flex items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-500 italic">No X-ray activity found for the selected date range.</p>
+              <p className="text-sm text-gray-500 italic">No X-ray inventory activity found for the selected date range.</p>
             </div>
           )}
         </div>

@@ -3555,7 +3555,7 @@ export const api = {
             let query = supabase
               .from('treatments')
               .select(withRelations
-                ? 'id, location_id, patient_id, doctor_id, treatment_type_id, teeth, description, cost, standard_cost, discount_amount, pricing_note, doctor_earnings, date, patients(name, age, phone, city, patient_type), doctors(name)'
+                ? 'id, location_id, patient_id, doctor_id, treatment_type_id, teeth, description, cost, standard_cost, discount_amount, pricing_note, doctor_earnings, date, patients(name, age, phone, city, township, patient_type), doctors(name)'
                 : 'id, location_id, patient_id, doctor_id, treatment_type_id, teeth, description, cost, standard_cost, discount_amount, pricing_note, doctor_earnings, date')
               .lte('date', dateTo)
               .order('date', { ascending: true })
@@ -3585,6 +3585,7 @@ export const api = {
             patient_age: record.patients?.age ?? null,
             patient_phone: record.patients?.phone || null,
             patient_city: record.patients?.city || null,
+            patient_township: record.patients?.township || null,
             patient_type: record.patients?.patient_type || null,
             doctor_name: record.doctors?.name || undefined
           })));
