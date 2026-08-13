@@ -82,6 +82,7 @@ import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTota
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaymentReceiptCapturedValue, mergePaymentTreatmentBatch, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
 import { hasRecordedServiceFeeForVisit } from './utils/serviceFee';
 import { getPaymentDedupeKey } from './utils/paymentTreatmentAllocation';
+import { validateAuthoritativePaymentTreatments } from './utils/paymentTreatmentValidation';
 import { getPatientPaymentHistory } from './utils/patientPaymentHistory';
 import { toLocalDateInputValue } from './utils/patientCreationDate';
 import type { MedicineSelectionItem } from './components/MedicineSelectionModal';
@@ -1738,6 +1739,8 @@ const App: React.FC = () => {
     medicineHistoryRequestRef.current += 1;
     paymentHistoryRequestRef.current += 1;
     setSelectedPatient(null);
+    setLatestTreatmentBatch([]);
+    setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN', splitPayment: false, allocations: [] });
     setPatientMedicineSales([]);
     setPatientMedicineHistoryLoading(false);
     setPatientMedicineHistoryError(null);
@@ -1982,6 +1985,8 @@ const App: React.FC = () => {
     const paymentRequestId = ++paymentHistoryRequestRef.current;
     const canViewPayments = canAccessView('finance') && auth.getSession()?.role !== 'doctor';
     setSelectedPatient(patient);
+    setLatestTreatmentBatch([]);
+    setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN', splitPayment: false, allocations: [] });
     setSelectedDoctorId('');
     setSelectedTeeth([]);
     setCurrentView('finance');
@@ -3289,7 +3294,13 @@ const App: React.FC = () => {
       const res = await api.treatments.undoRecord(record.id, selectedPatient.id, record.cost);
       
       setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
-      setTreatmentHistory(treatmentHistory.filter(t => t.id !== record.id));
+      setTreatmentHistory((current) => current.filter((treatment) => treatment.id !== record.id));
+      setLatestTreatmentBatch((current) => current.filter((treatment) => treatment.id !== record.id));
+      setPaymentDraft((current) => ({
+        ...current,
+        treatments: current.treatments.filter((treatment) => treatment.id !== record.id)
+      }));
+      setSelectedTreatmentsForReceipt((current) => current.filter((treatment) => treatment.id !== record.id));
     } catch (err: any) {
       alert(err.message);
     }
@@ -3440,6 +3451,15 @@ const App: React.FC = () => {
         selectedPaymentTreatments,
         paymentDate
       );
+      const authoritativeTreatmentHistory = selectedPaymentTreatments.length > 0
+        ? await api.treatments.getHistory(selectedPatient.id)
+        : [];
+      const authoritativePaymentTreatments = validateAuthoritativePaymentTreatments(
+        selectedPaymentTreatments,
+        authoritativeTreatmentHistory,
+        selectedPatient.id,
+        selectedPatient.location_id || currentLocationId
+      );
       const provisionalReceiptSnapshot = buildPaymentReceiptSnapshot({
         patient: selectedPatient,
         amountPaid: paymentAmountTendered,
@@ -3453,7 +3473,7 @@ const App: React.FC = () => {
         recordedByUserName: currentUser || session?.username || null,
         serviceFeeAmount: paymentServiceFeeAmount,
         serviceFeeCategory: paymentDraft.serviceFeeCategory,
-        treatments: selectedPaymentTreatments,
+        treatments: authoritativePaymentTreatments,
         medicines: matchedMedicineSales,
         clinic: {
           appName,
@@ -3463,7 +3483,7 @@ const App: React.FC = () => {
         }
       });
       const capturedReceiptValue = getPaymentReceiptCapturedValue(provisionalReceiptSnapshot);
-      const enforceReceiptReconciliation = selectedPaymentTreatments.length > 0;
+      const enforceReceiptReconciliation = authoritativePaymentTreatments.length > 0;
       const missingReceiptValue = Math.round((paymentAmountTendered - capturedReceiptValue) * 100) / 100;
       if (enforceReceiptReconciliation && missingReceiptValue > 0) {
         throw new Error(`Payment details are missing ${formatCurrency(missingReceiptValue, currency)} of billable items. Reload the patient and try again.`);
@@ -3473,20 +3493,21 @@ const App: React.FC = () => {
         amount: paymentAmountTendered,
         paymentMethod: getPaymentHeaderMethod(effectivePaymentAllocations),
         allocations: effectivePaymentAllocations,
-        treatmentIds: selectedPaymentTreatments.map((treatment) => treatment.id),
+        treatmentIds: authoritativePaymentTreatments.map((treatment) => treatment.id),
         paymentDate,
         submissionKey,
         receiptSnapshot: enforceReceiptReconciliation
           ? { ...provisionalReceiptSnapshot, reconciliation: { version: 1 } }
           : provisionalReceiptSnapshot,
-        createdByUserId: null,
-        createdByUserName: currentUser || session?.username || null
+        createdByUserId: session?.userId || null,
+        createdByUserName: currentUser || session?.username || null,
+        staffSessionToken: session?.staffAuthToken || null
       });
       let paymentRecord: PaymentRecord = {
         ...res.payment,
         patient_name: res.payment.patient_name || selectedPatient.name
       };
-      const paymentSnapshot = buildPaymentReceiptSnapshot({
+      const builtPaymentSnapshot = buildPaymentReceiptSnapshot({
         patient: selectedPatient,
         amountPaid: paymentRecord.amount,
         paymentMethod: paymentRecord.paymentMethod || getPaymentHeaderMethod(effectivePaymentAllocations),
@@ -3500,7 +3521,7 @@ const App: React.FC = () => {
         recordedByUserName: paymentRecord.createdByUserName || currentUser || session?.username || null,
         serviceFeeAmount: paymentServiceFeeAmount,
         serviceFeeCategory: paymentDraft.serviceFeeCategory,
-        treatments: selectedPaymentTreatments,
+        treatments: authoritativePaymentTreatments,
         medicines: matchedMedicineSales,
         clinic: {
           appName,
@@ -3509,6 +3530,9 @@ const App: React.FC = () => {
           currency
         }
       });
+      const paymentSnapshot = enforceReceiptReconciliation
+        ? { ...builtPaymentSnapshot, reconciliation: { version: 1 as const } }
+        : builtPaymentSnapshot;
 
       try {
         const savedSnapshot = await api.finance.saveReceiptSnapshot(paymentRecord.id, paymentSnapshot);
@@ -3752,6 +3776,8 @@ const App: React.FC = () => {
     treatmentHistoryRequestRef.current += 1;
     medicineHistoryRequestRef.current += 1;
     paymentHistoryRequestRef.current += 1;
+    setLatestTreatmentBatch([]);
+    setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN', splitPayment: false, allocations: [] });
     setSelectedPatient(null);
     setPatientMedicineSales([]);
     setPatientMedicineHistoryLoading(false);

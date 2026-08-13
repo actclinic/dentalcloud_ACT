@@ -117,6 +117,7 @@ export const normalizePaymentReceiptSnapshot = (value: unknown): PaymentReceiptS
 
   return {
     version: allocations.length > 1 || raw.version === 2 ? 2 : 1,
+    ...(raw.reconciliation?.version === 1 ? { reconciliation: { version: 1 as const } } : {}),
     receiptType: 'PAYMENT',
     receiptNumber,
     receiptDate,

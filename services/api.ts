@@ -304,6 +304,49 @@ const resolvePaymentCommissionTreatmentIds = async (payment: PaymentRecord): Pro
   return (data || []).map((treatment: any) => treatment.id).filter(Boolean);
 };
 
+const refreshCommittedPaymentCommissions = async (
+  payment: PaymentRecord,
+  staff?: { userId?: string | null; sessionToken?: string | null }
+): Promise<void> => {
+  try {
+    await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
+    if (staff?.userId && staff.sessionToken) {
+      const clearResult = await supabase.rpc('clear_payment_commission_recalculation_pending', {
+        p_payment_id: payment.id,
+        p_patient_id: payment.patientId,
+        p_staff_user_id: staff.userId,
+        p_staff_session_token: staff.sessionToken
+      });
+      if (clearResult.error && !isMissingFunctionError(clearResult.error, 'clear_payment_commission_recalculation_pending')) {
+        console.warn('Doctor commission was refreshed, but its pending marker could not be cleared.', clearResult.error);
+      }
+    }
+  } catch (commissionError: any) {
+    const requestToken = generateRequestUuid();
+    const markerResult = await supabase.rpc('mark_payment_commission_recalculation_pending', {
+      p_payment_id: payment.id,
+      p_patient_id: payment.patientId,
+      p_request_token: requestToken,
+      p_staff_user_id: staff?.userId || null,
+      p_staff_session_token: staff?.sessionToken || null
+    });
+    if (markerResult.error) {
+      console.error('Payment commission refresh failed and its retry marker could not be saved.', {
+        commissionError,
+        markerError: markerResult.error,
+        paymentId: payment.id
+      });
+    } else {
+      console.error('Payment was recorded, but doctor commission refresh is pending.', {
+        commissionError,
+        paymentId: payment.id,
+        requestToken
+      });
+    }
+    throw new Error(`Payment ${payment.receiptNumber || payment.id} was recorded, but doctor commission refresh is pending. Do not create another payment. Submit this same payment again to safely retry with the existing receipt.`);
+  }
+};
+
 const buildMedicinePayload = (data: Partial<Medicine>, existing?: Partial<Medicine>): Partial<Medicine> => {
   const payload: Partial<Medicine> = {};
 
@@ -4679,6 +4722,7 @@ export const api = {
       receiptSnapshot?: PaymentReceiptSnapshot | Record<string, unknown> | null;
       createdByUserId?: string | null;
       createdByUserName?: string | null;
+      staffSessionToken?: string | null;
     }) => {
       const normalizedAmount = Number(input.amount || 0);
       if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
@@ -4712,7 +4756,7 @@ export const api = {
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) throw new Error('Payment was not recorded.');
         const payment = mapPaymentRow({ ...row, payment_allocations: allocations });
-        await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
+        await refreshCommittedPaymentCommissions(payment, { userId: input.createdByUserId, sessionToken: input.staffSessionToken });
         return {
           status: 'success',
           new_balance: payment.remainingBalance,
@@ -4751,7 +4795,7 @@ export const api = {
         if (!retryRow) throw new Error('Payment was not recorded.');
 
         const payment: PaymentRecord = mapPaymentRow(retryRow);
-        await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
+        await refreshCommittedPaymentCommissions(payment, { userId: input.createdByUserId, sessionToken: input.staffSessionToken });
 
         return {
           status: 'success',
@@ -4773,7 +4817,7 @@ export const api = {
       if (!row) throw new Error('Payment was not recorded.');
 
       const payment: PaymentRecord = mapPaymentRow(row);
-      await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(payment));
+      await refreshCommittedPaymentCommissions(payment, { userId: input.createdByUserId, sessionToken: input.staffSessionToken });
 
       return {
         status: 'success',

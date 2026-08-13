@@ -239,6 +239,7 @@ export interface PaymentReceiptMedicineLine {
 
 export interface PaymentReceiptSnapshot {
   version: 1 | 2;
+  reconciliation?: { version: 1 };
   receiptType: 'PAYMENT';
   receiptNumber: string;
   receiptDate: string;

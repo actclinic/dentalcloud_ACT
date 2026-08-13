@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Patient, ClinicalRecord, Appointment, Doctor, TreatmentType, User as UserType, Medicine, Expense, Location, MedicineSale, PaymentRecord } from '../types';
 import { api } from '../services/api';
+import { auth } from '../services/auth';
 import { Currency } from '../utils/currency';
 import { DEFAULT_PATIENT_TYPE_NAME } from '../constants';
 import { formatTeethArray, formatTeethWithPosition, parseTeethInput } from '../utils/toothNumbering';
@@ -5063,14 +5064,16 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 if (!isSelectablePaymentMethod(paymentMethod)) {
                   throw new Error('Payment type is required: KPay, WavePay, Cash, MMQR, Debit Card, Credit Card, AYA Pay, or UAB Pay.');
                 }
+                const staffSession = auth.getSession();
                 result = await api.finance.processPayment({
                   patientId,
                   amount: params.amt,
                   paymentMethod,
                   paymentDate: new Date().toISOString().slice(0, 10),
                   submissionKey: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-                  createdByUserId: null,
-                  createdByUserName: 'AI Assistant'
+                  createdByUserId: staffSession?.userId || null,
+                  createdByUserName: 'AI Assistant',
+                  staffSessionToken: staffSession?.staffAuthToken || null
                 });
                 const pName = getScopedPatientById(patientId)?.name || patientId;
                 currentActionResult = `✅ ${formatPaymentMethod(paymentMethod)} payment of ${params.amt} MMK processed for ${pName}. New balance: ${result.new_balance} MMK.`;

@@ -304,4 +304,22 @@ describe('paymentReceipt', () => {
     expect(snapshot.payment.allocations).toEqual([{ method: 'CASH', amount: 4000 }, { method: 'KPAY', amount: 6000 }]);
     expect(normalizePaymentReceiptSnapshot(snapshot)).toEqual(snapshot);
   });
+
+  it('preserves the server reconciliation marker', () => {
+    const snapshot = buildPaymentReceiptSnapshot({
+      patient: {
+        id: 'patient-1', location_id: 'branch-1', name: 'Patient', email: '', phone: '', balance: 100, loyalty_points: 0
+      },
+      amountPaid: 100,
+      paymentMethod: 'CASH',
+      paymentDate: '2026-08-13',
+      receiptNumber: 'REC-1',
+      balanceBefore: 100,
+      balanceAfter: 0,
+      paymentStatus: 'FULL',
+      clinic
+    });
+    const protectedSnapshot = { ...snapshot, reconciliation: { version: 1 as const } };
+    expect(normalizePaymentReceiptSnapshot(protectedSnapshot)?.reconciliation).toEqual({ version: 1 });
+  });
 });
