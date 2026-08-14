@@ -2538,7 +2538,7 @@ export const api = {
         }
       );
     },
-    getAll: async (locationId?: string): Promise<Appointment[]> => {
+    getAll: async (locationId?: string, options?: { doctorId?: string }): Promise<Appointment[]> => {
       try {
         let query = supabase
           .from('appointments')
@@ -2547,6 +2547,9 @@ export const api = {
 
         if (locationId) {
           query = query.eq('location_id', locationId);
+        }
+        if (options?.doctorId) {
+          query = query.eq('doctor_id', options.doctorId);
         }
 
         const initialResult = await query;
@@ -2561,6 +2564,9 @@ export const api = {
 
           if (locationId) {
             fallbackQuery = fallbackQuery.eq('location_id', locationId);
+          }
+          if (options?.doctorId) {
+            fallbackQuery = fallbackQuery.eq('doctor_id', options.doctorId);
           }
 
           const fallback = await fallbackQuery;

@@ -1643,13 +1643,20 @@ const App: React.FC = () => {
           : [];
         const doctorQueryLocationIds = sessionDoctorId && doctorLocationIds.length > 0 ? doctorLocationIds : [locId];
         const isDoctorMultiBranchSession = !!sessionDoctorId && doctorQueryLocationIds.length > 1;
+        const appointmentsPromise = session?.role === 'doctor' && !sessionDoctorId
+          ? Promise.resolve<Appointment[]>([])
+          : isDoctorMultiBranchSession
+            ? Promise.all(doctorQueryLocationIds.map((locationId) => safeLoad(
+              `Appointments for doctor branch ${locationId}`,
+              api.appointments.getAll(locationId, { doctorId: sessionDoctorId || undefined }),
+              []
+            ))).then((groups) => groups.flat())
+            : api.appointments.getAll(locId, { doctorId: sessionDoctorId || undefined });
         const [patData, aptData, docData, typeData, recordsData, medData, paymentsData, rescheduleLogsData] = await Promise.all([
           isDoctorMultiBranchSession
             ? Promise.all(doctorQueryLocationIds.map((locationId) => safeLoad(`Patients for doctor branch ${locationId}`, api.patients.getAll(locationId), []))).then((groups) => groups.flat())
             : api.patients.getAll(locId),
-          isDoctorMultiBranchSession
-            ? Promise.all(doctorQueryLocationIds.map((locationId) => safeLoad(`Appointments for doctor branch ${locationId}`, api.appointments.getAll(locationId), []))).then((groups) => groups.flat())
-            : api.appointments.getAll(locId),
+          appointmentsPromise,
           activeSessionDoctor ? Promise.resolve([activeSessionDoctor]) : safeLoad('Doctors', api.doctors.getAll(locId), []),
           safeLoad('Treatment types', api.treatments.getTypes(locId), []),
           isDoctorMultiBranchSession
