@@ -31,7 +31,7 @@ interface PatientsViewProps {
   onSelectPatient: (patient: Patient) => void;
   onAddPatient: () => void;
   onUpdatePatient?: (id: string, data: Partial<Patient>) => Promise<void>;
-  onDeletePatient?: (id: string) => Promise<void>;
+  onDeletePatient?: (id: string, reason: string) => Promise<void>;
   onRedeemPoints?: (patient: Patient, points: number, amount: number) => void;
   onUpdatePatientAuth?: (patient: Patient, password: string) => void;
   onExportPDF?: () => Promise<void>;
@@ -103,6 +103,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [purgeReason, setPurgeReason] = useState('');
+  const [purgeError, setPurgeError] = useState<string | null>(null);
   const [detailPatient, setDetailPatient] = useState<Patient | null>(null);
   const [showFullPatientId, setShowFullPatientId] = useState(false);
   const [openActionMenuPatientId, setOpenActionMenuPatientId] = useState<string | null>(null);
@@ -1237,7 +1239,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button 
+            <button
               onClick={() => setAuthModal({ open: false, patient: null })}
               className="flex-1 px-6 py-3 rounded-xl font-bold text-gray-400 hover:bg-gray-50 transition-all border border-transparent"
             >
@@ -1450,6 +1452,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 queueMicrotask(() => {
                   deletePatientIdRef.current = patientToDelete?.id || null;
                   deletePatientNameRef.current = patientToDelete?.name || 'this patient';
+                  setPurgeReason('');
+                  setPurgeError(null);
                   setDeleteConfirmOpen(true);
                 });
               }}
@@ -1465,22 +1469,27 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     {/* Delete Confirmation Dialog */}
     <ConfirmDialog
       isOpen={deleteConfirmOpen}
-      title="Delete Patient"
-      message={`Are you sure you want to delete ${deletePatientNameRef.current}? This will permanently remove the patient and all related records. This action cannot be undone.`}
-      confirmText="Delete Patient"
+      title="Purge Erroneous Patient"
+      message={`Purge ${deletePatientNameRef.current} only when this is an erroneous patient with no clinical or financial records. The patient, appointments, and doctor-correction records will be permanently removed after an audit snapshot is saved.`}
+      confirmText="Purge Patient"
       cancelText="Cancel"
       type="danger"
       isLoading={isDeleting}
       onConfirm={async () => {
         const patientId = deletePatientIdRef.current;
         if (!patientId || !onDeletePatient) return;
+        const reason = purgeReason.trim();
+        if (reason.length < 10) {
+          setPurgeError('ရေးရသည့်အကြောင်းပြချက်ကို အနည်းဆုံး စာလုံး 10 လုံးရေးပါ။');
+          return;
+        }
         setIsDeleting(true);
+        setPurgeError(null);
         try {
-          await onDeletePatient(patientId);
+          await onDeletePatient(patientId, reason);
           setDeleteConfirmOpen(false);
-          alert('Patient deleted successfully.');
         } catch (err: any) {
-          alert(err?.message || 'Failed to delete patient');
+          setPurgeError(err?.message || 'Patient ကို purge မလုပ်နိုင်သေးပါ။');
         } finally {
           setIsDeleting(false);
           deletePatientIdRef.current = null;
@@ -1491,8 +1500,31 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         setDeleteConfirmOpen(false);
         deletePatientIdRef.current = null;
         deletePatientNameRef.current = 'this patient';
+        setPurgeReason('');
+        setPurgeError(null);
       }}
-    />
+    >
+      <div>
+        <label htmlFor="purge-reason" className="mb-2 block text-sm font-bold text-slate-800">
+          Why is this record erroneous? <span className="text-red-600">*</span>
+        </label>
+        <textarea
+          id="purge-reason"
+          value={purgeReason}
+          onChange={(event) => {
+            setPurgeReason(event.target.value);
+            if (purgeError) setPurgeError(null);
+          }}
+          rows={3}
+          disabled={isDeleting}
+          placeholder="e.g. Duplicate patient created by mistake"
+          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100 disabled:bg-slate-100"
+          aria-describedby="purge-reason-help purge-reason-error"
+        />
+        <p id="purge-reason-help" className="mt-2 text-xs text-slate-500">Minimum 10 characters. This reason is saved in the purge audit.</p>
+        {purgeError ? <p id="purge-reason-error" role="alert" className="mt-2 text-sm font-semibold text-red-700">{purgeError}</p> : null}
+      </div>
+    </ConfirmDialog>
 
     {branchTransferBlockedOpen && (
       <Modal

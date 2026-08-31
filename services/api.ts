@@ -1869,7 +1869,10 @@ export const api = {
       
       return mapPatient(result);
     },
-    delete: async (id: string): Promise<void> => {
+    _unsafeDirectDelete: async (id: string): Promise<void> => {
+      void id;
+      throw new Error('Direct patient deletion is disabled. Use the admin erroneous-patient purge flow.');
+
       // Patient deletion intentionally removes patient-owned data. Keep
       // appointments as guest/lead records where possible, then delete child
       // rows that may otherwise block the final patient delete via RESTRICT FKs.
@@ -1952,7 +1955,9 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
-    _deprecatedDelete: async (id: string): Promise<void> => {
+    _unsafeDeleteWithoutAudit: async (id: string): Promise<void> => {
+      void id;
+      throw new Error('Direct patient deletion is disabled. Use the admin erroneous-patient purge flow.');
 
 
 
@@ -1964,7 +1969,30 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
-
+    delete: async (_id: string): Promise<void> => {
+      throw new Error('Direct patient deletion is disabled. Use the admin erroneous-patient purge flow.');
+    },
+    purgeErroneous: async (input: {
+      patientId: string;
+      reason: string;
+      purgedByUserId: string;
+      staffSessionToken: string;
+    }): Promise<void> => {
+      const reason = input.reason?.trim() || '';
+      if (reason.length < 10) throw new Error('Purge reason must be at least 10 characters.');
+      const { error } = await supabase.rpc('purge_erroneous_patient', {
+        p_patient_id: trimRequired(input.patientId, 'Patient'),
+        p_reason: reason,
+        p_purged_by_user_id: trimRequired(input.purgedByUserId, 'Administrator'),
+        p_staff_session_token: trimRequired(input.staffSessionToken, 'Staff session')
+      });
+      if (error) {
+        if (isMissingFunctionError(error, 'purge_erroneous_patient')) {
+          throw new Error('Safe patient purge is not installed. Apply the safe erroneous patient purge migration first.');
+        }
+        throw new Error(error.message);
+      }
+    },
 
     // Update or create patient auth record
     updateAccount: async (

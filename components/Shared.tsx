@@ -44,6 +44,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+  children?: React.ReactNode;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -55,7 +56,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   type = 'danger',
   onConfirm,
   onCancel,
-  isLoading = false
+  isLoading = false,
+  children
 }) => {
   if (!isOpen) return null;
 
@@ -103,6 +105,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               <p className="text-sm text-gray-600 leading-relaxed">{message}</p>
             </div>
           </div>
+
+          {children ? <div className="mb-6">{children}</div> : null}
           
           <div className="flex gap-3">
             <button

@@ -2322,13 +2322,23 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeletePatient = async (id: string) => {
+  const handleDeletePatient = async (id: string, reason: string) => {
     try {
-      await api.patients.delete(id);
+      const session = auth.getSession();
+      if (!session?.userId || session.role !== 'admin' || !session.staffAuthToken) {
+        throw new Error('An active admin session is required to purge a patient.');
+      }
+      await api.patients.purgeErroneous({
+        patientId: id,
+        reason,
+        purgedByUserId: session.userId,
+        staffSessionToken: session.staffAuthToken
+      });
       if (selectedPatient?.id === id) {
         handleClosePatient();
       }
       await fetchInitialData();
+      setToast({ message: 'Erroneous patient record purged successfully.', type: 'success', show: true });
     } catch (err: any) {
       throw err;
     }

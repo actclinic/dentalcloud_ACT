@@ -48,12 +48,13 @@ const supabaseMock = vi.hoisted(() => {
       };
     })
   }));
+  state.rpc = vi.fn(async () => ({ data: 'purge-1', error: null }));
 
   return state;
 });
 
 vi.mock('./supabase', () => ({
-  supabase: { from: supabaseMock.from },
+  supabase: { from: supabaseMock.from, rpc: supabaseMock.rpc },
   supabaseUrl: '',
   supabaseAnonKey: ''
 }));
@@ -66,43 +67,20 @@ describe('patients.delete', () => {
     supabaseMock.from.mockClear();
   });
 
-  it('deletes restricted patient child rows before deleting the patient record', async () => {
-    await api.patients.delete('patient-1');
+  it('rejects the old direct deletion path', async () => {
+    await expect(api.patients.delete('patient-1')).rejects.toThrow('Direct patient deletion is disabled');
+  });
 
-    const deleteOrder = supabaseMock.calls
-      .filter((call: any) => call.action === 'delete')
-      .map((call: any) => call.table);
-
-    expect(deleteOrder).toEqual([
-      'patient_auth',
-      'payments',
-      'medicine_sales',
-      'loyalty_transactions',
-      'treatments',
-      'conversations',
-      'patients'
-    ]);
-
-    expect(supabaseMock.calls).toContainEqual({
-      table: 'appointments',
-      action: 'update',
-      payload: {
-        guest_name: 'Patient One',
-        guest_phone: '09123456789'
-      }
+  it('uses the guarded purge RPC for an erroneous patient', async () => {
+    await api.patients.purgeErroneous({
+      patientId: 'patient-1', reason: 'Created by mistake during registration.',
+      purgedByUserId: 'admin-1', staffSessionToken: 'session-1'
     });
-
-    expect(supabaseMock.calls).toContainEqual({
-      table: 'payments',
-      action: 'deleteEq',
-      column: 'patient_id',
-      value: 'patient-1'
-    });
-    expect(supabaseMock.calls.at(-1)).toEqual({
-      table: 'patients',
-      action: 'deleteEq',
-      column: 'id',
-      value: 'patient-1'
+    expect(supabaseMock.rpc).toHaveBeenCalledWith('purge_erroneous_patient', {
+      p_patient_id: 'patient-1',
+      p_reason: 'Created by mistake during registration.',
+      p_purged_by_user_id: 'admin-1',
+      p_staff_session_token: 'session-1'
     });
   });
 });
