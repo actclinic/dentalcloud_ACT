@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Loader2, Trash2, X } from 'lucide-react';
 import type { PaymentAllocation, PaymentMethod, PaymentRecord } from '../types';
 import { api } from '../services/api';
 import { auth } from '../services/auth';
@@ -10,15 +10,17 @@ interface EditPaymentModalProps {
   payment: PaymentRecord | null;
   onClose: () => void;
   onSaved: (updatedPayment: PaymentRecord) => void | Promise<void>;
+  onVoided: (result: { paymentId: string; patientId: string; newBalance: number }) => void | Promise<void>;
 }
 
-const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, onClose, onSaved }) => {
+const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, onClose, onSaved, onVoided }) => {
   const [amount, setAmount] = React.useState('');
   const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>('UNKNOWN');
   const [allocations, setAllocations] = React.useState<PaymentAllocation[]>([]);
   const [reason, setReason] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirmingVoid, setConfirmingVoid] = React.useState(false);
 
   React.useEffect(() => {
     if (!isOpen || !payment) return;
@@ -28,6 +30,7 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
     setReason('');
     setError(null);
     setSubmitting(false);
+    setConfirmingVoid(false);
   }, [isOpen, payment]);
 
   if (!isOpen || !payment) return null;
@@ -74,6 +77,29 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
     }
   };
 
+  const handleVoid = async () => {
+    if (!isReasonValid) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const session = auth.getSession();
+      if (!session?.userId || session.role !== 'admin' || !session.staffAuthToken) {
+        throw new Error('An active admin session is required to void a payment.');
+      }
+      await onVoided(await api.finance.voidDuplicatePayment({
+        paymentId: payment.id,
+        reason: normalizedReason,
+        voidedByUserId: session.userId,
+        staffSessionToken: session.staffAuthToken
+      }));
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to void payment.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/50 p-4">
       <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
@@ -102,6 +128,13 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
               <p>This updates the live payment and writes an immutable correction entry for audit review.</p>
             </div>
           </div>
+
+          {confirmingVoid ? (
+            <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+              <p className="font-bold">Void this duplicate payment?</p>
+              <p className="mt-1">The patient balance will increase by {payment.amount.toFixed(2)}. An audit copy is kept, but the payment receipt and its dependent entries are removed.</p>
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -199,6 +232,26 @@ const EditPaymentModal: React.FC<EditPaymentModalProps> = ({ isOpen, payment, on
           ) : null}
 
           <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-5">
+            {confirmingVoid ? (
+              <button
+                type="button"
+                onClick={handleVoid}
+                disabled={submitting || !isReasonValid}
+                className="mr-auto inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {submitting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {submitting ? 'Voiding...' : 'Confirm Void Payment'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingVoid(true)}
+                disabled={submitting || !isReasonValid}
+                className="mr-auto inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 size={16} /> Void duplicate
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

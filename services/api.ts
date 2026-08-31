@@ -4955,6 +4955,33 @@ export const api = {
       const correctedPayment = mapPaymentRow(row);
       await recalculateDoctorEarningsForTreatments(await resolvePaymentCommissionTreatmentIds(correctedPayment));
       return correctedPayment;
+    },
+    voidDuplicatePayment: async (input: {
+      paymentId: string;
+      reason: string;
+      voidedByUserId: string;
+      staffSessionToken: string;
+    }): Promise<{ paymentId: string; patientId: string; newBalance: number }> => {
+      const paymentId = trimRequired(input.paymentId, 'Payment');
+      const reason = input.reason?.trim() || '';
+      if (reason.length < 10) throw new Error('Void reason must be at least 10 characters.');
+
+      const { data, error } = await supabase.rpc('void_duplicate_payment', {
+        p_payment_id: paymentId,
+        p_reason: reason,
+        p_voided_by_user_id: trimRequired(input.voidedByUserId, 'Administrator'),
+        p_staff_session_token: trimRequired(input.staffSessionToken, 'Staff session')
+      });
+      if (error) {
+        if (isMissingFunctionError(error, 'void_duplicate_payment')) {
+          throw new Error('Safe payment void is not installed. Apply the void duplicate payment migration first.');
+        }
+        throw new Error(error.message);
+      }
+
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.patient_id) throw new Error('Payment was not voided.');
+      return { paymentId, patientId: String(row.patient_id), newBalance: Number(row.new_balance) };
     }
   },
 

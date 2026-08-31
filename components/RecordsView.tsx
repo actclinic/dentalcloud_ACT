@@ -30,9 +30,10 @@ interface RecordsViewProps {
   onOpenPaymentReceipt?: (payment: PaymentRecord) => void;
   canEditPayments?: boolean;
   onPaymentCorrected?: (payment: PaymentRecord) => void | Promise<void>;
+  onPaymentVoided?: (result: { paymentId: string; patientId: string; newBalance: number }) => void | Promise<void>;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected }) => {
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -803,6 +804,9 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
         onClose={() => setEditingPayment(null)}
         onSaved={async (updatedPayment) => {
           await onPaymentCorrected?.(updatedPayment);
+        }}
+        onVoided={async (result) => {
+          await onPaymentVoided?.(result);
         }}
       />
 

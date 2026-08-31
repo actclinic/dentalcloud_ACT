@@ -74,6 +74,24 @@ describe('finance.processPayment', () => {
     expect(result.payment.id).toBe('payment-1');
   });
 
+  it('voids a duplicate payment only through the safe payment RPC', async () => {
+    supabaseMock.rpcResults.push({ data: [{ patient_id: 'patient-1', new_balance: 150 }], error: null });
+
+    await expect(api.finance.voidDuplicatePayment({
+      paymentId: 'payment-1',
+      reason: 'Duplicate payment entered by mistake.',
+      voidedByUserId: 'admin-1',
+      staffSessionToken: 'session-1'
+    })).resolves.toEqual({ paymentId: 'payment-1', patientId: 'patient-1', newBalance: 150 });
+
+    expect(supabaseMock.rpc).toHaveBeenCalledWith('void_duplicate_payment', {
+      p_payment_id: 'payment-1',
+      p_reason: 'Duplicate payment entered by mistake.',
+      p_voided_by_user_id: 'admin-1',
+      p_staff_session_token: 'session-1'
+    });
+  });
+
   it('passes service fee metadata through the receipt snapshot for server-side balance validation', async () => {
     supabaseMock.rpcResults.push({ data: [paymentRow], error: null });
 
