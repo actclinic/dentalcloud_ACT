@@ -3437,7 +3437,10 @@ export const api = {
     },
 
     // Execution
-    getHistory: async (patientId: string): Promise<ClinicalRecord[]> => {
+    getHistory: async (
+      patientId: string,
+      options?: { includeCommissionEntries?: boolean }
+    ): Promise<ClinicalRecord[]> => {
       let { data, error } = await supabase
         .from('treatments')
         .select('*, doctors(name, specialization, commission_type, commission_percentage, commission_per_visit)')
@@ -3455,7 +3458,9 @@ export const api = {
       }
 
       if (error) throw new Error(error.message);
-      const entriesByTreatment = await getDoctorEarningEntriesByTreatmentIds((data || []).map((rec: any) => rec.id));
+      const entriesByTreatment = options?.includeCommissionEntries === false
+        ? new Map<string, any[]>()
+        : await getDoctorEarningEntriesByTreatmentIds((data || []).map((rec: any) => rec.id));
       return (data || []).map((rec: any) => ({
         ...rec,
         standardCost: rec.standard_cost ?? null,
@@ -6761,9 +6766,12 @@ export const api = {
     },
     getSales: async (locationId?: string, patientId?: string, options?: { throwOnError?: boolean }): Promise<MedicineSale[]> => {
       try {
-        let query = supabase
+        // A patient chart already has the patient identity. Avoid joining patients and
+        // transferring write-only sale fields that Clinical Focus never consumes.
+        const patientHistoryColumns = 'id, location_id, patient_id, medicine_id, quantity, unit_price, total_price, standard_total_price, discount_amount, pricing_note, date, treatment_id, created_at, medicines(name, unit)';
+        let query: any = supabase
           .from('medicine_sales')
-          .select('*, patients(name), medicines(name, unit)')
+          .select(patientId ? patientHistoryColumns : '*, patients(name), medicines(name, unit)')
           .order('date', { ascending: false });
 
         if (locationId) {
@@ -6776,9 +6784,11 @@ export const api = {
         let { data, error } = await query;
 
         if (error && isOptionalRelationAccessError(error, ['patients', 'medicines'])) {
-          let fallbackQuery = supabase
+          let fallbackQuery: any = supabase
             .from('medicine_sales')
-            .select('*')
+            .select(patientId
+              ? 'id, location_id, patient_id, medicine_id, quantity, unit_price, total_price, standard_total_price, discount_amount, pricing_note, date, treatment_id, created_at'
+              : '*')
             .order('date', { ascending: false });
 
           if (locationId) {
