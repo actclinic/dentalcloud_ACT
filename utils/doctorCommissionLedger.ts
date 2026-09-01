@@ -257,8 +257,13 @@ export const calculateCommissionLedgerEntries = (
     const rates = new Set(visitCandidates.map((candidate) => candidate.rate));
 
     if (rates.size === 1) {
-      const rate = visitCandidates[0].rate;
-      const sample = visitCandidates[0].treatment;
+      const sortedVisitCandidates = [...visitCandidates].sort((a, b) => (
+        a.paymentDate.localeCompare(b.paymentDate) ||
+        a.paymentId.localeCompare(b.paymentId) ||
+        a.treatment.id.localeCompare(b.treatment.id)
+      ));
+      const rate = sortedVisitCandidates[0].rate;
+      const sample = sortedVisitCandidates[0].treatment;
       const visitMaterialCost = treatments.reduce((sum, treatment) => {
         const sameVisit = treatment.doctorId === sample.doctorId
           && treatment.patientId === sample.patientId
@@ -266,7 +271,7 @@ export const calculateCommissionLedgerEntries = (
           && resolveTreatmentMode(treatment) === 'percentage';
         if (!sameVisit) return sum;
 
-        const treatmentCandidate = visitCandidates.find(
+        const treatmentCandidate = sortedVisitCandidates.find(
           (candidate) => candidate.treatment.id === treatment.id
         );
         const treatmentRate = treatmentCandidate?.rate ?? toPercentageRate(
@@ -276,39 +281,62 @@ export const calculateCommissionLedgerEntries = (
           ? sum + toNonNegativeFiniteNumber(treatment.materialCost)
           : sum;
       }, 0);
-      const visitCollected = roundMoney(visitCandidates.reduce(
+      const visitCollected = roundMoney(sortedVisitCandidates.reduce(
         (sum, candidate) => sum + toNonNegativeFiniteNumber(candidate.amount),
         0
       ));
       const visitCommissionBase = roundMoney(Math.max(0, visitCollected - visitMaterialCost));
       const visitEarnings = roundMoney(visitCommissionBase * (rate / 100));
+      let remainingVisitMaterialCost = visitMaterialCost;
       let distributedBase = 0;
       let distributedEarnings = 0;
+      const candidatesByPayment = new Map<string, typeof sortedVisitCandidates>();
+      sortedVisitCandidates.forEach((candidate) => {
+        const candidates = candidatesByPayment.get(candidate.paymentId) || [];
+        candidates.push(candidate);
+        candidatesByPayment.set(candidate.paymentId, candidates);
+      });
 
-      visitCandidates.forEach((candidate, index) => {
-        const { treatment, rate: _candidateRate, visitKey, ...allocation } = candidate;
-        const isLast = index === visitCandidates.length - 1;
-        const share = visitCollected > 0 ? candidate.amount / visitCollected : 0;
-        const commissionBase = isLast
-          ? roundMoney(visitCommissionBase - distributedBase)
-          : roundMoney(visitCommissionBase * share);
-        const earnings = isLast
-          ? roundMoney(visitEarnings - distributedEarnings)
-          : roundMoney(visitEarnings * share);
-        distributedBase = roundMoney(distributedBase + commissionBase);
-        distributedEarnings = roundMoney(distributedEarnings + earnings);
+      Array.from(candidatesByPayment.values()).forEach((paymentCandidates, paymentIndex, paymentGroups) => {
+        const paymentCollected = roundMoney(paymentCandidates.reduce((sum, candidate) => sum + candidate.amount, 0));
+        const paymentCalculation = calculatePercentageCommissionBase(paymentCollected, remainingVisitMaterialCost);
+        const paymentEarnings = roundMoney(paymentCalculation.commissionBase * (rate / 100));
+        remainingVisitMaterialCost = roundMoney(remainingVisitMaterialCost - paymentCalculation.materialDeduction);
+        let paymentDistributedBase = 0;
+        let paymentDistributedEarnings = 0;
 
-        percentageRows.push({
-          ...allocation,
-          doctorId: treatment.doctorId as string,
-          patientId: treatment.patientId,
-          treatmentDate: treatment.date,
-          visitKey,
-          calculationMode: 'percentage',
-          commissionRate: rate,
-          materialDeduction: roundMoney(Math.max(0, candidate.amount - commissionBase)),
-          commissionBase,
-          earnings
+        paymentCandidates.forEach((candidate, candidateIndex) => {
+          const { treatment, rate: _candidateRate, visitKey, ...allocation } = candidate;
+          const isLastInPayment = candidateIndex === paymentCandidates.length - 1;
+          const isLastOverall = isLastInPayment && paymentIndex === paymentGroups.length - 1;
+          const share = paymentCollected > 0 ? candidate.amount / paymentCollected : 0;
+          const commissionBase = isLastOverall
+            ? roundMoney(visitCommissionBase - distributedBase)
+            : isLastInPayment
+              ? roundMoney(paymentCalculation.commissionBase - paymentDistributedBase)
+              : roundMoney(paymentCalculation.commissionBase * share);
+          const earnings = isLastOverall
+            ? roundMoney(visitEarnings - distributedEarnings)
+            : isLastInPayment
+              ? roundMoney(paymentEarnings - paymentDistributedEarnings)
+              : roundMoney(paymentEarnings * share);
+          paymentDistributedBase = roundMoney(paymentDistributedBase + commissionBase);
+          paymentDistributedEarnings = roundMoney(paymentDistributedEarnings + earnings);
+          distributedBase = roundMoney(distributedBase + commissionBase);
+          distributedEarnings = roundMoney(distributedEarnings + earnings);
+
+          percentageRows.push({
+            ...allocation,
+            doctorId: treatment.doctorId as string,
+            patientId: treatment.patientId,
+            treatmentDate: treatment.date,
+            visitKey,
+            calculationMode: 'percentage',
+            commissionRate: rate,
+            materialDeduction: roundMoney(Math.max(0, candidate.amount - commissionBase)),
+            commissionBase,
+            earnings
+          });
         });
       });
       return;

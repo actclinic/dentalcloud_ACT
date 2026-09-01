@@ -11,7 +11,7 @@ export type AuditExportRow =
   | { kind: 'treatment'; sortDate: string; record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] } }
   | { kind: 'appointment'; sortDate: string; appointment: Appointment }
   | { kind: 'reschedule'; sortDate: string; rescheduleLog: AppointmentRescheduleLog }
-  | { kind: 'payment'; sortDate: string; payment: PaymentRecord & { _treatmentDiscountAmount?: number } };
+  | { kind: 'payment'; sortDate: string; payment: PaymentRecord & { _treatmentDiscountAmount?: number; _doctorEarnings?: number } };
 
 export interface AuditLogFilterOptions {
   auditFilter?: AuditFilter;
@@ -66,6 +66,10 @@ export const getAuditPaymentDiscount = (
     ? snapshotDiscount
     : getPositiveNumber(payment._treatmentDiscountAmount);
 };
+
+export const getAuditPaymentDoctorEarnings = (
+  payment: PaymentRecord & { _doctorEarnings?: number }
+): number => getPositiveNumber(payment._doctorEarnings);
 
 const getPaymentServiceFeeAmount = (payment: PaymentRecord): number => {
   const snapshotFee = getPositiveNumber(payment.receiptSnapshot?.payment?.serviceFeeAmount);
@@ -203,6 +207,19 @@ export const buildAuditLogRows = (
     : [];
 
   const treatmentById = new Map(records.map((record) => [record.id, record]));
+  const doctorEarningsByPaymentId = new Map<string, number>();
+  const seenCommissionEntries = new Set<string>();
+  records.forEach((record) => {
+    (record.doctorEarningEntries || []).forEach((entry) => {
+      const entryKey = entry.id || `${entry.paymentId}|${entry.treatmentId}`;
+      if (!entry.paymentId || seenCommissionEntries.has(entryKey)) return;
+      seenCommissionEntries.add(entryKey);
+      doctorEarningsByPaymentId.set(
+        entry.paymentId,
+        (doctorEarningsByPaymentId.get(entry.paymentId) || 0) + getPositiveNumber(entry.earnings)
+      );
+    });
+  });
   const paymentRows: AuditExportRow[] = includeAppointments
     ? payments.map((payment) => ({
         kind: 'payment',
@@ -212,7 +229,8 @@ export const buildAuditLogRows = (
           _treatmentDiscountAmount: [...new Set(payment.treatmentIds || [])].reduce(
             (sum, treatmentId) => sum + getTreatmentDiscount(treatmentById.get(treatmentId)),
             0
-          )
+          ),
+          _doctorEarnings: doctorEarningsByPaymentId.get(payment.id) || 0
         }
       }))
     : [];
@@ -358,7 +376,7 @@ export const buildAuditLogExportTableRows = (rows: AuditExportRow[], currency: C
         amount: payment.amount,
         discount: getAuditPaymentDiscount(payment) || null,
         serviceCharges: null,
-        doctorEarned: null,
+        doctorEarned: getAuditPaymentDoctorEarnings(payment) || null,
         paymentMethod: payment.allocations?.length ? formatPaymentAllocations(payment.allocations) : formatPaymentMethod(payment.paymentMethod)
       };
     }

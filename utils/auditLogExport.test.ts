@@ -415,6 +415,34 @@ describe('audit log export rows', () => {
     expect(tableRow.activity).toContain('REC-20260530-000001');
   });
 
+  it('shows doctor earnings on the payment transaction that generated them', () => {
+    const commissionRecords: ClinicalRecord[] = [{
+      ...records[0],
+      doctorEarningEntries: [
+        {
+          paymentId: 'pay-1', treatmentId: 'tr-1', doctorId: 'doctor-1',
+          paymentDate: '2026-05-30', treatmentDate: '2026-05-30',
+          calculationMode: 'percentage', allocatedPayment: 300000, commissionRate: 10, earnings: 30000
+        },
+        {
+          paymentId: 'pay-2', treatmentId: 'tr-1', doctorId: 'doctor-1',
+          paymentDate: '2026-05-31', treatmentDate: '2026-05-30',
+          calculationMode: 'percentage', allocatedPayment: 700000, commissionRate: 10, earnings: 70000
+        }
+      ]
+    }];
+    const installmentPayments: PaymentRecord[] = [
+      { ...payments[0], id: 'pay-1', amount: 300000, remainingBalance: 700000 },
+      { ...payments[0], id: 'pay-2', amount: 700000, treatmentIds: [], date: '2026-05-31', remainingBalance: 0 }
+    ];
+
+    const rows = buildAuditLogRows(commissionRecords, [], true, installmentPayments);
+    const tableRows = buildAuditLogExportTableRows(rows, 'MMK').filter((row) => row.type === 'Payment');
+
+    expect(tableRows.find((row) => row.amount === 300000)?.doctorEarned).toBe(30000);
+    expect(tableRows.find((row) => row.amount === 700000)?.doctorEarned).toBe(70000);
+  });
+
   it('includes rescheduled appointments only in the reschedule filter and export rows', () => {
     const rows = buildAuditLogRows(records, appointments, true, payments, rescheduleLogs);
     const appointmentRows = filterAuditLogRowsForExport(rows, {
