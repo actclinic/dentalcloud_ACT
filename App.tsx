@@ -426,6 +426,7 @@ const App: React.FC = () => {
   const [appointmentRescheduleLogs, setAppointmentRescheduleLogs] = useState<AppointmentRescheduleLog[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [treatmentHistory, setTreatmentHistory] = useState<ClinicalRecord[]>([]); 
+  const [treatmentHistoryLoading, setTreatmentHistoryLoading] = useState(false);
   const [globalRecords, setGlobalRecords] = useState<ClinicalRecord[]>([]); 
   const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
   const [dashboardPatients, setDashboardPatients] = useState<Patient[]>([]);
@@ -1421,6 +1422,7 @@ const App: React.FC = () => {
     setAppointmentRescheduleLogs([]);
     setDoctors([]);
     setTreatmentHistory([]);
+    setTreatmentHistoryLoading(false);
     setGlobalRecords([]);
     setPaymentRecords([]);
     setTreatmentTypes([]);
@@ -1785,6 +1787,7 @@ const App: React.FC = () => {
     medicineHistoryRequestRef.current += 1;
     paymentHistoryRequestRef.current += 1;
     setSelectedPatient(null);
+    setTreatmentHistoryLoading(false);
     setLatestTreatmentBatch([]);
     setPaymentDraft({ treatments: [], amountTendered: 0, previousBalance: 0, currentTreatmentTotal: 0, serviceFeeAmount: 0, serviceFeeCategory: null, paymentMethod: 'UNKNOWN', splitPayment: false, allocations: [] });
     setPatientMedicineSales([]);
@@ -2038,6 +2041,7 @@ const App: React.FC = () => {
     setSelectedTeeth([]);
     setCurrentView('finance');
     setTreatmentHistory([]);
+    setTreatmentHistoryLoading(true);
     setLoyaltyTransactions([]);
     setPatientFiles([]);
     setPatientMedicineSales([]);
@@ -2054,11 +2058,13 @@ const App: React.FC = () => {
       .then((history) => {
         if (requestId !== treatmentHistoryRequestRef.current) return;
         setTreatmentHistory(history);
+        setTreatmentHistoryLoading(false);
       })
       .catch((err: any) => {
         if (requestId !== treatmentHistoryRequestRef.current) return;
         console.warn('Error fetching treatment history:', err);
         setTreatmentHistory([]);
+        setTreatmentHistoryLoading(false);
       });
 
     void api.medicines.getSales(locationId, patient.id, { throwOnError: true })
@@ -3858,6 +3864,7 @@ const App: React.FC = () => {
     setPatientPaymentRecords([]);
     setPatientPaymentHistoryLoading(false);
     setPatientPaymentHistoryError(null);
+    setTreatmentHistoryLoading(false);
     setSelectedDoctorId('');
     setSelectedTeeth([]);
     setTreatmentHistory([]);
@@ -4494,6 +4501,7 @@ const App: React.FC = () => {
                 selectedTeeth={selectedTeeth} 
                 treatmentTypes={treatmentTypes} 
                 treatmentHistory={treatmentHistory}
+                treatmentHistoryLoading={treatmentHistoryLoading}
                 medicineSales={patientMedicineSales}
                 medicineHistoryLoading={patientMedicineHistoryLoading}
                 medicineHistoryError={patientMedicineHistoryError}
