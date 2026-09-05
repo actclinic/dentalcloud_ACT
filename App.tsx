@@ -700,7 +700,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveBranchReceiptIdentity = async (identity: { headerTitle: string; email: string }) => {
+  const handleSaveBranchReceiptIdentity = async (identity: { headerTitle: string; email: string; address: string; phone: string }) => {
     const session = auth.getSession();
     const locationId = settingsReceiptIdentityLocationId || settingsReceiptIdentity?.locationId;
     if (session?.role !== 'admin' || !session.staffAuthToken || !locationId) {
@@ -717,6 +717,7 @@ const App: React.FC = () => {
         settingsReceiptIdentity?.settingsUpdatedAt || null
       );
       setSettingsReceiptIdentity(saved);
+      void fetchInitialData();
     } catch (error: any) {
       const message = String(error?.message || '');
       if (/another administrator/i.test(message)) {
