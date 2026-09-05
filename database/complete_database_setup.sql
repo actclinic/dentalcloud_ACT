@@ -644,7 +644,7 @@ CREATE TABLE patient_material_costs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   audit_log_id UUID NOT NULL REFERENCES audit_logs(id) ON DELETE CASCADE,
   material_name VARCHAR(255) NOT NULL,
-  cost_type VARCHAR(20) NOT NULL DEFAULT 'material' CHECK (cost_type IN ('material', 'lab')),
+  cost_type VARCHAR(20) NOT NULL DEFAULT 'material' CHECK (cost_type IN ('material', 'lab', 'special_doctor')),
   cost_amount DECIMAL(12,2) NOT NULL CHECK (cost_amount >= 0),
   quantity DECIMAL(12,2) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   total_amount DECIMAL(12,2) GENERATED ALWAYS AS (cost_amount * quantity) STORED,
@@ -670,7 +670,7 @@ CREATE TABLE staff_auth_sessions (
 CREATE INDEX idx_staff_auth_sessions_user_id ON staff_auth_sessions(user_id);
 CREATE INDEX idx_staff_auth_sessions_expires_at ON staff_auth_sessions(expires_at);
 
--- Global Material & Lab quick-entry presets. Direct table access is disabled
+-- Global treatment-cost quick-entry presets. Direct table access is disabled
 -- later; authorized staff use the secured preset RPCs.
 CREATE TABLE material_lab_cost_preset_settings (
   id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -681,7 +681,7 @@ CREATE TABLE material_lab_cost_preset_settings (
 
 CREATE TABLE material_lab_cost_presets (
   id UUID PRIMARY KEY,
-  cost_type VARCHAR(20) NOT NULL CHECK (cost_type IN ('material', 'lab')),
+  cost_type VARCHAR(20) NOT NULL CHECK (cost_type IN ('material', 'lab', 'special_doctor')),
   label VARCHAR(255) NOT NULL CHECK (btrim(label) <> ''),
   amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
   sort_order INTEGER NOT NULL UNIQUE CHECK (sort_order >= 0 AND sort_order < 100),
@@ -1574,7 +1574,7 @@ CREATE OR REPLACE FUNCTION delete_audit_log_material_expense()
 RETURNS TRIGGER AS $$
 BEGIN
   DELETE FROM expenses
-  WHERE source_type IN ('material_cost', 'lab_cost')
+  WHERE source_type IN ('material_cost', 'lab_cost', 'special_doctor_cost')
     AND source_id = OLD.id;
   RETURN OLD;
 END;
@@ -1592,6 +1592,7 @@ AS $$
 DECLARE
   v_material_total NUMERIC(12,2);
   v_lab_total NUMERIC(12,2);
+  v_special_doctor_total NUMERIC(12,2);
   v_admin_username TEXT;
   v_location_id UUID;
   v_treatment_date DATE;
@@ -1600,6 +1601,7 @@ DECLARE
   v_treatment_label TEXT;
   v_material_names TEXT;
   v_lab_names TEXT;
+  v_special_doctor_names TEXT;
 BEGIN
   SELECT t.location_id, t.date, t.patient_id, COALESCE(p.name, 'Unknown patient'), COALESCE(t.description, 'Treatment')
   INTO v_location_id, v_treatment_date, v_patient_id, v_patient_name, v_treatment_label
@@ -1633,18 +1635,18 @@ BEGIN
   IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' THEN RAISE EXCEPTION 'Cost items must be a JSON array.'; END IF;
   IF EXISTS (
     SELECT 1 FROM jsonb_to_recordset(p_items) AS item(material_name TEXT, cost_type TEXT, cost_amount NUMERIC, quantity NUMERIC)
-    WHERE btrim(COALESCE(item.material_name, '')) = '' OR item.cost_type NOT IN ('material', 'lab')
+    WHERE btrim(COALESCE(item.material_name, '')) = '' OR item.cost_type NOT IN ('material', 'lab', 'special_doctor')
       OR item.cost_amount IS NULL OR item.cost_amount <= 0 OR item.quantity IS NULL OR item.quantity <= 0
   ) THEN RAISE EXCEPTION 'Every cost item requires a valid name, type, positive cost, and positive quantity.'; END IF;
   DELETE FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
   INSERT INTO patient_material_costs (audit_log_id, material_name, cost_type, cost_amount, quantity, created_by, created_by_name)
   SELECT p_audit_log_id, btrim(item.material_name), item.cost_type, item.cost_amount, item.quantity, p_admin_user_id, v_admin_username
   FROM jsonb_to_recordset(p_items) AS item(material_name TEXT, cost_type TEXT, cost_amount NUMERIC, quantity NUMERIC);
-  SELECT COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'material'), 0), COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'lab'), 0)
-  INTO v_material_total, v_lab_total FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
-  SELECT COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'material'), ''), COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'lab'), '')
-  INTO v_material_names, v_lab_names FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
-  DELETE FROM expenses WHERE source_id = p_audit_log_id AND source_type IN ('material_cost', 'lab_cost');
+  SELECT COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'material'), 0), COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'lab'), 0), COALESCE(SUM(total_amount) FILTER (WHERE cost_type = 'special_doctor'), 0)
+  INTO v_material_total, v_lab_total, v_special_doctor_total FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
+  SELECT COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'material'), ''), COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'lab'), ''), COALESCE(string_agg(material_name, ', ' ORDER BY created_at) FILTER (WHERE cost_type = 'special_doctor'), '')
+  INTO v_material_names, v_lab_names, v_special_doctor_names FROM patient_material_costs WHERE audit_log_id = p_audit_log_id;
+  DELETE FROM expenses WHERE source_id = p_audit_log_id AND source_type IN ('material_cost', 'lab_cost', 'special_doctor_cost');
   IF v_material_total > 0 THEN
     INSERT INTO expenses (location_id, description, amount, category, date, source_type, source_id, is_system_generated)
     VALUES (v_location_id, 'Material cost - ' || v_patient_name || ' - ' || v_treatment_label || CASE WHEN v_material_names <> '' THEN ' (' || v_material_names || ')' ELSE '' END, v_material_total, 'Material Cost', v_treatment_date, 'material_cost', p_audit_log_id, true);
@@ -1652,6 +1654,10 @@ BEGIN
   IF v_lab_total > 0 THEN
     INSERT INTO expenses (location_id, description, amount, category, date, source_type, source_id, is_system_generated)
     VALUES (v_location_id, 'Lab cost - ' || v_patient_name || ' - ' || v_treatment_label || CASE WHEN v_lab_names <> '' THEN ' (' || v_lab_names || ')' ELSE '' END, v_lab_total, 'Lab Cost', v_treatment_date, 'lab_cost', p_audit_log_id, true);
+  END IF;
+  IF v_special_doctor_total > 0 THEN
+    INSERT INTO expenses (location_id, description, amount, category, date, source_type, source_id, is_system_generated)
+    VALUES (v_location_id, 'Special doctor cost - ' || v_patient_name || ' - ' || v_treatment_label || CASE WHEN v_special_doctor_names <> '' THEN ' (' || v_special_doctor_names || ')' ELSE '' END, v_special_doctor_total, 'Special Doctor Cost', v_treatment_date, 'special_doctor_cost', p_audit_log_id, true);
   END IF;
   INSERT INTO pending_commission_recalculations (patient_id, request_token, requested_at) VALUES (v_patient_id, p_request_token, NOW())
   ON CONFLICT (patient_id) DO UPDATE SET request_token = EXCLUDED.request_token, requested_at = EXCLUDED.requested_at;
@@ -1761,7 +1767,7 @@ BEGIN
   THEN RAISE EXCEPTION 'Every preset must be an object.'; END IF;
   IF EXISTS (
     SELECT 1 FROM jsonb_to_recordset(p_items) item(id UUID, cost_type TEXT, label TEXT, amount NUMERIC, sort_order INTEGER)
-    WHERE item.id IS NULL OR item.cost_type NOT IN ('material', 'lab')
+    WHERE item.id IS NULL OR item.cost_type NOT IN ('material', 'lab', 'special_doctor')
       OR btrim(COALESCE(item.label, '')) = '' OR char_length(btrim(item.label)) > 255
       OR item.amount IS NULL OR item.amount <= 0 OR item.amount > 9999999999.99
       OR item.sort_order IS NULL OR item.sort_order < 0 OR item.sort_order >= 100

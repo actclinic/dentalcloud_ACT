@@ -269,7 +269,7 @@ Appointments do not have a target-teeth workflow. Tooth numbers belong to treatm
 
 ### Doctor Commission
 - Each doctor has an explicit commission method, independent of their custom specialization: `percentage` or `flat_visit`.
-- Percentage mode uses a treatment-specific percentage when configured, otherwise the doctor's default `commission_percentage` (0-100%). Commission is earned from collected treatment payments after recorded material and lab costs are recovered.
+- Percentage mode uses a treatment-specific percentage when configured, otherwise the doctor's default `commission_percentage` (0-100%). Commission is earned from collected treatment payments after recorded material, lab, and special doctor costs are recovered.
 - Fixed mode uses `commission_per_visit` once for each doctor/patient/date visit after an eligible treatment payment is collected.
 - Commission ledger entries snapshot the applicable method and rate. Later configuration changes do not rewrite the method or rate already earned for a visit.
 - Commission is reported by payment date and summarized into `treatments.doctor_earnings` for compatibility.

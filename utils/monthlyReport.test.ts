@@ -16,7 +16,7 @@ const payment = (overrides: Partial<PaymentRecord> = {}): PaymentRecord => ({
 
 const costs = (overrides: Partial<TreatmentCostSummary> = {}): TreatmentCostSummary => ({
   auditLogId: 'audit-1', materialTotal: 10, materialItemCount: 1, labTotal: 5, labItemCount: 1,
-  totalAmount: 15, itemCount: 2, ...overrides
+  specialDoctorTotal: 0, specialDoctorItemCount: 0, totalAmount: 15, itemCount: 2, ...overrides
 });
 
 describe('monthly report', () => {
@@ -26,6 +26,15 @@ describe('monthly report', () => {
     expect(batches.map(batch => batch.length)).toEqual([20, 20, 5]);
     expect(Math.max(...batches.map(batch => batch.length))).toBe(MONTHLY_REPORT_PATIENT_BATCH_SIZE);
     expect(batches.flat()).toHaveLength(45);
+  });
+
+  it('deducts special doctor costs from profitability and reports them separately', () => {
+    const report = buildMonthlyReport({
+      records: [record()], payments: [payment()],
+      costSummaries: { 'treatment-1': costs({ specialDoctorTotal: 25, specialDoctorItemCount: 1, totalAmount: 40, itemCount: 3 }) }
+    });
+    expect(report.rows[0]).toMatchObject({ specialDoctorCost: 25, totalCost: 60, netProfit: 40 });
+    expect(report.summary).toMatchObject({ specialDoctorCost: 25, totalCost: 60, netProfit: 40 });
   });
 
   it('calculates payment, treatment balance, total cost, and production-based net profit', () => {

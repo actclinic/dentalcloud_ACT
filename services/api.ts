@@ -73,7 +73,9 @@ const buildExpensePayload = (data: Partial<Expense>, existing?: Partial<Expense>
 
 const getTreatmentCostExpenseMetadata = (costType: TreatmentCostType) => costType === 'lab'
   ? { category: 'Lab Cost', sourceType: 'lab_cost', label: 'Lab cost' }
-  : { category: 'Material Cost', sourceType: 'material_cost', label: 'Material cost' };
+  : costType === 'special_doctor'
+    ? { category: 'Special Doctor Cost', sourceType: 'special_doctor_cost', label: 'Special doctor cost' }
+    : { category: 'Material Cost', sourceType: 'material_cost', label: 'Material cost' };
 
 const buildTreatmentCostExpenseDescription = (
   treatment: Partial<ClinicalRecord>,
@@ -579,7 +581,7 @@ const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
     id: row.id,
     auditLogId: row.audit_log_id,
     materialName: row.material_name,
-    costType: row.cost_type === 'lab' ? 'lab' : 'material',
+    costType: row.cost_type === 'lab' ? 'lab' : row.cost_type === 'special_doctor' ? 'special_doctor' : 'material',
     costAmount,
     quantity,
     totalAmount: Number(row.total_amount ?? costAmount * quantity),
@@ -592,7 +594,7 @@ const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
 
 const mapMaterialLabCostPresetRow = (row: any): MaterialLabCostPreset => ({
   id: row.id,
-  costType: row.cost_type === 'lab' ? 'lab' : 'material',
+  costType: row.cost_type === 'lab' ? 'lab' : row.cost_type === 'special_doctor' ? 'special_doctor' : 'material',
   label: String(row.label || ''),
   amount: Number(row.amount || 0),
   sortOrder: Number(row.sort_order || 0),
@@ -643,7 +645,7 @@ const fetchSyntheticMaterialCostExpenses = async (
     const auditLogId = row.audit_log_id;
     if (!auditLogId) return;
 
-    const costType: TreatmentCostType = row.cost_type === 'lab' ? 'lab' : 'material';
+    const costType: TreatmentCostType = row.cost_type === 'lab' ? 'lab' : row.cost_type === 'special_doctor' ? 'special_doctor' : 'material';
     const summaryKey = `${auditLogId}|${costType}`;
     const current = costSummaryByAuditAndType.get(summaryKey) || {
       costType,
@@ -706,7 +708,7 @@ const fetchSyntheticMaterialCostExpenses = async (
   const treatmentById = new Map(treatmentBatches.flat().map((row: any) => [row.id, row]));
   const linkedExpenseKeys = new Set(
     existingExpenses
-      .filter((expense) => ['material_cost', 'lab_cost'].includes(expense.source_type || '') && expense.source_id)
+      .filter((expense) => ['material_cost', 'lab_cost', 'special_doctor_cost'].includes(expense.source_type || '') && expense.source_id)
       .map((expense) => `${expense.source_id}|${expense.source_type}`)
   );
 
@@ -716,7 +718,7 @@ const fetchSyntheticMaterialCostExpenses = async (
 
     const resolvedLocationId = auditRow.location_id || treatment.location_id || null;
     if (locationId && resolvedLocationId !== locationId) return [];
-    return (['material', 'lab'] as TreatmentCostType[]).flatMap((costType): Expense[] => {
+    return (['material', 'lab', 'special_doctor'] as TreatmentCostType[]).flatMap((costType): Expense[] => {
       const summary = costSummaryByAuditAndType.get(`${auditRow.id}|${costType}`);
       if (!summary || summary.totalAmount <= 0) return [];
       const metadata = getTreatmentCostExpenseMetadata(costType);
@@ -3426,10 +3428,10 @@ export const api = {
       const treatmentId = trimRequired(treatment.id, 'Treatment audit row');
       const normalizedItems = items
         .map((item) => ({
-          material_name: trimRequired(item.materialName, item.costType === 'lab' ? 'Lab cost name' : 'Material name', { maxLength: 255 }),
-          cost_type: enumValue(item.costType, ['material', 'lab'] as const, 'Cost type'),
-          cost_amount: finiteNumber(item.costAmount, item.costType === 'lab' ? 'Lab cost' : 'Material cost', { min: 0.01 }),
-          quantity: finiteNumber(item.quantity, item.costType === 'lab' ? 'Lab quantity' : 'Material quantity', { min: 0.01 })
+          material_name: trimRequired(item.materialName, item.costType === 'lab' ? 'Lab cost name' : item.costType === 'special_doctor' ? 'Special doctor cost name' : 'Material name', { maxLength: 255 }),
+          cost_type: enumValue(item.costType, ['material', 'lab', 'special_doctor'] as const, 'Cost type'),
+          cost_amount: finiteNumber(item.costAmount, item.costType === 'lab' ? 'Lab cost' : item.costType === 'special_doctor' ? 'Special doctor cost' : 'Material cost', { min: 0.01 }),
+          quantity: finiteNumber(item.quantity, item.costType === 'lab' ? 'Lab quantity' : item.costType === 'special_doctor' ? 'Special doctor quantity' : 'Material quantity', { min: 0.01 })
         }))
         .filter((item) => item.material_name);
 

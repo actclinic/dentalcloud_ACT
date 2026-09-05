@@ -129,7 +129,9 @@ export interface AuditLogEntry {
   created_at?: string;
 }
 
-export type TreatmentCostType = 'material' | 'lab';
+// Keep the existing Material/Lab model and identifiers for production compatibility.
+// `special_doctor` is the additive third treatment-cost category.
+export type TreatmentCostType = 'material' | 'lab' | 'special_doctor';
 
 export interface PatientMaterialCost {
   id: string;
@@ -176,6 +178,8 @@ export interface TreatmentCostSummary {
   materialItemCount: number;
   labTotal: number;
   labItemCount: number;
+  specialDoctorTotal: number;
+  specialDoctorItemCount: number;
   totalAmount: number;
   itemCount: number;
 }

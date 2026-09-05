@@ -9,10 +9,11 @@ import {
 
 const ids = {
   material: '11111111-1111-4111-8111-111111111111',
-  lab: '22222222-2222-4222-8222-222222222222'
+  lab: '22222222-2222-4222-8222-222222222222',
+  specialDoctor: '33333333-3333-4333-8333-333333333333'
 };
 
-const emptyRow = (costType: 'material' | 'lab'): MaterialCostDraftRow => ({
+const emptyRow = (costType: 'material' | 'lab' | 'special_doctor'): MaterialCostDraftRow => ({
   localId: `new-${costType}`,
   materialName: '',
   costType,
@@ -33,6 +34,16 @@ describe('material and lab cost presets', () => {
       { id: ids.material, costType: 'material', label: 'Composite', amount: 50, sortOrder: 1 }
     ]);
     expect(source[0].label).toBe(' Crown Lab ');
+  });
+
+  it('supports multiple special doctor presets and appends them to the matching category', () => {
+    const normalized = normalizeMaterialCostPresetInputs([
+      { id: ids.specialDoctor, costType: 'special_doctor', label: ' Visiting surgeon ', amount: 25000, sortOrder: 4 }
+    ]);
+    expect(normalized[0]).toMatchObject({ costType: 'special_doctor', label: 'Visiting surgeon' });
+    expect(applyMaterialCostPreset([emptyRow('special_doctor')], normalized[0], emptyRow)[0]).toMatchObject({
+      costType: 'special_doctor', materialName: 'Visiting surgeon', costAmount: 25000
+    });
   });
 
   it('rejects invalid identifiers, duplicate ids, blank labels, categories, and amounts', () => {

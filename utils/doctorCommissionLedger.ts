@@ -65,7 +65,7 @@ const toPercentageRate = (value: unknown): number => (
 );
 
 // Percentage commission is paid only from the amount left after every cost
-// recorded for the treatment (both material and lab) has been recovered.
+// recorded for the treatment (material, lab, and special doctor) has been recovered.
 // Applying this per payment also makes partial payments deterministic: the
 // cost is deducted once, from the earliest collected amount(s).
 const calculatePercentageCommissionBase = (

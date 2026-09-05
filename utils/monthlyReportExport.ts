@@ -83,13 +83,13 @@ export const exportMonthlyReportToPDF = (report: MonthlyReport, metadata: Monthl
 
   autoTable(doc, {
     startY: 71,
-    head: [['Date', 'Pt Name', 'Age', 'Phone', 'City', 'Township', 'Pt Type', 'Treatment', 'Dentist / Doctor', 'Cost', 'Payment', 'Balance', 'Lab Cost', 'Material Cost', 'Doctor Cost', 'Total Cost', 'Net Profit']],
+    head: [['Date', 'Pt Name', 'Age', 'Phone', 'City', 'Township', 'Pt Type', 'Treatment', 'Dentist / Doctor', 'Cost', 'Payment', 'Balance', 'Lab Cost', 'Material Cost', 'Special Doctor Cost', 'Doctor Cost', 'Total Cost', 'Net Profit']],
     body: detailRows.length ? detailRows.map(row => [
       row.date, row.patientName, row.age === null ? '-' : String(row.age), row.phone, row.city, row.township, row.patientType,
       row.treatment, row.doctor, formatCurrency(row.cost, metadata.currency), formatCurrency(row.payment, metadata.currency),
-      formatCurrency(row.balance, metadata.currency), formatCurrency(row.labCost, metadata.currency), formatCurrency(row.materialCost, metadata.currency),
+      formatCurrency(row.balance, metadata.currency), formatCurrency(row.labCost, metadata.currency), formatCurrency(row.materialCost, metadata.currency), formatCurrency(row.specialDoctorCost, metadata.currency),
       formatCurrency(row.doctorCost, metadata.currency), formatCurrency(row.totalCost, metadata.currency), formatCurrency(row.netProfit, metadata.currency)
-    ]) : [['No treatments were recorded in this period.', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']],
+    ]) : [['No treatments were recorded in this period.', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']],
     theme: 'grid',
     headStyles: { fillColor: [79, 70, 229], textColor: 255, fontSize: 6, fontStyle: 'bold', halign: 'center', valign: 'middle' },
     bodyStyles: { fontSize: 5.8, textColor: [30, 41, 59], cellPadding: 1.5, valign: 'middle' },
@@ -291,13 +291,14 @@ export const buildMonthlyReportExcelWorkbook = async (report: MonthlyReport, met
     ['REPORT VOLUME', '', '', 'REVENUE & COLLECTIONS', '', '', 'COSTS & PROFITABILITY', ''],
     ['Treatments Performed', report.summary.treatmentCount, '', 'Treatment Production', report.summary.production, '', 'Material Cost', report.summary.materialCost],
     ['Distinct Patients', report.summary.patientCount, '', 'Collected Payment', report.summary.payment, '', 'Lab Cost', report.summary.labCost],
-    ['', '', '', 'Outstanding Balance', report.summary.balance, '', 'Doctor Cost', report.summary.doctorCost],
-    ['', '', '', 'Collection Rate', report.summary.collectionRate, '', 'Total Cost', report.summary.totalCost],
+    ['', '', '', 'Outstanding Balance', report.summary.balance, '', 'Special Doctor Cost', report.summary.specialDoctorCost],
+    ['', '', '', 'Collection Rate', report.summary.collectionRate, '', 'Doctor Cost', report.summary.doctorCost],
+    ['', '', '', '', '', '', 'Total Cost', report.summary.totalCost],
     ['', '', '', '', '', '', 'Net Profit', report.summary.netProfit],
     ['', '', '', '', '', '', 'Net Margin', report.summary.netMargin],
     ['', '', '', '', '', '', '', ''],
     ['REPORT DEFINITION', '', '', '', '', '', '', ''],
-    ['Net Profit = Treatment Production - Material Cost - Lab Cost - Doctor Cost. Unrelated operating expenses are excluded.', '', '', '', '', '', '', '']
+    ['Net Profit = Treatment Production - Material Cost - Lab Cost - Special Doctor Cost - Doctor Cost. Unrelated operating expenses are excluded.', '', '', '', '', '', '', '']
   ];
   const summarySheet: any = XLSX.utils.aoa_to_sheet(summaryRows);
   summarySheet['!cols'] = [24, 16, 4, 24, 18, 4, 24, 18].map(wch => ({ wch }));
@@ -353,32 +354,32 @@ export const buildMonthlyReportExcelWorkbook = async (report: MonthlyReport, met
 
   const detailHeaders = [
     'Treatment Date', 'Patient Name', 'Age', 'Phone Number', 'City', 'Township', 'Patient Type', 'Treatment', 'Clinician',
-    'Treatment Production', 'Collected Payment', 'Outstanding Balance', 'Material Cost', 'Lab Cost', 'Doctor Cost',
+    'Treatment Production', 'Collected Payment', 'Outstanding Balance', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Doctor Cost',
     'Total Cost', 'Net Profit', 'Net Margin'
   ];
   const groupedDetailRows = groupMonthlyReportDetailRows(report.rows);
   const detailData = groupedDetailRows.map(row => [
     row.date, row.patientName, row.age ?? '', row.phone, row.city, row.township, row.patientType, row.treatment, row.doctor,
-    row.cost, row.payment, row.balance, row.materialCost, row.labCost, row.doctorCost, row.totalCost, row.netProfit, row.netMargin
+    row.cost, row.payment, row.balance, row.materialCost, row.labCost, row.specialDoctorCost, row.doctorCost, row.totalCost, row.netProfit, row.netMargin
   ]);
   const detailRows: Array<Array<string | number>> = [
-    ['TREATMENT DETAIL', ...Array(17).fill('')],
-    [reportSubtitle(metadata), ...Array(17).fill('')],
-    ['', ...Array(17).fill('')],
+    ['TREATMENT DETAIL', ...Array(18).fill('')],
+    [reportSubtitle(metadata), ...Array(18).fill('')],
+    ['', ...Array(18).fill('')],
     detailHeaders,
     ...detailData,
     ['REPORT TOTAL', '', '', '', '', '', '', '', '', report.summary.production, report.summary.payment, report.summary.balance,
-      report.summary.materialCost, report.summary.labCost, report.summary.doctorCost, report.summary.totalCost, report.summary.netProfit, report.summary.netMargin]
+      report.summary.materialCost, report.summary.labCost, report.summary.specialDoctorCost, report.summary.doctorCost, report.summary.totalCost, report.summary.netProfit, report.summary.netMargin]
   ];
   const detailSheet: any = XLSX.utils.aoa_to_sheet(detailRows);
-  detailSheet['!merges'] = [XLSX.utils.decode_range('A1:R1'), XLSX.utils.decode_range('A2:R2')];
-  configureTableSheet(detailSheet, 4, detailData.length, 'R', [15, 25, 8, 18, 18, 18, 18, 32, 24, 20, 19, 20, 16, 16, 16, 16, 16, 14]);
-  setNumberFormat(XLSX, detailSheet, 5, 5 + detailData.length, [9, 10, 11, 12, 13, 14, 15, 16], currency);
-  setNumberFormat(XLSX, detailSheet, 5, 5 + detailData.length, [17], '0.0%');
-  styleReportBanner(XLSX, detailSheet, 'R');
-  styleTable(XLSX, detailSheet, 4, detailData.length, 5 + detailData.length, 'R', [2, 9, 10, 11, 12, 13, 14, 15, 16, 17], [2]);
-  groupedDetailRows.forEach((row, index) => styleProfitCell(detailSheet, `Q${5 + index}`, row.netProfit));
-  styleProfitCell(detailSheet, `Q${5 + detailData.length}`, report.summary.netProfit, true);
+  detailSheet['!merges'] = [XLSX.utils.decode_range('A1:S1'), XLSX.utils.decode_range('A2:S2')];
+  configureTableSheet(detailSheet, 4, detailData.length, 'S', [15, 25, 8, 18, 18, 18, 18, 32, 24, 20, 19, 20, 16, 16, 20, 16, 16, 16, 14]);
+  setNumberFormat(XLSX, detailSheet, 5, 5 + detailData.length, [9, 10, 11, 12, 13, 14, 15, 16, 17], currency);
+  setNumberFormat(XLSX, detailSheet, 5, 5 + detailData.length, [18], '0.0%');
+  styleReportBanner(XLSX, detailSheet, 'S');
+  styleTable(XLSX, detailSheet, 4, detailData.length, 5 + detailData.length, 'S', [2, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], [2]);
+  groupedDetailRows.forEach((row, index) => styleProfitCell(detailSheet, `R${5 + index}`, row.netProfit));
+  styleProfitCell(detailSheet, `R${5 + detailData.length}`, report.summary.netProfit, true);
   XLSX.utils.book_append_sheet(workbook, detailSheet, 'Treatment Detail');
 
   const appendGroupSheet = (name: string, title: string, categoryHeader: string, groups: MonthlyReportGroup[]) => {
