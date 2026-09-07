@@ -466,6 +466,14 @@ const App: React.FC = () => {
   const [patientPaymentHistoryError, setPatientPaymentHistoryError] = useState<string | null>(null);
   const scheduledTaskProcessorRef = React.useRef<boolean>(false);
   const [loading, setLoading] = useState(true);
+  // Startup sync tracking: Service Menu / MLS / Inventory share data that is
+  // fetched in the background after the first screen is usable, so each of those
+  // tabs needs a progress signal until its own dataset has arrived.
+  const [initialSyncActive, setInitialSyncActive] = useState(false);
+  const [initialSyncProgress, setInitialSyncProgress] = useState(0);
+  const [treatmentTypesReady, setTreatmentTypesReady] = useState(false);
+  const [globalRecordsReady, setGlobalRecordsReady] = useState(false);
+  const [medicinesReady, setMedicinesReady] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -1638,9 +1646,18 @@ const App: React.FC = () => {
     options: { deferBranchCommit?: boolean; throwOnError?: boolean } = {}
   ) => {
     const requestId = ++initialDataFetchRequestRef.current;
+    const advanceInitialSync = (points: number) => {
+      if (requestId !== initialDataFetchRequestRef.current) return;
+      setInitialSyncProgress((current) => Math.min(96, Math.round(current + points)));
+    };
     try {
       setLoading(true);
       setError(null);
+      setInitialSyncActive(true);
+      setInitialSyncProgress(0);
+      setTreatmentTypesReady(false);
+      setGlobalRecordsReady(false);
+      setMedicinesReady(false);
       
       const [locData, patientTypeData, appointmentTypeData] = await Promise.all([
         api.locations.getAll(),
@@ -1648,6 +1665,8 @@ const App: React.FC = () => {
         safeLoad('Appointment type options', api.appointmentTypes.getAll(), [])
       ]);
       if (requestId !== initialDataFetchRequestRef.current) return;
+
+      advanceInitialSync(10);
 
       setLocations(locData);
       setPatientTypes(patientTypeData);
@@ -1728,21 +1747,30 @@ const App: React.FC = () => {
         const patientInitialPromise = isDoctorMultiBranchSession
           ? Promise.all(doctorQueryLocationIds.map((locationId) => safeLoad(`Patients for doctor branch ${locationId}`, api.patients.getAll(locationId), []))).then((groups) => groups.flat())
           : api.patients.getPage(locId, 0, PATIENTS_INITIAL_LOAD_SIZE);
-        const supportingDataPromise = Promise.all([
-          appointmentsPromise,
-          activeSessionDoctor ? Promise.resolve([activeSessionDoctor]) : safeLoad('Doctors', api.doctors.getAll(locId), []),
-          safeLoad('Treatment types', api.treatments.getTypes(locId), []),
-          isDoctorMultiBranchSession
+        const supportingTasks = [
+          { points: 6, promise: appointmentsPromise },
+          { points: 5, promise: activeSessionDoctor ? Promise.resolve([activeSessionDoctor]) : safeLoad('Doctors', api.doctors.getAll(locId), []) },
+          { points: 8, promise: safeLoad('Treatment types', api.treatments.getTypes(locId), []) },
+          { points: 26, promise: isDoctorMultiBranchSession
             ? Promise.all(doctorQueryLocationIds.map((locationId) => safeLoad(`Treatment records for doctor branch ${locationId}`, api.treatments.getAllRecords(locationId, { limit: null }), []))).then((groups) => groups.flat())
-            : api.treatments.getAllRecords(locId, { limit: null }),
-          safeLoad('Medicines', api.medicines.getAll(locId), []),
-          safeLoad('Payments', api.finance.getPayments(locId), []),
-          safeLoad('Appointment reschedule logs', api.appointmentRescheduleLogs.getAll(locId), [])
-        ]);
+            : api.treatments.getAllRecords(locId, { limit: null }) },
+          { points: 10, promise: safeLoad('Medicines', api.medicines.getAll(locId), []) },
+          { points: 8, promise: safeLoad('Payments', api.finance.getPayments(locId), []) },
+          { points: 4, promise: safeLoad('Appointment reschedule logs', api.appointmentRescheduleLogs.getAll(locId), []) }
+        ];
+        // Each supporting dataset advances the startup progress bar as soon as it
+        // individually resolves, so tab visitors can watch data arrive.
+        const supportingDataPromise = Promise.all(supportingTasks.map((task) => (
+          task.promise.then(
+            (result) => { advanceInitialSync(task.points); return result; },
+            (error) => { advanceInitialSync(task.points); throw error; }
+          )
+        )));
 
         const patData = await patientInitialPromise;
         if (requestId !== initialDataFetchRequestRef.current) return;
 
+        advanceInitialSync(8);
         if (!isDoctorSession) {
           setPatients(patData);
           setDashboardPatients(patData);
@@ -1798,6 +1826,9 @@ const App: React.FC = () => {
         setLoyaltyRules([]);
         setExpenses([]);
             setMedicineSales([]);
+        setTreatmentTypesReady(true);
+        setGlobalRecordsReady(true);
+        setMedicinesReady(true);
 
         if (isDoctorSession && requestId === initialDataFetchRequestRef.current) {
           setLoading(false);
@@ -1816,6 +1847,7 @@ const App: React.FC = () => {
             setLoyaltyRules(loyaltyData);
             setExpenses(expenseData);
             setMedicineSales(salesData);
+            advanceInitialSync(6);
           } catch (deferredErr) {
             console.warn('Deferred data fetch failed:', deferredErr);
           }
@@ -1827,6 +1859,7 @@ const App: React.FC = () => {
             appointments: doctorAppointments,
             records: doctorRecords,
           });
+          advanceInitialSync(9);
         }
       }
 
@@ -1841,6 +1874,8 @@ const App: React.FC = () => {
     } finally {
       if (requestId === initialDataFetchRequestRef.current) {
         setLoading(false);
+        setInitialSyncActive(false);
+        setInitialSyncProgress(100);
       }
     }
   };
@@ -2206,6 +2241,32 @@ const App: React.FC = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // MLS saves only mutate one patient's ledger. Refetching that patient's rows
+  // keeps the save dialog fast instead of reloading every clinic record, expense,
+  // and payment while the user waits for the button.
+  const refreshGlobalRecordsForPatient = async (patientId?: string | null) => {
+    if (!patientId) {
+      await fetchGlobalRecords();
+      return;
+    }
+    try {
+      const records = await api.treatments.getAllRecords(currentLocationId || undefined, {
+        limit: null,
+        patientId
+      });
+      const session = auth.getSession();
+      const scopedRecords = session?.role === 'doctor' && session.doctor_id
+        ? records.filter((record) => record.doctor_id === session.doctor_id)
+        : records;
+      setGlobalRecords((prev) => [...prev.filter((record) => record.patient_id !== patientId), ...scopedRecords].sort((a, b) => (
+        String(b.date || '').localeCompare(String(a.date || '')) || String(a.id || '').localeCompare(String(b.id || ''))
+      )));
+    } catch (err) {
+      console.error('Patient-scoped record refresh failed; falling back to a full reload.', err);
+      await fetchGlobalRecords();
     }
   };
 
@@ -4448,10 +4509,10 @@ const App: React.FC = () => {
                 }}
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', commission_type: 'percentage', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
-            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} loading={loading} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} onRefresh={async () => { await fetchGlobalRecords(); await fetchExpenses(); await fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId); }} />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} onPaymentVoided={handlePaymentVoided} />}
-            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} syncProgress={(!treatmentTypesReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
+            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} onRefresh={async () => { await fetchGlobalRecords(); await fetchExpenses(); await fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId); }} onCostsSaved={async (patientId) => { await refreshGlobalRecordsForPatient(patientId); void fetchExpenses(); void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => { console.warn('Dashboard refresh after MLS cost save needs a manual refresh.'); }); }} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} onPaymentVoided={handlePaymentVoided} />}
+            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} syncProgress={(!medicinesReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
                 expenses={expenses}

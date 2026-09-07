@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Beaker, Loader2, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards, Printer, Pencil, Package } from 'lucide-react';
+import { Beaker, Download, CalendarDays, Stethoscope, ShieldCheck, Search, RotateCw, WalletCards, Printer, Pencil, Package } from 'lucide-react';
 import { Appointment, AppointmentRescheduleLog, ClinicalRecord, PaymentRecord, TreatmentCostSummary } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportClinicalRecordsToPDF } from '../utils/pdfExport';
@@ -15,6 +15,7 @@ import { formatDoctorName as formatDisplayDoctorName } from '../utils/doctorName
 import EditPaymentModal from './EditPaymentModal';
 import { api } from '../services/api';
 import { calculateMaterialAdjustedDoctorEarnings } from '../utils/materialCostCalculations';
+import ProgressBar from './ProgressBar';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -22,6 +23,9 @@ interface RecordsViewProps {
   rescheduleLogs?: AppointmentRescheduleLog[];
   payments?: PaymentRecord[];
   loading: boolean;
+  // Number (0-100) while the startup fetch is still bringing in the clinic
+  // records that back this view; null means the view can render normally.
+  syncProgress?: number | null;
   onRefresh: () => void | Promise<void>;
   onDeleteAll: () => void;
   currency: Currency;
@@ -33,7 +37,7 @@ interface RecordsViewProps {
   onPaymentVoided?: (result: { paymentId: string; patientId: string; newBalance: number }) => void | Promise<void>;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided }) => {
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, syncProgress = null, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -399,10 +403,9 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
         </div>
       </div>
 
-      {loading ? (
-        <div className="p-12 flex flex-col items-center justify-center gap-3 text-slate-500">
-          <Loader2 className="animate-spin theme-accent-text" />
-          <p className="text-sm font-medium">{isDoctor ? 'Loading patient records...' : 'Loading audit records...'}</p>
+      {(loading || typeof syncProgress === 'number') ? (
+        <div className="px-4 py-10 sm:px-6">
+          <ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label={isDoctor ? 'Loading patient records...' : 'Loading audit records...'} />
         </div>
       ) : (
         <>
