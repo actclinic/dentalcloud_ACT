@@ -26,7 +26,7 @@ const addPdfGroupTable = (doc: jsPDF, title: string, groups: MonthlyReportGroup[
   doc.text(title, 14, startY);
   autoTable(doc, {
     startY: startY + 4,
-    head: [['Category', 'Treatments', 'Patients', 'Production', 'Payment', 'Total Cost', 'Net Profit', 'Margin']],
+    head: [['Category', 'Treatments', 'Patients', 'Total Cost', 'Payment', 'Total Cost', 'Net Profit', 'Margin']],
     body: groups.slice(0, 15).map(group => [
       group.name, String(group.treatments), String(group.patients), formatCurrency(group.production, metadata.currency),
       formatCurrency(group.payment, metadata.currency), formatCurrency(group.totalCost, metadata.currency),
@@ -83,7 +83,7 @@ export const exportMonthlyReportToPDF = (report: MonthlyReport, metadata: Monthl
 
   autoTable(doc, {
     startY: 71,
-    head: [['Date', 'Pt Name', 'Age', 'Phone', 'City', 'Township', 'Pt Type', 'Treatment', 'Dentist / Doctor', 'Cost', 'Payment', 'Balance', 'Lab Cost', 'Material Cost', 'Special Doctor Cost', 'Doctor Cost', 'Total Cost', 'Net Profit']],
+    head: [['Date', 'Pt Name', 'Age', 'Phone', 'City', 'Township', 'Pt Type', 'Treatment', 'Dentist / Doctor', 'Total Cost', 'Payment', 'Receivable Balance', 'Lab Cost', 'Material Cost', 'Special Doctor Cost', 'Doctor RF', 'Total Cost', 'Net Profit']],
     body: detailRows.length ? detailRows.map(row => [
       row.date, row.patientName, row.age === null ? '-' : String(row.age), row.phone, row.city, row.township, row.patientType,
       row.treatment, row.doctor, formatCurrency(row.cost, metadata.currency), formatCurrency(row.payment, metadata.currency),
@@ -289,16 +289,16 @@ export const buildMonthlyReportExcelWorkbook = async (report: MonthlyReport, met
     [`Generated ${generatedLabel(generatedAt)}`, '', '', '', '', '', '', ''],
     ['', '', '', '', '', '', '', ''],
     ['REPORT VOLUME', '', '', 'REVENUE & COLLECTIONS', '', '', 'COSTS & PROFITABILITY', ''],
-    ['Treatments Performed', report.summary.treatmentCount, '', 'Treatment Production', report.summary.production, '', 'Material Cost', report.summary.materialCost],
+    ['Treatments Performed', report.summary.treatmentCount, '', 'Total Cost', report.summary.production, '', 'Material Cost', report.summary.materialCost],
     ['Distinct Patients', report.summary.patientCount, '', 'Collected Payment', report.summary.payment, '', 'Lab Cost', report.summary.labCost],
-    ['', '', '', 'Outstanding Balance', report.summary.balance, '', 'Special Doctor Cost', report.summary.specialDoctorCost],
-    ['', '', '', 'Collection Rate', report.summary.collectionRate, '', 'Doctor Cost', report.summary.doctorCost],
+    ['', '', '', 'Receivable Balance', report.summary.balance, '', 'Special Doctor Cost', report.summary.specialDoctorCost],
+    ['', '', '', 'Collection Rate', report.summary.collectionRate, '', 'Doctor RF', report.summary.doctorCost],
     ['', '', '', '', '', '', 'Total Cost', report.summary.totalCost],
     ['', '', '', '', '', '', 'Net Profit', report.summary.netProfit],
     ['', '', '', '', '', '', 'Net Margin', report.summary.netMargin],
     ['', '', '', '', '', '', '', ''],
     ['REPORT DEFINITION', '', '', '', '', '', '', ''],
-    ['Net Profit = Treatment Production - Material Cost - Lab Cost - Special Doctor Cost - Doctor Cost. Unrelated operating expenses are excluded.', '', '', '', '', '', '', '']
+    ['Net Profit = Total Cost - Material Cost - Lab Cost - Special Doctor Cost - Doctor RF. Unrelated operating expenses are excluded.', '', '', '', '', '', '', '']
   ];
   const summarySheet: any = XLSX.utils.aoa_to_sheet(summaryRows);
   summarySheet['!cols'] = [24, 16, 4, 24, 18, 4, 24, 18].map(wch => ({ wch }));
@@ -354,7 +354,7 @@ export const buildMonthlyReportExcelWorkbook = async (report: MonthlyReport, met
 
   const detailHeaders = [
     'Treatment Date', 'Patient Name', 'Age', 'Phone Number', 'City', 'Township', 'Patient Type', 'Treatment', 'Clinician',
-    'Treatment Production', 'Collected Payment', 'Outstanding Balance', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Doctor Cost',
+    'Total Cost', 'Collected Payment', 'Receivable Balance', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Doctor RF',
     'Total Cost', 'Net Profit', 'Net Margin'
   ];
   const groupedDetailRows = groupMonthlyReportDetailRows(report.rows);
@@ -390,7 +390,7 @@ export const buildMonthlyReportExcelWorkbook = async (report: MonthlyReport, met
       [title, '', '', '', '', '', '', ''],
       [reportSubtitle(metadata), '', '', '', '', '', '', ''],
       ['', '', '', '', '', '', '', ''],
-      [categoryHeader, 'Treatments', 'Distinct Patients', 'Treatment Production', 'Collected Payment', 'Total Cost', 'Net Profit', 'Net Margin'],
+      [categoryHeader, 'Treatments', 'Distinct Patients', 'Total Cost', 'Collected Payment', 'Total Cost', 'Net Profit', 'Net Margin'],
       ...groupData,
       ['REPORT TOTAL', report.summary.treatmentCount, report.summary.patientCount, report.summary.production, report.summary.payment,
         report.summary.totalCost, report.summary.netProfit, report.summary.netMargin]

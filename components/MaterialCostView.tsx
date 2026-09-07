@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeftRight, Beaker, Package, Plus, RotateCw, Stethoscope } from 'lucide-react';
+import { ArrowLeftRight, Beaker, Package, Plus, ReceiptText, RotateCw, Stethoscope } from 'lucide-react';
 import type { ClinicalRecord, PaymentRecord, TreatmentCostSummary } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
@@ -9,12 +9,17 @@ import { formatTeethWithPosition } from '../utils/toothNumbering';
 import { formatDoctorName } from '../utils/doctorName';
 import { sortMaterialCostRowsNewestFirst } from '../utils/materialCostRows';
 import {
+  buildMaterialCostPaymentHistoryRows,
+  filterMaterialCostPaymentHistoryRows
+} from '../utils/materialCostPaymentHistory';
+import {
   calculateCollectedByTreatmentId,
   calculateMaterialAdjustedDoctorEarnings,
   calculateMaterialNetProfit
 } from '../utils/materialCostCalculations';
 import Pagination from './Pagination';
 import MaterialCostModal from './MaterialCostModal';
+import MaterialCostPaymentHistory from './MaterialCostPaymentHistory';
 import ProgressBar from './ProgressBar';
 
 interface MaterialCostViewProps {
@@ -33,6 +38,7 @@ interface MaterialCostViewProps {
 
 type TreatmentAuditRow = Extract<AuditExportRow, { kind: 'treatment' }>;
 type MaterialCostFilter = 'all' | 'tomorrow' | 'today' | 'custom';
+type MaterialCostReport = 'operations' | 'payments';
 
 const getTreatmentRecordIds = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
   const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
@@ -42,6 +48,8 @@ const getTreatmentRecordIds = (record: ClinicalRecord & { _groupedRecords?: Clin
 const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null }) => {
   const summaryRequestVersion = React.useRef(0);
   const tableScrollRef = React.useRef<HTMLDivElement>(null);
+  const reportTabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeReport, setActiveReport] = useState<MaterialCostReport>('operations');
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
@@ -104,6 +112,19 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
 
     return sortMaterialCostRowsNewestFirst(matchingRows);
   }, [baseFilteredRows, doctorSearchTerm, treatmentSearchTerm, patientSearchTerm]);
+
+  const paymentHistoryRows = useMemo(
+    () => buildMaterialCostPaymentHistoryRows(records, paymentRecords),
+    [records, paymentRecords]
+  );
+
+  const filteredPaymentHistoryRows = useMemo(() => filterMaterialCostPaymentHistoryRows(paymentHistoryRows, {
+    dateFrom,
+    dateTo,
+    patientTerm: patientSearchTerm,
+    doctorTerm: doctorSearchTerm,
+    treatmentTerm: treatmentSearchTerm
+  }), [paymentHistoryRows, dateFrom, dateTo, patientSearchTerm, doctorSearchTerm, treatmentSearchTerm]);
 
   const loadMaterialSummaries = React.useCallback(async (rowsToLoad: TreatmentAuditRow[]) => {
     const requestVersion = ++summaryRequestVersion.current;
@@ -196,14 +217,24 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     return statusFilteredRows.slice(startIndex, startIndex + itemsPerPage);
   }, [statusFilteredRows, currentPage, showAll]);
 
+  const paginatedPaymentHistoryRows = useMemo(() => {
+    if (showAll) return filteredPaymentHistoryRows;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredPaymentHistoryRows.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredPaymentHistoryRows, currentPage, showAll]);
+
+  const activeRowCount = activeReport === 'operations'
+    ? statusFilteredRows.length
+    : filteredPaymentHistoryRows.length;
+
   React.useEffect(() => {
-    if (loading) return;
+    if (loading || activeReport !== 'operations') return;
     void loadMaterialSummaries(paginatedRows);
-  }, [loading, loadMaterialSummaries, paginatedRows]);
+  }, [activeReport, loading, loadMaterialSummaries, paginatedRows]);
 
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [records, doctorSearchTerm, treatmentSearchTerm, patientSearchTerm, dateFrom, dateTo, materialFilter]);
+  }, [activeReport, records, paymentRecords, doctorSearchTerm, treatmentSearchTerm, patientSearchTerm, dateFrom, dateTo, materialFilter]);
 
   React.useEffect(() => {
     if (loading) {
@@ -232,7 +263,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
       window.removeEventListener('resize', updateScrollableState);
       resizeObserver?.disconnect();
     };
-  }, [loading]);
+  }, [activeReport, loading]);
 
   const renderTypedCost = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }, costType: 'material' | 'lab' | 'special_doctor') => {
     const totalAmount = getTypedCostTotal(record, costType);
@@ -307,6 +338,25 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     }
     setCurrentPage(1);
   };
+
+  const reportTabs: Array<{ id: MaterialCostReport; label: string; helper: string; count: number }> = [
+    { id: 'operations', label: 'Operation Summary', helper: 'Costs and overall earnings', count: statusFilteredRows.length },
+    { id: 'payments', label: 'Payment History', helper: 'Each collection and commission', count: filteredPaymentHistoryRows.length }
+  ];
+
+  const handleReportTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex = index;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % reportTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + reportTabs.length) % reportTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = reportTabs.length - 1;
+    else return;
+
+    event.preventDefault();
+    setActiveReport(reportTabs[nextIndex].id);
+    reportTabRefs.current[nextIndex]?.focus();
+  };
+
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
       <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-[var(--hover-50)]/40">
@@ -324,10 +374,10 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                 <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
                   <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
-                    {statusFilteredRows.length} visible
+                    {activeRowCount} visible
                   </span>
                   <span className="shrink-0 rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 font-semibold theme-accent-text">
-                    {statusFilteredRows.length} treatments
+                    {activeReport === 'operations' ? `${statusFilteredRows.length} treatments` : `${filteredPaymentHistoryRows.length} payments`}
                   </span>
                 </div>
                 <button
@@ -352,6 +402,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
                     <input
                       type="text"
                       placeholder="Patient ID/Name"
+                      aria-label="Search by patient ID or name"
                       value={patientSearchTerm}
                       onChange={(event) => {
                         setPatientSearchTerm(event.target.value);
@@ -364,6 +415,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
                     <input
                       type="text"
                       placeholder="Doctor"
+                      aria-label="Search by doctor"
                       value={doctorSearchTerm}
                       onChange={(event) => {
                         setDoctorSearchTerm(event.target.value);
@@ -376,6 +428,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
                     <input
                       type="text"
                       placeholder="Treatment"
+                      aria-label="Search by treatment"
                       value={treatmentSearchTerm}
                       onChange={(event) => {
                         setTreatmentSearchTerm(event.target.value);
@@ -447,11 +500,66 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
         </div>
       </div>
 
+      <div
+        role="tablist"
+        aria-label="MLS reports"
+        className="grid w-full grid-cols-2 border-b border-slate-200 bg-white sm:flex sm:items-stretch sm:justify-start"
+      >
+        {reportTabs.map((tab, index) => {
+          const isActive = activeReport === tab.id;
+          const Icon = tab.id === 'operations' ? Package : ReceiptText;
+          return (
+            <button
+              key={tab.id}
+              ref={(element) => { reportTabRefs.current[index] = element; }}
+              id={`material-cost-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`material-cost-panel-${tab.id}`}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => setActiveReport(tab.id)}
+              onKeyDown={(event) => handleReportTabKeyDown(event, index)}
+              className={`relative flex min-h-16 min-w-0 items-center justify-start gap-2 border-b-4 px-3 py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--hover-400)] sm:w-[270px] sm:flex-none sm:gap-3 sm:px-5 ${
+                isActive
+                  ? 'border-[var(--hover-500)] bg-[var(--hover-50)]/60 text-[var(--hover-800)]'
+                  : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <Icon size={19} className="hidden shrink-0 sm:block" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-xs font-black sm:text-sm">{tab.label}</span>
+                  <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black shadow-sm ring-1 ring-slate-200">{tab.count}</span>
+                </span>
+                <span className="mt-0.5 hidden truncate text-[11px] font-medium text-slate-500 sm:block">{tab.helper}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {reportTabs.filter((tab) => tab.id !== activeReport).map((tab) => (
+        <div
+          key={`hidden-panel-${tab.id}`}
+          id={`material-cost-panel-${tab.id}`}
+          role="tabpanel"
+          aria-labelledby={`material-cost-tab-${tab.id}`}
+          hidden
+        />
+      ))}
+      <div
+        id={`material-cost-panel-${activeReport}`}
+        role="tabpanel"
+        aria-labelledby={`material-cost-tab-${activeReport}`}
+        tabIndex={0}
+        className="min-w-0 focus:outline-none"
+      >
       {(loading || typeof syncProgress === 'number') ? (
         <div className="px-4 py-10 sm:px-6">
-          <ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label={loading ? 'Refreshing treatment cost rows…' : 'Loading treatment cost rows…'} />
+          <ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label={loading ? 'Refreshing MLS report rows…' : 'Loading MLS report rows…'} />
         </div>
-      ) : (
+      ) : activeReport === 'operations' ? (
         <>
         <div className="hidden xl:block">
           {isTableScrollable && (
@@ -654,11 +762,14 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
           )}
         </div>
         </>
+      ) : (
+        <MaterialCostPaymentHistory rows={paginatedPaymentHistoryRows} currency={currency} />
       )}
+      </div>
 
-      {!loading && statusFilteredRows.length > 0 && (
+      {!loading && activeRowCount > 0 && (
         <Pagination
-          totalItems={statusFilteredRows.length}
+          totalItems={activeRowCount}
           itemsPerPage={itemsPerPage}
           currentPage={currentPage}
           onPageChange={setCurrentPage}

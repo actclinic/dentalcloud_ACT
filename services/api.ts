@@ -141,18 +141,60 @@ const sameLedgerMoney = (left: unknown, right: unknown): boolean => {
   return Math.abs(Number(left || 0) - Number(right || 0)) < 0.005;
 };
 
+const getTreatmentCommissionMode = (row: any): 'percentage' | 'flat_visit' => (
+  row.commission_type_snapshot === 'percentage' || row.commission_type_snapshot === 'flat_visit'
+    ? row.commission_type_snapshot
+    : resolveDoctorCommissionType({
+        commissionType: row.doctors?.commission_type,
+        specialization: row.doctors?.specialization
+      })
+);
+
+const getTreatmentCommissionRate = (row: any): number => {
+  if (row.commission_rate_snapshot !== null && row.commission_rate_snapshot !== undefined) {
+    return Number(row.commission_rate_snapshot || 0);
+  }
+  return Number(getTreatmentCommissionMode(row) === 'flat_visit'
+    ? row.doctors?.commission_per_visit ?? 0
+    : row.doctors?.commission_percentage ?? 0);
+};
+
 const recalculatePatientDoctorCommissions = async (patientId: string): Promise<void> => {
   let { data: treatmentRows, error: treatmentError } = await supabase
     .from('treatments')
-    .select('id, location_id, patient_id, doctor_id, treatment_type_id, date, cost, doctor_earnings, doctors(specialization, commission_type, commission_percentage, commission_per_visit)')
+    .select('id, location_id, patient_id, doctor_id, treatment_type_id, date, cost, doctor_earnings, commission_type_snapshot, commission_rate_snapshot, commission_source_snapshot, doctors(specialization, commission_type, commission_percentage, commission_per_visit)')
     .eq('patient_id', patientId);
+
+  if (treatmentError && (
+    isMissingColumnError(treatmentError, 'commission_type_snapshot')
+    || isMissingColumnError(treatmentError, 'commission_rate_snapshot')
+    || isMissingColumnError(treatmentError, 'commission_source_snapshot')
+  )) {
+    const legacySnapshotFallback = await supabase
+      .from('treatments')
+      .select('id, location_id, patient_id, doctor_id, treatment_type_id, date, cost, doctor_earnings, doctors(specialization, commission_type, commission_percentage, commission_per_visit)')
+      .eq('patient_id', patientId);
+    treatmentRows = (legacySnapshotFallback.data || []).map((row: any) => ({
+      ...row,
+      commission_type_snapshot: null,
+      commission_rate_snapshot: null,
+      commission_source_snapshot: null
+    }));
+    treatmentError = legacySnapshotFallback.error;
+  }
 
   if (treatmentError && isMissingColumnError(treatmentError, 'treatment_type_id')) {
     const fallback = await supabase
       .from('treatments')
       .select('id, location_id, patient_id, doctor_id, date, cost, doctor_earnings, doctors(specialization, commission_type, commission_percentage, commission_per_visit)')
       .eq('patient_id', patientId);
-    treatmentRows = (fallback.data || []).map((row: any) => ({ ...row, treatment_type_id: null }));
+    treatmentRows = (fallback.data || []).map((row: any) => ({
+      ...row,
+      treatment_type_id: null,
+      commission_type_snapshot: null,
+      commission_rate_snapshot: null,
+      commission_source_snapshot: null
+    }));
     treatmentError = fallback.error;
   }
   if (treatmentError) throw new Error(treatmentError.message);
@@ -216,7 +258,10 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
       : undefined,
     customCommissionFixedAmount: row.doctor_id && row.treatment_type_id
       ? customFixedAmountByDoctorAndType.get(`${row.doctor_id}|${row.treatment_type_id}`)
-      : undefined
+      : undefined,
+    commissionTypeSnapshot: row.commission_type_snapshot,
+    commissionRateSnapshot: row.commission_rate_snapshot == null ? null : Number(row.commission_rate_snapshot),
+    commissionSourceSnapshot: row.commission_source_snapshot
   }));
   const payments = (paymentRows || []).map((row: any) => ({
     id: row.id,
@@ -3626,29 +3671,20 @@ export const api = {
                 doctorId: rec.doctor_id,
                 paymentDate: rec.date,
                 treatmentDate: rec.date,
-                calculationMode: resolveDoctorCommissionType({
-                  commissionType: rec.doctors?.commission_type,
-                  specialization: rec.doctors?.specialization
-                }),
+                calculationMode: getTreatmentCommissionMode(rec),
                 allocatedPayment: Number(rec.cost || 0),
-                commissionRate: Number(resolveDoctorCommissionType({
-                  commissionType: rec.doctors?.commission_type,
-                  specialization: rec.doctors?.specialization
-                }) === 'flat_visit'
-                  ? rec.doctors?.commission_per_visit ?? 0
-                  : rec.doctors?.commission_percentage ?? 0),
+                commissionRate: getTreatmentCommissionRate(rec),
                 earnings: Number(rec.doctor_earnings || 0)
               }]
             : []
         ),
         doctor_name: rec.doctors?.name || undefined,
         doctor_specialization: rec.doctors?.specialization || null,
-        doctor_commission_type: resolveDoctorCommissionType({
-          commissionType: rec.doctors?.commission_type,
-          specialization: rec.doctors?.specialization
-        }),
-        doctor_commission_percentage: rec.doctors?.commission_percentage !== undefined ? Number(rec.doctors.commission_percentage || 0) : null,
-        doctor_commission_per_visit: rec.doctors?.commission_per_visit !== undefined ? Number(rec.doctors.commission_per_visit || 0) : null
+        doctor_commission_type: getTreatmentCommissionMode(rec),
+        doctor_commission_percentage: getTreatmentCommissionMode(rec) === 'percentage'
+          ? getTreatmentCommissionRate(rec) : null,
+        doctor_commission_per_visit: getTreatmentCommissionMode(rec) === 'flat_visit'
+          ? getTreatmentCommissionRate(rec) : null
       }));
     },
     getAnalysisRecords: async ({
@@ -3861,17 +3897,9 @@ export const api = {
                   doctorId: rec.doctor_id,
                   paymentDate: rec.date,
                   treatmentDate: rec.date,
-                  calculationMode: resolveDoctorCommissionType({
-                    commissionType: rec.doctors?.commission_type,
-                    specialization: rec.doctors?.specialization
-                  }),
+                  calculationMode: getTreatmentCommissionMode(rec),
                   allocatedPayment: Number(rec.cost || 0),
-                  commissionRate: Number(resolveDoctorCommissionType({
-                    commissionType: rec.doctors?.commission_type,
-                    specialization: rec.doctors?.specialization
-                  }) === 'flat_visit'
-                    ? rec.doctors?.commission_per_visit ?? 0
-                    : rec.doctors?.commission_percentage ?? 0),
+                  commissionRate: getTreatmentCommissionRate(rec),
                   earnings: Number(rec.doctor_earnings || 0)
                 }]
               : []
@@ -3881,12 +3909,11 @@ export const api = {
           patient_balance: Number(rec.patients?.balance || 0),
           doctor_name: rec.doctors?.name || undefined,
           doctor_specialization: rec.doctors?.specialization || null,
-          doctor_commission_type: resolveDoctorCommissionType({
-            commissionType: rec.doctors?.commission_type,
-            specialization: rec.doctors?.specialization
-          }),
-          doctor_commission_percentage: rec.doctors?.commission_percentage !== undefined ? Number(rec.doctors.commission_percentage || 0) : null,
-          doctor_commission_per_visit: rec.doctors?.commission_per_visit !== undefined ? Number(rec.doctors.commission_per_visit || 0) : null
+          doctor_commission_type: getTreatmentCommissionMode(rec),
+          doctor_commission_percentage: getTreatmentCommissionMode(rec) === 'percentage'
+            ? getTreatmentCommissionRate(rec) : null,
+          doctor_commission_per_visit: getTreatmentCommissionMode(rec) === 'flat_visit'
+            ? getTreatmentCommissionRate(rec) : null
         }));
       } catch (err) {
         console.warn("Error fetching records:", err);

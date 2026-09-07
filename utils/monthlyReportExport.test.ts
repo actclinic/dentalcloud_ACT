@@ -63,7 +63,9 @@ describe('monthly report Excel workbook', () => {
     expect(detail.A4.v).toBe('Treatment Date');
     expect(detail.B4.v).toBe('Patient Name');
     expect(detail.F4.v).toBe('Township');
-    expect(detail.J4.v).toBe('Treatment Production');
+    expect(detail.J4.v).toBe('Total Cost');
+    expect(detail.L4.v).toBe('Receivable Balance');
+    expect(detail.P4.v).toBe('Doctor RF');
     expect(detail.A6.v).toBe('REPORT TOTAL');
     expect(detail.J5.z).toBe('#,##0" Ks"');
     expect(detail.S5.z).toBe('0.0%');
@@ -88,6 +90,7 @@ describe('monthly report Excel workbook', () => {
     const clinician = workbook.Sheets['By Clinician'];
     expect(clinician.A1.v).toBe('CLINICIAN PERFORMANCE');
     expect(clinician.A4.v).toBe('Clinician');
+    expect(clinician.D4.v).toBe('Total Cost');
     expect(clinician.A6.v).toBe('REPORT TOTAL');
   });
 

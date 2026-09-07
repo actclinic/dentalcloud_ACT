@@ -91,6 +91,10 @@ export interface ClinicalRecord {
   doctor_commission_type?: 'percentage' | 'flat_visit' | null;
   doctor_commission_percentage?: number | null;
   doctor_commission_per_visit?: number | null;
+  commission_type_snapshot?: 'percentage' | 'flat_visit' | null;
+  commission_rate_snapshot?: number | null;
+  commission_source_snapshot?: string | null;
+  commission_snapshotted_at?: string | null;
   treatment_type_id?: string | null;
   teeth: number[];
   description: string;

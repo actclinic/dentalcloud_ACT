@@ -20,6 +20,87 @@ const treatment = (overrides: Partial<CommissionTreatmentInput> = {}): Commissio
 });
 
 describe('doctor commission ledger', () => {
+  it('uses a treatment snapshot for partial payments, correction, and material-cost recalculation', () => {
+    const snapshotted = treatment({
+      cost: 80_000,
+      commissionTypeSnapshot: 'percentage',
+      commissionRateSnapshot: 5,
+      commissionPercentage: 50,
+      customCommissionPercentage: 75
+    });
+    const payments = [
+      { id: 'p1', patientId: 'patient-1', date: '2026-07-01', commissionableAmount: 40_000, treatmentIds: [snapshotted.id] },
+      { id: 'p2', patientId: 'patient-1', date: '2026-07-02', commissionableAmount: 40_000, treatmentIds: [snapshotted.id] }
+    ];
+    const initial = calculateCommissionLedgerEntries(
+      [snapshotted], allocateCommissionablePayments([snapshotted], payments)
+    );
+    expect(initial.map(entry => [entry.commissionRate, entry.earnings])).toEqual([[5, 2_000], [5, 2_000]]);
+
+    const correctedPayments = payments.map(payment => ({ ...payment, commissionableAmount: 20_000 }));
+    const corrected = calculateCommissionLedgerEntries(
+      [snapshotted], allocateCommissionablePayments([snapshotted], correctedPayments), initial
+    );
+    expect(corrected.map(entry => [entry.commissionRate, entry.earnings])).toEqual([[5, 1_000], [5, 1_000]]);
+
+    const withMaterialCost = { ...snapshotted, materialCost: 20_000 };
+    const recalculated = calculateCommissionLedgerEntries(
+      [withMaterialCost], allocateCommissionablePayments([withMaterialCost], payments), initial
+    );
+    expect(recalculated.map(entry => [entry.commissionRate, entry.earnings])).toEqual([[5, 1_000], [5, 2_000]]);
+
+    // A correction can temporarily remove every ledger allocation. The treatment
+    // snapshot still restores the original rate when a payment is allocated again.
+    expect(calculateCommissionLedgerEntries(
+      [snapshotted], allocateCommissionablePayments([snapshotted], payments), []
+    ).map(entry => entry.earnings)).toEqual([2_000, 2_000]);
+  });
+
+  it('uses snapshot rates while pooling material costs for an unpaid visit sibling', () => {
+    const treatments = [
+      treatment({ id: 'a', cost: 80_000, commissionTypeSnapshot: 'percentage', commissionRateSnapshot: 5, commissionPercentage: 50 }),
+      treatment({ id: 'b', cost: 80_000, materialCost: 20_000, commissionTypeSnapshot: 'percentage', commissionRateSnapshot: 5, commissionPercentage: 50 })
+    ];
+    const entries = calculateCommissionLedgerEntries(treatments, [
+      { paymentId: 'p', paymentDate: '2026-07-01', treatmentId: 'a', amount: 80_000 }
+    ]);
+    expect(entries[0]).toMatchObject({ commissionRate: 5, commissionBase: 60_000, earnings: 3_000 });
+  });
+
+  it('preserves fixed-per-visit snapshots and custom priority', () => {
+    const treatments = [
+      treatment({ id: 'default', commissionTypeSnapshot: 'flat_visit', commissionRateSnapshot: 90_000, commissionSourceSnapshot: 'default' }),
+      treatment({ id: 'custom', commissionTypeSnapshot: 'flat_visit', commissionRateSnapshot: 30_000, commissionSourceSnapshot: 'custom', customCommissionFixedAmount: 100_000 }),
+      treatment({ id: 'custom-zero', commissionTypeSnapshot: 'flat_visit', commissionRateSnapshot: 0, commissionSourceSnapshot: 'custom' })
+    ];
+    const allocations = treatments.map(row => ({
+      paymentId: 'p', paymentDate: '2026-07-01', treatmentId: row.id, amount: 1_000
+    }));
+    expect(calculateCommissionLedgerEntries(treatments, allocations)).toEqual([
+      expect.objectContaining({ treatmentId: 'custom', commissionRate: 30_000, earnings: 30_000 })
+    ]);
+
+    const zeroOnly = treatments[2];
+    expect(calculateCommissionLedgerEntries([zeroOnly], [allocations[2]])[0])
+      .toMatchObject({ calculationMode: 'flat_visit', commissionRate: 0, earnings: 0 });
+  });
+
+  it('allows new snapshotted methods on the same date without changing the old paid treatment', () => {
+    const treatments = [
+      treatment({ id: 'old', cost: 80_000, commissionTypeSnapshot: 'percentage', commissionRateSnapshot: 5 }),
+      treatment({ id: 'new', cost: 80_000, commissionTypeSnapshot: 'flat_visit', commissionRateSnapshot: 10_000, commissionSourceSnapshot: 'default' })
+    ];
+    const allocations = treatments.map(row => ({
+      paymentId: row.id, paymentDate: '2026-07-01', treatmentId: row.id, amount: 80_000
+    }));
+    const entries = calculateCommissionLedgerEntries(treatments, allocations);
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ treatmentId: 'old', calculationMode: 'percentage', earnings: 4_000 }),
+      expect.objectContaining({ treatmentId: 'new', calculationMode: 'flat_visit', earnings: 10_000 })
+    ]));
+    expect(calculateCommissionLedgerEntries(treatments, allocations, entries)).toEqual(entries);
+  });
+
   it('pays the highest fixed treatment override once for a multi-treatment visit', () => {
     const treatments = [
       treatment({ id: 'filling', commissionType: 'flat_visit', commissionPerVisit: 20_000, customCommissionFixedAmount: 30_000 }),

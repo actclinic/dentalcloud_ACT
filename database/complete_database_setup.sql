@@ -289,12 +289,21 @@ CREATE TABLE treatments (
   discount_amount DECIMAL(12,2) DEFAULT 0,
   pricing_note VARCHAR(20),
   doctor_earnings DECIMAL(12,2) DEFAULT 0,
+  commission_type_snapshot TEXT NOT NULL,
+  commission_rate_snapshot NUMERIC(12,2) NOT NULL,
+  commission_source_snapshot TEXT NOT NULL,
+  commission_snapshotted_at TIMESTAMPTZ NOT NULL,
   date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT treatments_standard_cost_check CHECK (standard_cost IS NULL OR standard_cost >= 0),
   CONSTRAINT treatments_discount_amount_check CHECK (discount_amount >= 0),
   CONSTRAINT treatments_pricing_note_check CHECK (pricing_note IS NULL OR pricing_note IN ('FOC', 'DISCOUNT')),
-  CONSTRAINT treatments_doctor_earnings_check CHECK (doctor_earnings >= 0)
+  CONSTRAINT treatments_doctor_earnings_check CHECK (doctor_earnings >= 0),
+  CONSTRAINT treatments_commission_snapshot_check CHECK (
+    commission_type_snapshot IN ('percentage', 'flat_visit')
+    AND commission_rate_snapshot >= 0
+    AND (commission_type_snapshot <> 'percentage' OR commission_rate_snapshot <= 100)
+  )
 );
 
 CREATE SEQUENCE IF NOT EXISTS payment_receipt_seq START 1;
@@ -332,10 +341,12 @@ CREATE TABLE doctor_treatment_commissions (
     CONSTRAINT doctor_treatment_commissions_treatment_id_fkey
     REFERENCES treatment_types(id) ON DELETE CASCADE,
   commission_rate DECIMAL(5,2) NOT NULL,
+  fixed_amount NUMERIC(12,2),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT doctor_treatment_commissions_doctor_treatment_key UNIQUE (doctor_id, treatment_id),
-  CONSTRAINT doctor_treatment_commissions_commission_rate_check CHECK (commission_rate >= 0 AND commission_rate <= 100)
+  CONSTRAINT doctor_treatment_commissions_commission_rate_check CHECK (commission_rate >= 0 AND commission_rate <= 100),
+  CONSTRAINT doctor_treatment_commissions_fixed_amount_check CHECK (fixed_amount IS NULL OR fixed_amount >= 0)
 );
 
 CREATE INDEX idx_doctor_treatment_commissions_doctor_id
@@ -1827,6 +1838,7 @@ DECLARE
   v_commission_type TEXT;
   v_commission_per_visit DECIMAL(12,2);
   v_custom_rate DECIMAL(5,2);
+  v_fixed_amount DECIMAL(12,2);
   v_default_rate DECIMAL(5,2);
 BEGIN
   SELECT d.commission_type, COALESCE(d.commission_per_visit, 0), COALESCE(d.commission_percentage, 0)
@@ -1836,7 +1848,11 @@ BEGIN
   LIMIT 1;
 
   IF v_commission_type = 'flat_visit' THEN
-    RETURN COALESCE(v_commission_per_visit, 0);
+    SELECT dtc.fixed_amount INTO v_fixed_amount
+    FROM public.doctor_treatment_commissions dtc
+    WHERE dtc.doctor_id = p_doctor_id AND dtc.treatment_id = p_treatment_id
+    LIMIT 1;
+    RETURN COALESCE(v_fixed_amount, v_commission_per_visit, 0);
   END IF;
 
   SELECT dtc.commission_rate
@@ -1860,6 +1876,76 @@ SET search_path = public, pg_temp;
 REVOKE ALL ON FUNCTION public.get_applicable_commission_rate(UUID, UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_applicable_commission_rate(UUID, UUID) TO anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.resolve_treatment_commission_snapshot(
+  p_doctor_id UUID, p_treatment_type_id UUID
+)
+RETURNS TABLE (commission_type TEXT, commission_rate NUMERIC, commission_source TEXT)
+LANGUAGE plpgsql STABLE SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_doctor public.doctors%ROWTYPE;
+  v_custom public.doctor_treatment_commissions%ROWTYPE;
+BEGIN
+  IF p_doctor_id IS NULL THEN
+    RETURN QUERY SELECT 'percentage'::TEXT, 0::NUMERIC, 'no_doctor'::TEXT;
+    RETURN;
+  END IF;
+  SELECT * INTO v_doctor FROM public.doctors WHERE id = p_doctor_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Cannot snapshot commission: doctor % is missing or inaccessible', p_doctor_id;
+  END IF;
+  SELECT * INTO v_custom FROM public.doctor_treatment_commissions
+  WHERE doctor_id = p_doctor_id AND treatment_id = p_treatment_type_id;
+
+  commission_type := COALESCE(v_doctor.commission_type,
+    CASE WHEN btrim(v_doctor.specialization) IN ('Ortho', 'Implant', 'Surgery')
+      THEN 'flat_visit' ELSE 'percentage' END);
+  IF commission_type = 'flat_visit' THEN
+    commission_rate := COALESCE(v_custom.fixed_amount, v_doctor.commission_per_visit, 0);
+    commission_source := CASE WHEN v_custom.fixed_amount IS NOT NULL THEN 'custom' ELSE 'default' END;
+  ELSE
+    commission_rate := COALESCE(v_custom.commission_rate, v_doctor.commission_percentage, 0);
+    commission_source := CASE WHEN v_custom.commission_rate IS NOT NULL THEN 'custom' ELSE 'default' END;
+  END IF;
+  RETURN NEXT;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.capture_treatment_commission_snapshot()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_snapshot RECORD;
+BEGIN
+  IF TG_OP = 'UPDATE'
+    AND NEW.doctor_id IS NOT DISTINCT FROM OLD.doctor_id
+    AND NEW.treatment_type_id IS NOT DISTINCT FROM OLD.treatment_type_id THEN
+    IF ROW(NEW.commission_type_snapshot, NEW.commission_rate_snapshot,
+           NEW.commission_source_snapshot, NEW.commission_snapshotted_at)
+      IS DISTINCT FROM ROW(OLD.commission_type_snapshot, OLD.commission_rate_snapshot,
+           OLD.commission_source_snapshot, OLD.commission_snapshotted_at) THEN
+      RAISE EXCEPTION 'Treatment commission snapshot is immutable; change the assigned doctor/type through the authorized correction flow.';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO v_snapshot
+  FROM public.resolve_treatment_commission_snapshot(NEW.doctor_id, NEW.treatment_type_id);
+  NEW.commission_type_snapshot := v_snapshot.commission_type;
+  NEW.commission_rate_snapshot := v_snapshot.commission_rate;
+  NEW.commission_source_snapshot := v_snapshot.commission_source;
+  NEW.commission_snapshotted_at := clock_timestamp();
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_treatment_commission_snapshot(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.resolve_treatment_commission_snapshot(UUID, UUID) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.capture_treatment_commission_snapshot() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.capture_treatment_commission_snapshot() TO anon, authenticated, service_role;
+
 -- Trigger: Update users.updated_at
 CREATE TRIGGER update_users_updated_at 
     BEFORE UPDATE ON users
@@ -1874,6 +1960,10 @@ CREATE TRIGGER update_medicines_updated_at
 CREATE TRIGGER update_expenses_updated_at 
     BEFORE UPDATE ON expenses
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_capture_treatment_commission_snapshot
+    BEFORE INSERT OR UPDATE ON treatments
+    FOR EACH ROW EXECUTE FUNCTION capture_treatment_commission_snapshot();
 
 -- Trigger: Remove linked material-cost expense when audit log is deleted
 CREATE TRIGGER delete_audit_log_material_expense

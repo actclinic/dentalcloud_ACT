@@ -14,6 +14,9 @@ export interface CommissionTreatmentInput {
   commissionPerVisit?: number | null;
   customCommissionPercentage?: number | null;
   customCommissionFixedAmount?: number | null;
+  commissionTypeSnapshot?: DoctorCommissionType | null;
+  commissionRateSnapshot?: number | null;
+  commissionSourceSnapshot?: string | null;
 }
 
 export interface CommissionPaymentInput {
@@ -62,6 +65,32 @@ const toNonNegativeFiniteNumber = (value: unknown): number => {
 
 const toPercentageRate = (value: unknown): number => (
   Math.min(100, toNonNegativeFiniteNumber(value))
+);
+
+const hasCommissionSnapshot = (treatment: CommissionTreatmentInput): boolean => (
+  (treatment.commissionTypeSnapshot === 'percentage' || treatment.commissionTypeSnapshot === 'flat_visit')
+  && treatment.commissionRateSnapshot !== null
+  && treatment.commissionRateSnapshot !== undefined
+);
+
+const resolvePercentageRate = (treatment: CommissionTreatmentInput): number => toPercentageRate(
+  hasCommissionSnapshot(treatment)
+    ? treatment.commissionRateSnapshot
+    : treatment.customCommissionPercentage ?? treatment.commissionPercentage ?? 0
+);
+
+const resolveFixedRate = (treatment: CommissionTreatmentInput): number => toNonNegativeFiniteNumber(
+  hasCommissionSnapshot(treatment)
+    ? treatment.commissionRateSnapshot
+    : treatment.customCommissionFixedAmount ?? treatment.commissionPerVisit
+);
+
+const resolveFixedCustomAmount = (treatment: CommissionTreatmentInput): number | null | undefined => (
+  hasCommissionSnapshot(treatment)
+    ? (treatment.commissionSourceSnapshot?.endsWith('custom')
+      ? treatment.commissionRateSnapshot
+      : undefined)
+    : treatment.customCommissionFixedAmount
 );
 
 // Percentage commission is paid only from the amount left after every cost
@@ -193,6 +222,11 @@ export const calculateCommissionLedgerEntries = (
   const existingModeByVisit = new Map<string, ExistingCommissionEntryInput['calculationMode']>();
   existingEntries.forEach((entry) => {
     if (!entry.visitKey) return;
+    // A doctor can legitimately change commission method between newly created
+    // treatments on the same date. Snapshot rows resolve their own method and
+    // must not be collapsed into the legacy visit-wide mode inference.
+    const treatment = treatmentById.get(entry.treatmentId);
+    if (treatment && hasCommissionSnapshot(treatment)) return;
     const existingMode = existingModeByVisit.get(entry.visitKey);
     if (existingMode && existingMode !== entry.calculationMode) {
       throw new Error(`Conflicting historical commission modes for visit ${entry.visitKey}.`);
@@ -205,6 +239,7 @@ export const calculateCommissionLedgerEntries = (
       .map((entry) => [`${entry.visitKey}|${entry.treatmentId}`, entry])
   );
   const resolveTreatmentMode = (treatment: CommissionTreatmentInput): ExistingCommissionEntryInput['calculationMode'] => {
+    if (hasCommissionSnapshot(treatment)) return treatment.commissionTypeSnapshot!;
     const visitKey = `${treatment.doctorId}|${treatment.patientId}|${treatment.date}`;
     return existingModeByVisit.get(visitKey)
       || (usesFlatVisitCommission({
@@ -229,8 +264,9 @@ export const calculateCommissionLedgerEntries = (
       const exactExisting = existingByAllocation.get(`${allocation.paymentId}|${allocation.treatmentId}`);
       const existing = exactExisting
         || existingPercentageByVisitAndTreatment.get(`${visitKey}|${allocation.treatmentId}`);
-      const calculationMode = existing?.calculationMode
-        || existingModeByVisit.get(visitKey)
+      const calculationMode = exactExisting?.calculationMode
+        || existing?.calculationMode
+        || (hasCommissionSnapshot(treatment) ? treatment.commissionTypeSnapshot! : existingModeByVisit.get(visitKey))
         || resolveTreatmentMode(treatment);
 
       if (calculationMode === 'flat_visit') {
@@ -242,7 +278,7 @@ export const calculateCommissionLedgerEntries = (
 
       const rawRate = existing?.calculationMode === 'percentage'
         ? Number(existing.commissionRate || 0)
-        : Number(treatment.customCommissionPercentage ?? treatment.commissionPercentage ?? 0);
+        : resolvePercentageRate(treatment);
       const rate = toPercentageRate(rawRate);
       percentageCandidates.push({ ...allocation, treatment, rate, visitKey });
     });
@@ -275,9 +311,7 @@ export const calculateCommissionLedgerEntries = (
         const treatmentCandidate = sortedVisitCandidates.find(
           (candidate) => candidate.treatment.id === treatment.id
         );
-        const treatmentRate = treatmentCandidate?.rate ?? toPercentageRate(
-          treatment.customCommissionPercentage ?? treatment.commissionPercentage ?? 0
-        );
+        const treatmentRate = treatmentCandidate?.rate ?? resolvePercentageRate(treatment);
         return treatmentRate === rate
           ? sum + toNonNegativeFiniteNumber(treatment.materialCost)
           : sum;
@@ -395,15 +429,15 @@ export const calculateCommissionLedgerEntries = (
       : sorted[0];
     if (!selected?.treatment.doctorId) return;
     const paidCandidate = existing ? selected : [...sorted].sort((a, b) => (
-      Number(b.treatment.customCommissionFixedAmount != null) - Number(a.treatment.customCommissionFixedAmount != null)
-      || toNonNegativeFiniteNumber(b.treatment.customCommissionFixedAmount) - toNonNegativeFiniteNumber(a.treatment.customCommissionFixedAmount)
+      Number(resolveFixedCustomAmount(b.treatment) != null) - Number(resolveFixedCustomAmount(a.treatment) != null)
+      || toNonNegativeFiniteNumber(resolveFixedCustomAmount(b.treatment)) - toNonNegativeFiniteNumber(resolveFixedCustomAmount(a.treatment))
       || a.paymentDate.localeCompare(b.paymentDate)
       || a.paymentId.localeCompare(b.paymentId)
       || a.treatment.id.localeCompare(b.treatment.id)
     ))[0];
     const rawFlatAmount = existing
       ? Number(existing.commissionRate || 0)
-      : paidCandidate.treatment.customCommissionFixedAmount ?? selected.treatment.commissionPerVisit;
+      : resolveFixedRate(paidCandidate.treatment);
     const flatAmount = toNonNegativeFiniteNumber(rawFlatAmount);
 
     flatRows.push({
