@@ -752,7 +752,11 @@ const fetchSyntheticMaterialCostExpenses = async (
   const auditIds = Array.from(new Set((materialRows || []).map((row: any) => row.audit_log_id).filter(Boolean)));
   if (auditIds.length === 0) return [];
 
-  const auditBatches = await Promise.all(chunk(auditIds, 100).map(async (auditIdBatch) => {
+  // UUID-heavy `in(...)` filters are encoded into the request URL by PostgREST.
+  // Keep these batches deliberately small so proxies do not reject the request
+  // with a URL-length error that browsers often surface as a misleading CORS error.
+  const relationLookupBatchSize = 25;
+  const auditBatches = await Promise.all(chunk(auditIds, relationLookupBatchSize).map(async (auditIdBatch) => {
     const { data, error } = await supabase
       .from('audit_logs')
       .select('id, source_id, location_id')
@@ -771,7 +775,7 @@ const fetchSyntheticMaterialCostExpenses = async (
   if (auditRows.length === 0) return [];
 
   const treatmentIds = Array.from(new Set(auditRows.map((row) => row.source_id).filter(Boolean)));
-  const treatmentBatches = await Promise.all(chunk(treatmentIds, 100).map(async (treatmentIdBatch) => {
+  const treatmentBatches = await Promise.all(chunk(treatmentIds, relationLookupBatchSize).map(async (treatmentIdBatch) => {
     const { data, error } = await supabase
       .from('treatments')
       .select('id, location_id, patient_id, date, description, patients(name)')
@@ -6154,7 +6158,16 @@ export const api = {
           const { data, error } = await query;
           if (error) throw error;
           const storedExpenses = (data || []) as Expense[];
-          const syntheticMaterialExpenses = await fetchSyntheticMaterialCostExpenses(locationId, storedExpenses);
+          let syntheticMaterialExpenses: Expense[] = [];
+
+          // Material/lab costs are optional enrichment. A failed relation lookup
+          // must never hide stored expense rows or disable their exports.
+          try {
+            syntheticMaterialExpenses = await fetchSyntheticMaterialCostExpenses(locationId, storedExpenses);
+          } catch (enrichmentError) {
+            console.warn('Error enriching expenses with material/lab costs:', enrichmentError);
+          }
+
           return [...storedExpenses, ...syntheticMaterialExpenses]
             .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         } catch (err) {
