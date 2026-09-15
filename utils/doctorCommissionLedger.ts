@@ -26,6 +26,8 @@ export interface CommissionPaymentInput {
   createdAt?: string | null;
   commissionableAmount: number;
   treatmentIds: string[];
+  /** MLS cost entered for this exact payment record. */
+  paymentCost?: number;
 }
 
 export interface ExistingCommissionEntryInput {
@@ -42,6 +44,7 @@ export interface TreatmentPaymentAllocation {
   treatmentId: string;
   paymentDate: string;
   amount: number;
+  paymentCostShare?: number;
 }
 
 export interface CalculatedCommissionEntry extends TreatmentPaymentAllocation {
@@ -207,6 +210,22 @@ export const allocateCommissionablePayments = (
     }
   });
 
+  // Payment-based MLS costs follow the collection that incurred them. Spread a
+  // multi-treatment payment's cost proportionally across its allocation rows.
+  payments.forEach((payment) => {
+    const paymentAllocations = allocations.filter((row) => row.paymentId === payment.id);
+    const allocationTotal = paymentAllocations.reduce((sum, row) => sum + row.amount, 0);
+    const paymentCost = toNonNegativeFiniteNumber(payment.paymentCost);
+    let distributed = 0;
+    paymentAllocations.forEach((allocation, index) => {
+      const share = index === paymentAllocations.length - 1
+        ? roundMoney(paymentCost - distributed)
+        : roundMoney(allocationTotal > 0 ? paymentCost * (allocation.amount / allocationTotal) : 0);
+      allocation.paymentCostShare = Math.max(0, share);
+      distributed = roundMoney(distributed + allocation.paymentCostShare);
+    });
+  });
+
   return allocations;
 };
 
@@ -320,7 +339,11 @@ export const calculateCommissionLedgerEntries = (
         (sum, candidate) => sum + toNonNegativeFiniteNumber(candidate.amount),
         0
       ));
-      const visitCommissionBase = roundMoney(Math.max(0, visitCollected - visitMaterialCost));
+      const visitPaymentCost = roundMoney(sortedVisitCandidates.reduce(
+        (sum, candidate) => sum + toNonNegativeFiniteNumber(candidate.paymentCostShare),
+        0
+      ));
+      const visitCommissionBase = roundMoney(Math.max(0, visitCollected - visitMaterialCost - visitPaymentCost));
       const visitEarnings = roundMoney(visitCommissionBase * (rate / 100));
       let remainingVisitMaterialCost = visitMaterialCost;
       let distributedBase = 0;
@@ -334,9 +357,16 @@ export const calculateCommissionLedgerEntries = (
 
       Array.from(candidatesByPayment.values()).forEach((paymentCandidates, paymentIndex, paymentGroups) => {
         const paymentCollected = roundMoney(paymentCandidates.reduce((sum, candidate) => sum + candidate.amount, 0));
-        const paymentCalculation = calculatePercentageCommissionBase(paymentCollected, remainingVisitMaterialCost);
+        const directPaymentCost = roundMoney(paymentCandidates.reduce(
+          (sum, candidate) => sum + toNonNegativeFiniteNumber(candidate.paymentCostShare), 0
+        ));
+        const legacyDeduction = Math.min(remainingVisitMaterialCost, Math.max(0, paymentCollected - directPaymentCost));
+        const paymentCalculation = calculatePercentageCommissionBase(
+          paymentCollected,
+          directPaymentCost + legacyDeduction
+        );
         const paymentEarnings = roundMoney(paymentCalculation.commissionBase * (rate / 100));
-        remainingVisitMaterialCost = roundMoney(remainingVisitMaterialCost - paymentCalculation.materialDeduction);
+        remainingVisitMaterialCost = roundMoney(remainingVisitMaterialCost - legacyDeduction);
         let paymentDistributedBase = 0;
         let paymentDistributedEarnings = 0;
 
@@ -389,11 +419,11 @@ export const calculateCommissionLedgerEntries = (
       const materialRemaining = materialRemainingByTreatment.get(treatment.id) || 0;
       const { materialDeduction, commissionBase } = calculatePercentageCommissionBase(
         candidate.amount,
-        materialRemaining
+        materialRemaining + toNonNegativeFiniteNumber(candidate.paymentCostShare)
       );
       materialRemainingByTreatment.set(
         treatment.id,
-        roundMoney(materialRemaining - materialDeduction)
+        roundMoney(Math.max(0, materialRemaining - Math.max(0, materialDeduction - toNonNegativeFiniteNumber(candidate.paymentCostShare))))
       );
       percentageRows.push({
         ...allocation,

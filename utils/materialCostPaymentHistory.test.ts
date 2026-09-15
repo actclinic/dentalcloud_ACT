@@ -89,7 +89,7 @@ describe('MLS payment history rows', () => {
     expect(calculateCollectedByTreatmentId([record], payments)).toEqual({ 'treatment-1': 1_000_000 });
   });
 
-  it('keeps partial collections as separate payment events and excludes excess unallocated money', () => {
+  it('keeps every payment event, including a collection with no treatment allocation', () => {
     const records = [treatment({
       doctorEarningEntries: [
         earning({ id: 'earning-1', paymentId: 'payment-1', allocatedPayment: 30_000, earnings: 1_500 }),
@@ -104,7 +104,7 @@ describe('MLS payment history rows', () => {
 
     const rows = buildMaterialCostPaymentHistoryRows(records, payments);
 
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows.find((row) => row.paymentId === 'payment-1')).toMatchObject({
       totalPaid: 30_000,
       appliedToTreatment: 30_000,
@@ -116,6 +116,11 @@ describe('MLS payment history rows', () => {
       totalPaid: 50_000,
       appliedToTreatment: 50_000,
       doctorEarned: 2_500
+    });
+    expect(rows.find((row) => row.paymentId === 'payment-3')).toMatchObject({
+      totalPaid: 10_000,
+      appliedToTreatment: 0,
+      doctorEarned: 0
     });
   });
 

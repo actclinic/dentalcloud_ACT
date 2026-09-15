@@ -1,25 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeftRight, Beaker, Package, Plus, ReceiptText, RotateCw, Stethoscope } from 'lucide-react';
-import type { ClinicalRecord, PaymentRecord, TreatmentCostSummary } from '../types';
+import { ArrowLeftRight, Beaker, Package, Plus, RotateCw, Search, Stethoscope } from 'lucide-react';
+import type { ClinicalRecord, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
 import { toLocalISODate } from '../utils/auditLogFilters';
-import { buildAuditLogRows, filterAuditLogRowsForExport, type AuditExportRow } from '../utils/auditLogExport';
-import { formatTeethWithPosition } from '../utils/toothNumbering';
 import { formatDoctorName } from '../utils/doctorName';
-import { sortMaterialCostRowsNewestFirst } from '../utils/materialCostRows';
-import {
-  buildMaterialCostPaymentHistoryRows,
-  filterMaterialCostPaymentHistoryRows
-} from '../utils/materialCostPaymentHistory';
-import {
-  calculateCollectedByTreatmentId,
-  calculateMaterialAdjustedDoctorEarnings,
-  calculateMaterialNetProfit
-} from '../utils/materialCostCalculations';
+import { buildMaterialCostPaymentHistoryRows, filterMaterialCostPaymentHistoryRows, type MaterialCostPaymentHistoryRow } from '../utils/materialCostPaymentHistory';
 import Pagination from './Pagination';
 import MaterialCostModal from './MaterialCostModal';
-import MaterialCostPaymentHistory from './MaterialCostPaymentHistory';
 import ProgressBar from './ProgressBar';
 
 interface MaterialCostViewProps {
@@ -29,764 +17,130 @@ interface MaterialCostViewProps {
   currency: Currency;
   canManageMaterials: boolean;
   onRefresh: () => void | Promise<void>;
-  // Optional fast path after a cost save: refresh only the affected patient's
-  // rows instead of reloading every clinic record, payment, and dashboard metric.
   onCostsSaved?: (patientId?: string | null) => Promise<void> | void;
-  // Number (0-100) while the startup fetch is still bringing in clinic records.
   syncProgress?: number | null;
 }
 
-type TreatmentAuditRow = Extract<AuditExportRow, { kind: 'treatment' }>;
-type MaterialCostFilter = 'all' | 'tomorrow' | 'today' | 'custom';
-type MaterialCostReport = 'operations' | 'payments';
-
-const getTreatmentRecordIds = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-  const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-  return groupedRecords.map((item) => item.id).filter(Boolean);
-};
+type DateFilter = 'all' | 'tomorrow' | 'today' | 'custom';
+const isDatabasePaymentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+const typedTotal = (summary: PaymentCostSummary | undefined, type: TreatmentCostType) => Number(
+  type === 'lab' ? summary?.labTotal : type === 'special_doctor' ? summary?.specialDoctorTotal : summary?.materialTotal
+) || 0;
 
 const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null }) => {
-  const summaryRequestVersion = React.useRef(0);
-  const tableScrollRef = React.useRef<HTMLDivElement>(null);
-  const reportTabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
-  const [activeReport, setActiveReport] = useState<MaterialCostReport>('operations');
+  const requestVersion = React.useRef(0);
+  const today = useMemo(() => toLocalISODate(new Date()), []);
+  const tomorrow = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return toLocalISODate(date);
+  }, []);
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
-  const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
-  const [treatmentSearchTerm, setTreatmentSearchTerm] = useState('');
-  const [patientSearchTerm, setPatientSearchTerm] = useState('');
-  const [materialFilter, setMaterialFilter] = useState<MaterialCostFilter>('today');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isTableScrollable, setIsTableScrollable] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<(ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) | null>(null);
-  const [materialSummaries, setMaterialSummaries] = useState<Record<string, TreatmentCostSummary>>({});
-  const todayKey = useMemo(() => toLocalISODate(new Date()), []);
-  const tomorrowKey = useMemo(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return toLocalISODate(tomorrow);
-  }, []);
-  const [dateFrom, setDateFrom] = useState(todayKey);
-  const [dateTo, setDateTo] = useState(todayKey);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
+  const [patientTerm, setPatientTerm] = useState('');
+  const [doctorTerm, setDoctorTerm] = useState('');
+  const [treatmentTerm, setTreatmentTerm] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [editingRow, setEditingRow] = useState<MaterialCostPaymentHistoryRow | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, PaymentCostSummary>>({});
   const itemsPerPage = 10;
 
-  const treatmentRows = useMemo<TreatmentAuditRow[]>(() => (
-    buildAuditLogRows(records, [], false, [], [])
-      .filter((row): row is TreatmentAuditRow => row.kind === 'treatment')
-  ), [records]);
+  const rows = useMemo(() => buildMaterialCostPaymentHistoryRows(records, paymentRecords), [records, paymentRecords]);
+  const filteredRows = useMemo(() => filterMaterialCostPaymentHistoryRows(rows, { dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm }), [rows, dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm]);
+  const visibleRows = useMemo(() => showAll ? filteredRows : filteredRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filteredRows, currentPage, showAll]);
 
-  const collectedByTreatmentId = useMemo(
-    () => calculateCollectedByTreatmentId(records, paymentRecords),
-    [records, paymentRecords]
-  );
-
-  const baseFilteredRows = useMemo(() => {
-    return filterAuditLogRowsForExport(treatmentRows, {
-      auditFilter: 'treatments',
-      dateFrom,
-      dateTo,
-      searchTerm: ''
-    }) as TreatmentAuditRow[];
-  }, [treatmentRows, dateFrom, dateTo]);
-
-  const statusFilteredRows = useMemo(() => {
-    const doctorTerm = doctorSearchTerm.trim().toLowerCase();
-    const treatmentTerm = treatmentSearchTerm.trim().toLowerCase();
-    const patientTerm = patientSearchTerm.trim().toLowerCase();
-
-    const matchingRows = baseFilteredRows.filter((row) => {
-      const record = row.record;
-      const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-
-      const matchesDoctor = !doctorTerm || (record.doctor_name || '').toLowerCase().includes(doctorTerm);
-      const matchesTreatment = !treatmentTerm || groupedRecords.some((item) =>
-        (item.description || '').toLowerCase().includes(treatmentTerm)
-      );
-      const matchesPatient = !patientTerm || (
-        (record.patient_name || '').toLowerCase().includes(patientTerm) ||
-        (record.patient_id || '').toLowerCase().includes(patientTerm)
-      );
-
-      return matchesDoctor && matchesTreatment && matchesPatient;
-    });
-
-    return sortMaterialCostRowsNewestFirst(matchingRows);
-  }, [baseFilteredRows, doctorSearchTerm, treatmentSearchTerm, patientSearchTerm]);
-
-  const paymentHistoryRows = useMemo(
-    () => buildMaterialCostPaymentHistoryRows(records, paymentRecords),
-    [records, paymentRecords]
-  );
-
-  const filteredPaymentHistoryRows = useMemo(() => filterMaterialCostPaymentHistoryRows(paymentHistoryRows, {
-    dateFrom,
-    dateTo,
-    patientTerm: patientSearchTerm,
-    doctorTerm: doctorSearchTerm,
-    treatmentTerm: treatmentSearchTerm
-  }), [paymentHistoryRows, dateFrom, dateTo, patientSearchTerm, doctorSearchTerm, treatmentSearchTerm]);
-
-  const loadMaterialSummaries = React.useCallback(async (rowsToLoad: TreatmentAuditRow[]) => {
-    const requestVersion = ++summaryRequestVersion.current;
-    const treatmentIds = rowsToLoad.flatMap((row) => getTreatmentRecordIds(row.record));
-    if (treatmentIds.length === 0) {
-      return;
-    }
-
+  const loadSummaries = React.useCallback(async (paymentIds: string[]) => {
+    const version = ++requestVersion.current;
+    if (!paymentIds.length) return;
     try {
-      const summaries = await api.materialCosts.getTotalsByTreatmentIds(treatmentIds);
-      if (requestVersion !== summaryRequestVersion.current) return;
-      setMaterialSummaries((current) => {
-        const next = { ...current };
-        treatmentIds.forEach((treatmentId) => {
-          delete next[treatmentId];
-        });
-        return { ...next, ...summaries };
+      const next = await api.materialCosts.getTotalsByPaymentIds(paymentIds);
+      if (version === requestVersion.current) setSummaries((current) => {
+        const updated = { ...current };
+        paymentIds.forEach((paymentId) => { delete updated[paymentId]; });
+        return { ...updated, ...next };
       });
-    } catch (error) {
-      console.warn('Unable to refresh material cost summaries. Keeping current table totals.', error);
-    }
+    } catch (error) { console.warn('Unable to load payment MLS totals.', error); }
   }, []);
+  React.useEffect(() => { if (!loading) void loadSummaries(visibleRows.map((row) => row.paymentId)); }, [loading, loadSummaries, visibleRows]);
+  React.useEffect(() => setCurrentPage(1), [dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm, paymentRecords]);
 
-  const renderPatientBalance = (balance?: number | null) => {
-    if (balance === null || balance === undefined) return <span className="text-slate-400">-</span>;
-    const numericBalance = Number(balance || 0);
-    return (
-      <span className={numericBalance > 0 ? 'font-bold text-red-600' : 'font-semibold text-green-600'}>
-        {numericBalance > 0 ? formatCurrency(numericBalance, currency) : 'Clear'}
-      </span>
-    );
+  const chooseDateFilter = (filter: DateFilter) => {
+    setDateFilter(filter);
+    const selectedDate = filter === 'today' ? today : filter === 'tomorrow' ? tomorrow : '';
+    setDateFrom(selectedDate);
+    setDateTo(selectedDate);
+  };
+  const totalCost = (row: MaterialCostPaymentHistoryRow) => Number(summaries[row.paymentId]?.totalAmount || 0);
+  const netReceive = (row: MaterialCostPaymentHistoryRow) => Math.max(0, row.totalPaid - totalCost(row));
+  const renderBalance = (row: MaterialCostPaymentHistoryRow) => row.balanceAfter > 0
+    ? <span className="font-bold text-red-600">{formatCurrency(row.balanceAfter, currency)}</span>
+    : <span className="font-semibold text-emerald-700">Clear</span>;
+  const renderCost = (row: MaterialCostPaymentHistoryRow, type: TreatmentCostType) => {
+    const amount = typedTotal(summaries[row.paymentId], type);
+    if (!amount) return <span className="text-slate-400">-</span>;
+    const style = type === 'lab'
+      ? 'border-violet-100 bg-violet-50 text-violet-700'
+      : type === 'special_doctor'
+        ? 'border-amber-100 bg-amber-50 text-amber-700'
+        : 'border-cyan-100 bg-cyan-50 text-cyan-700';
+    const Icon = type === 'lab' ? Beaker : type === 'special_doctor' ? Stethoscope : Package;
+    return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-black ${style}`}><Icon size={13} />{formatCurrency(amount, currency)}</span>;
+  };
+  const saveSummary = async (summary: PaymentCostSummary & { paymentId: string; patientId?: string | null }) => {
+    setSummaries((current) => ({ ...current, [summary.paymentId]: summary }));
+    if (onCostsSaved) await onCostsSaved(summary.patientId); else await onRefresh();
+    await loadSummaries([summary.paymentId]);
+  };
+  const refresh = async () => {
+    if (refreshing || loading) return;
+    setRefreshing(true);
+    try { await onRefresh(); await loadSummaries(visibleRows.map((row) => row.paymentId)); }
+    catch (error) { alert(error instanceof Error ? error.message : 'Unable to refresh MLS payments.'); }
+    finally { setRefreshing(false); }
   };
 
-  const renderTreatmentDescriptionList = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-    return (
-      <div className="space-y-1">
-        {groupedRecords.map((item, index) => (
-          <div key={`${item.id || index}-${index}`} className="flex min-w-0 items-start gap-1.5">
-            <span className="mt-0.5 shrink-0 text-green-600">&bull;</span>
-            <span className="min-w-0 break-words">{item.description || 'Treatment record'}</span>
+  return <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
+    <header className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-[var(--hover-50)]/40 p-3 sm:p-4 md:p-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex items-start gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border theme-accent-border theme-accent-soft-bg theme-accent-text"><Package size={23} /></div><div><p className="mb-1 text-[11px] font-black uppercase tracking-[0.28em] theme-accent-text">Service Menu</p><h2 className="break-words text-xl font-black text-slate-900 sm:text-2xl">MLS Costs</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm">Track MLS costs and doctor earnings for each collected payment.</p><button type="button" onClick={() => void refresh()} disabled={loading || refreshing} className="refresh-action-button mt-3 inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold disabled:opacity-50"><RotateCw size={14} className={refreshing ? 'animate-spin' : ''} />{refreshing ? 'Refreshing...' : 'Refresh'}</button></div></div>
+        <div className="w-full min-w-0 xl:max-w-5xl"><div className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
+            <div className="grid min-w-0 gap-2 sm:grid-cols-3">
+              <label className="relative min-w-0"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={patientTerm} onChange={(e) => setPatientTerm(e.target.value)} placeholder="Patient name or ID" aria-label="Search patient" className="w-full min-w-0 rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-[var(--hover-300)]" /></label>
+              <input value={doctorTerm} onChange={(e) => setDoctorTerm(e.target.value)} placeholder="Doctor" aria-label="Search doctor" className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:ring-2 focus:ring-[var(--hover-300)]" />
+              <input value={treatmentTerm} onChange={(e) => setTreatmentTerm(e.target.value)} placeholder="Treatment" aria-label="Search treatment" className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:ring-2 focus:ring-[var(--hover-300)]" />
+              <label className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">From<input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDateFilter('custom'); }} aria-label="Start date" className="min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-xs text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-[var(--hover-300)]" /></label>
+              <label className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">To<input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDateFilter('custom'); }} aria-label="End date" className="min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-xs text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-[var(--hover-300)]" /></label>
+              <button type="button" onClick={() => chooseDateFilter('today')} className={`min-h-10 rounded-xl text-xs font-bold ${dateFilter === 'today' ? 'theme-accent-soft-bg theme-accent-text' : 'bg-slate-50 text-slate-500 hover:bg-[var(--hover-50)]'}`}>Today</button>
+            </div>
+            <div className="grid w-full grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1 xl:mt-11 xl:w-[290px]">{(['all', 'tomorrow', 'today'] as DateFilter[]).map((filter) => <button key={filter} type="button" onClick={() => chooseDateFilter(filter)} className={`rounded-lg px-3 py-2 text-xs transition-colors ${dateFilter === filter ? 'bg-white font-bold theme-accent-text shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>{filter === 'all' ? 'All' : filter === 'tomorrow' ? 'Tomorrow' : 'Today'}</button>)}</div>
           </div>
-        ))}
+        </div></div>
       </div>
-    );
-  };
+    </header>
 
-  const getMaterialTotal = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    return getTreatmentRecordIds(record).reduce((sum, treatmentId) => {
-      return sum + Number(materialSummaries[treatmentId]?.totalAmount || 0);
-    }, 0);
-  };
-
-  const getTypedCostTotal = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }, costType: 'material' | 'lab' | 'special_doctor') => {
-    const key = costType === 'lab' ? 'labTotal' : costType === 'special_doctor' ? 'specialDoctorTotal' : 'materialTotal';
-    return getTreatmentRecordIds(record).reduce((sum, treatmentId) => sum + Number(materialSummaries[treatmentId]?.[key] || 0), 0);
-  };
-
-  const getTreatmentAmount = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-    return groupedRecords.reduce((sum, item) => sum + Number(item.cost || 0), 0);
-  };
-
-  const getCollectedAmount = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    return getTreatmentRecordIds(record).reduce((sum, treatmentId) => {
-      return sum + Number(collectedByTreatmentId[treatmentId] || 0);
-    }, 0);
-  };
-
-  const getNetReceive = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    return Math.max(0, getCollectedAmount(record) - getMaterialTotal(record));
-  };
-
-  const getAdjustedDoctorEarned = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-    return calculateMaterialAdjustedDoctorEarnings(groupedRecords);
-  };
-
-  const getNetProfit = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }) => {
-    const groupedRecords = record._groupedRecords?.length ? record._groupedRecords : [record];
-    return calculateMaterialNetProfit(
-      groupedRecords,
-      (treatmentId) => Number(materialSummaries[treatmentId]?.totalAmount || 0)
-    );
-  };
-
-  const paginatedRows = useMemo(() => {
-    if (showAll) return statusFilteredRows;
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return statusFilteredRows.slice(startIndex, startIndex + itemsPerPage);
-  }, [statusFilteredRows, currentPage, showAll]);
-
-  const paginatedPaymentHistoryRows = useMemo(() => {
-    if (showAll) return filteredPaymentHistoryRows;
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredPaymentHistoryRows.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredPaymentHistoryRows, currentPage, showAll]);
-
-  const activeRowCount = activeReport === 'operations'
-    ? statusFilteredRows.length
-    : filteredPaymentHistoryRows.length;
-
-  React.useEffect(() => {
-    if (loading || activeReport !== 'operations') return;
-    void loadMaterialSummaries(paginatedRows);
-  }, [activeReport, loading, loadMaterialSummaries, paginatedRows]);
-
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [activeReport, records, paymentRecords, doctorSearchTerm, treatmentSearchTerm, patientSearchTerm, dateFrom, dateTo, materialFilter]);
-
-  React.useEffect(() => {
-    if (loading) {
-      setIsTableScrollable(false);
-      return;
-    }
-
-    const scrollContainer = tableScrollRef.current;
-    if (!scrollContainer) return;
-
-    const updateScrollableState = () => {
-      setIsTableScrollable(scrollContainer.scrollWidth > scrollContainer.clientWidth + 1);
-    };
-
-    updateScrollableState();
-    window.addEventListener('resize', updateScrollableState);
-
-    const resizeObserver = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(updateScrollableState)
-      : null;
-    resizeObserver?.observe(scrollContainer);
-    const table = scrollContainer.querySelector('table');
-    if (table) resizeObserver?.observe(table);
-
-    return () => {
-      window.removeEventListener('resize', updateScrollableState);
-      resizeObserver?.disconnect();
-    };
-  }, [activeReport, loading]);
-
-  const renderTypedCost = (record: ClinicalRecord & { _groupedRecords?: ClinicalRecord[] }, costType: 'material' | 'lab' | 'special_doctor') => {
-    const totalAmount = getTypedCostTotal(record, costType);
-    if (totalAmount <= 0) return <span className="text-slate-400">-</span>;
-    const isLab = costType === 'lab';
-    const isSpecialDoctor = costType === 'special_doctor';
-    return (
-      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-black ${isLab ? 'border-violet-100 bg-violet-50 text-violet-700' : isSpecialDoctor ? 'border-amber-100 bg-amber-50 text-amber-700' : 'border-cyan-100 bg-cyan-50 text-cyan-700'}`}>
-        {isLab ? <Beaker size={13} /> : isSpecialDoctor ? <Stethoscope size={13} /> : <Package size={13} />}
-        {formatCurrency(totalAmount, currency)}
-      </span>
-    );
-  };
-
-  const handleMaterialSaved = async (summary: TreatmentCostSummary & { treatmentId: string; patientId?: string | null }) => {
-    setMaterialSummaries((current) => {
-      const next = { ...current };
-      if (summary.itemCount > 0 && summary.totalAmount > 0) {
-        next[summary.treatmentId] = {
-          auditLogId: summary.auditLogId,
-          totalAmount: summary.totalAmount,
-          itemCount: summary.itemCount,
-          materialTotal: summary.materialTotal,
-          materialItemCount: summary.materialItemCount,
-          labTotal: summary.labTotal,
-          labItemCount: summary.labItemCount,
-          specialDoctorTotal: summary.specialDoctorTotal,
-          specialDoctorItemCount: summary.specialDoctorItemCount
-        };
-      } else {
-        delete next[summary.treatmentId];
-      }
-      return next;
-    });
-    if (onCostsSaved) {
-      // Saves only change one patient's ledger, so refresh that patient's rows
-      // instead of awaiting a full clinic-wide reload before closing the modal.
-      await onCostsSaved(summary.patientId);
-    } else {
-      await onRefresh();
-    }
-    await loadMaterialSummaries(paginatedRows);
-  };
-
-  const handleRefresh = async () => {
-    if (isRefreshing || loading) return;
-    setIsRefreshing(true);
-    try {
-      await onRefresh();
-    } catch (error) {
-      console.error('Failed to refresh treatment costs:', error);
-      alert(error instanceof Error ? error.message : 'Unable to refresh treatment costs. Please try again.');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const materialFilterOptions: Array<{ value: MaterialCostFilter; label: string }> = [
-    { value: 'all', label: 'All' },
-    { value: 'tomorrow', label: 'Tomorrow' },
-    { value: 'today', label: 'Today' }
-  ];
-  const handleMaterialFilterChange = (filter: MaterialCostFilter) => {
-    setMaterialFilter(filter);
-    if (filter === 'all') {
-      setDateFrom('');
-      setDateTo('');
-    } else {
-      const selectedDate = filter === 'tomorrow' ? tomorrowKey : todayKey;
-      setDateFrom(selectedDate);
-      setDateTo(selectedDate);
-    }
-    setCurrentPage(1);
-  };
-
-  const reportTabs: Array<{ id: MaterialCostReport; label: string; helper: string; count: number }> = [
-    { id: 'operations', label: 'Operation Summary', helper: 'Costs and overall earnings', count: statusFilteredRows.length },
-    { id: 'payments', label: 'Payment History', helper: 'Each collection and commission', count: filteredPaymentHistoryRows.length }
-  ];
-
-  const handleReportTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let nextIndex = index;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % reportTabs.length;
-    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + reportTabs.length) % reportTabs.length;
-    else if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = reportTabs.length - 1;
-    else return;
-
-    event.preventDefault();
-    setActiveReport(reportTabs[nextIndex].id);
-    reportTabRefs.current[nextIndex]?.focus();
-  };
-
-  return (
-    <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
-      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-[var(--hover-50)]/40">
-        <div className="flex min-w-0 flex-col gap-4 p-3 sm:p-4 md:p-6 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="hidden h-11 w-11 items-center justify-center rounded-2xl border theme-accent-border theme-accent-soft-bg theme-accent-text sm:flex">
-              <Package size={22} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] theme-accent-text sm:text-[11px] sm:tracking-[0.24em]">Service Menu</p>
-              <h2 className="break-words text-xl font-bold text-slate-900 sm:text-2xl">MLS Costs</h2>
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm">
-                Track Material, Lab & Special Cost items against completed treatment rows.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                <div className="flex max-w-full gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
-                  <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
-                    {activeRowCount} visible
-                  </span>
-                  <span className="shrink-0 rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 font-semibold theme-accent-text">
-                    {activeReport === 'operations' ? `${statusFilteredRows.length} treatments` : `${filteredPaymentHistoryRows.length} payments`}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleRefresh()}
-                  disabled={loading || isRefreshing}
-                  aria-label={isRefreshing ? 'Refreshing treatment costs' : 'Refresh treatment costs'}
-                  className="refresh-action-button inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border px-3 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
-                >
-                  <RotateCw size={14} className={`refresh-action-icon ${isRefreshing ? 'animate-spin' : ''}`} />
-                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full min-w-0 space-y-3 xl:max-w-5xl">
-            <div className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-              <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:flex xl:flex-1 xl:flex-wrap xl:items-center">
-                  <div className="min-w-0 xl:w-36">
-                    <input
-                      type="text"
-                      placeholder="Patient ID/Name"
-                      aria-label="Search by patient ID or name"
-                      value={patientSearchTerm}
-                      onChange={(event) => {
-                        setPatientSearchTerm(event.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
-                    />
-                  </div>
-                  <div className="min-w-0 xl:w-36">
-                    <input
-                      type="text"
-                      placeholder="Doctor"
-                      aria-label="Search by doctor"
-                      value={doctorSearchTerm}
-                      onChange={(event) => {
-                        setDoctorSearchTerm(event.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
-                    />
-                  </div>
-                  <div className="min-w-0 xl:w-40">
-                    <input
-                      type="text"
-                      placeholder="Treatment"
-                      aria-label="Search by treatment"
-                      value={treatmentSearchTerm}
-                      onChange={(event) => {
-                        setTreatmentSearchTerm(event.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
-                    />
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2 xl:w-auto">
-                    <label className="shrink-0 text-xs font-semibold text-slate-500">Start</label>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setDateFrom(value);
-                        setMaterialFilter('custom');
-                        setCurrentPage(1);
-                      }}
-                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-sm text-slate-800 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)] xl:w-36"
-                    />
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2 xl:w-auto">
-                    <label className="shrink-0 text-xs font-semibold text-slate-500">End</label>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setDateTo(value);
-                        setMaterialFilter('custom');
-                        setCurrentPage(1);
-                      }}
-                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-sm text-slate-800 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)] xl:w-36"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDateFrom('');
-                      setDateTo('');
-                      setMaterialFilter('all');
-                      setCurrentPage(1);
-                    }}
-                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="grid w-full grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1 sm:w-auto sm:min-w-[300px] xl:ml-3 xl:flex-none">
-                    {materialFilterOptions.map((item) => (
-                      <button
-                        key={item.value}
-                        type="button"
-                        onClick={() => handleMaterialFilterChange(item.value)}
-                        className={`rounded-lg px-2 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)] sm:px-3.5 ${
-                          materialFilter === item.value
-                            ? 'bg-white font-bold theme-accent-text shadow-sm'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    {(loading || typeof syncProgress === 'number') ? <div className="p-10"><ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label="Loading payment MLS records…" /></div> : <>
+      <div className="hidden xl:block"><div className="flex items-center justify-between gap-3 border-b border-[var(--hover-100)] bg-[var(--hover-50)] px-5 py-2.5 text-xs font-semibold text-[var(--hover-800)]"><span className="inline-flex items-center gap-2"><ArrowLeftRight size={16} className="text-[var(--hover-600)]" />Scroll sideways to view all columns.</span><span>The Action column stays visible</span></div><div className="overflow-x-auto" role="region" aria-label="Payment MLS cost table" tabIndex={0}>
+        <table className="w-full min-w-[1500px]"><thead className="border-b border-slate-200 bg-slate-50"><tr>{['Payment Date', 'Patient', 'Clinician', 'Clinical Activity'].map((label) => <th key={label} className="px-5 py-5 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}{['Patient Balance', 'Collected Payment', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Total Cost', 'Net Receive', 'Doctor Earned'].map((label) => <th key={label} className="px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}<th className="sticky right-0 z-20 min-w-[145px] border-l border-slate-200 bg-slate-50 px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Action</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">{!visibleRows.length ? <tr><td colSpan={13} className="px-6 py-12 text-center"><p className="text-sm font-semibold text-slate-600">No payment rows found</p><p className="mt-1 text-xs text-slate-400">Try another payment date range or clear the search fields.</p></td></tr> : visibleRows.map((row) => <tr key={row.paymentId} className="group border-l-4 border-[var(--hover-300)] hover:bg-[var(--hover-50)]/30">
+            <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{row.paymentDate}</td><td className="px-5 py-4 font-bold text-slate-900">{row.patientName}<span className="block font-mono text-[10px] font-normal text-slate-400">{row.patientId}</span></td><td className="px-5 py-4 text-sm text-slate-700">{row.doctorNames.map(formatDoctorName).join(', ') || 'Unassigned'}</td><td className="max-w-sm px-5 py-4 text-sm text-slate-700">{row.treatmentNames.join(', ') || '-'}</td>
+            <td className="px-5 py-4 text-right text-sm">{renderBalance(row)}</td><td className="px-5 py-4 text-right text-sm font-black text-blue-700">{formatCurrency(row.totalPaid, currency)}</td><td className="px-5 py-4 text-right text-sm">{renderCost(row, 'material')}</td><td className="px-5 py-4 text-right text-sm">{renderCost(row, 'lab')}</td><td className="px-5 py-4 text-right text-sm">{renderCost(row, 'special_doctor')}</td><td className="px-5 py-4 text-right text-sm font-black text-slate-800">{totalCost(row) ? formatCurrency(totalCost(row), currency) : '-'}</td><td className="px-5 py-4 text-right text-sm font-black text-teal-700">{formatCurrency(netReceive(row), currency)}</td><td className="px-5 py-4 text-right text-sm font-black text-emerald-700">{row.doctorEarned ? formatCurrency(row.doctorEarned, currency) : '-'}</td>
+            <td className="sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 text-right shadow-[-10px_0_16px_-14px_rgba(15,23,42,0.55)] group-hover:bg-[var(--hover-50)]"><button type="button" disabled={!canManageMaterials || !isDatabasePaymentId(row.paymentId)} title={!isDatabasePaymentId(row.paymentId) ? 'This legacy local payment must be synchronized before costs can be added.' : undefined} onClick={() => setEditingRow(row)} className="inline-flex items-center gap-1 rounded-lg border border-[var(--hover-200)] bg-[var(--hover-50)] px-3 py-2 text-xs font-bold text-[var(--hover-700)] hover:bg-[var(--hover-100)] disabled:opacity-40"><Package size={13} /><Plus size={12} />{isDatabasePaymentId(row.paymentId) ? 'MLS Costs' : 'Legacy only'}</button></td>
+          </tr>)}</tbody></table></div>
       </div>
-
-      <div
-        role="tablist"
-        aria-label="MLS reports"
-        className="grid w-full grid-cols-2 border-b border-slate-200 bg-white sm:flex sm:items-stretch sm:justify-start"
-      >
-        {reportTabs.map((tab, index) => {
-          const isActive = activeReport === tab.id;
-          const Icon = tab.id === 'operations' ? Package : ReceiptText;
-          return (
-            <button
-              key={tab.id}
-              ref={(element) => { reportTabRefs.current[index] = element; }}
-              id={`material-cost-tab-${tab.id}`}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              aria-controls={`material-cost-panel-${tab.id}`}
-              tabIndex={isActive ? 0 : -1}
-              onClick={() => setActiveReport(tab.id)}
-              onKeyDown={(event) => handleReportTabKeyDown(event, index)}
-              className={`relative flex min-h-16 min-w-0 items-center justify-start gap-2 border-b-4 px-3 py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--hover-400)] sm:w-[270px] sm:flex-none sm:gap-3 sm:px-5 ${
-                isActive
-                  ? 'border-[var(--hover-500)] bg-[var(--hover-50)]/60 text-[var(--hover-800)]'
-                  : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-            >
-              <Icon size={19} className="hidden shrink-0 sm:block" aria-hidden="true" />
-              <span className="min-w-0">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-xs font-black sm:text-sm">{tab.label}</span>
-                  <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black shadow-sm ring-1 ring-slate-200">{tab.count}</span>
-                </span>
-                <span className="mt-0.5 hidden truncate text-[11px] font-medium text-slate-500 sm:block">{tab.helper}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {reportTabs.filter((tab) => tab.id !== activeReport).map((tab) => (
-        <div
-          key={`hidden-panel-${tab.id}`}
-          id={`material-cost-panel-${tab.id}`}
-          role="tabpanel"
-          aria-labelledby={`material-cost-tab-${tab.id}`}
-          hidden
-        />
-      ))}
-      <div
-        id={`material-cost-panel-${activeReport}`}
-        role="tabpanel"
-        aria-labelledby={`material-cost-tab-${activeReport}`}
-        tabIndex={0}
-        className="min-w-0 focus:outline-none"
-      >
-      {(loading || typeof syncProgress === 'number') ? (
-        <div className="px-4 py-10 sm:px-6">
-          <ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label={loading ? 'Refreshing MLS report rows…' : 'Loading MLS report rows…'} />
-        </div>
-      ) : activeReport === 'operations' ? (
-        <>
-        <div className="hidden xl:block">
-          {isTableScrollable && (
-            <div
-              id="material-cost-scroll-instructions"
-              className="flex items-center justify-between gap-3 border-b border-[var(--hover-100)] bg-[var(--hover-50)] px-4 py-2.5 text-xs font-semibold text-[var(--hover-800)] sm:px-6"
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <ArrowLeftRight size={16} className="shrink-0 text-[var(--hover-600)]" aria-hidden="true" />
-                <span>Scroll sideways to view all columns.</span>
-              </span>
-              <span className="hidden shrink-0 text-[11px] font-medium text-[var(--hover-700)] 2xl:inline">The Action column stays visible</span>
-            </div>
-          )}
-          <div
-            ref={tableScrollRef}
-            role="region"
-            aria-label="Treatment cost table"
-            aria-describedby={isTableScrollable ? 'material-cost-scroll-instructions' : undefined}
-            tabIndex={isTableScrollable ? 0 : -1}
-            className="overflow-x-auto focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--hover-300)]"
-          >
-          <table className="min-w-[1560px] w-full">
-            <thead className="border-b border-slate-200 bg-slate-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Date</th>
-                <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Patient</th>
-                <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Clinician</th>
-                <th className="px-6 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Clinical Activity</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Patient Balance</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Treatment Amount</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Collected Payment</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Material Cost</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Lab Cost</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Special Doctor Cost</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Total Cost</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Net Receive</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Doctor Earned</th>
-                <th className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Net Profit</th>
-                <th className="sticky right-0 z-20 min-w-[172px] border-l border-slate-200 bg-slate-50 px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 shadow-[-10px_0_16px_-14px_rgba(15,23,42,0.55)]">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {statusFilteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={15} className="px-6 py-12 text-center">
-                    <div className="mx-auto max-w-sm rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6">
-                      <p className="text-sm font-semibold text-slate-600">No treatment rows found</p>
-                      <p className="mt-1 text-xs text-slate-400">Try another date range or clear the search field.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedRows.map((row) => {
-                  const record = row.record;
-                  const treatmentAmount = getTreatmentAmount(record);
-                  const collectedAmount = getCollectedAmount(record);
-                  const netReceive = getNetReceive(record);
-                  const adjustedDoctorEarned = getAdjustedDoctorEarned(record);
-                  const netProfit = getNetProfit(record);
-                  return (
-                    <tr key={`material-cost-${record.id}`} className="group border-l-4 border-[var(--hover-300)] transition-colors hover:bg-[var(--hover-50)]/30">
-                      <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-500 xl:px-6">{record.date}</td>
-                      <td className="px-4 py-4 font-bold text-slate-900 xl:px-6">{record.patient_name || 'Unknown'}</td>
-                      <td className="px-4 py-4 text-sm text-slate-700 xl:px-6">{formatDoctorName(record.doctor_name)}</td>
-                      <td className="max-w-md px-4 py-4 text-sm text-slate-700 xl:px-6">
-                        {renderTreatmentDescriptionList(record)}
-                        <span className="mt-1 block text-xs font-mono text-gray-500">
-                          {record.teeth && record.teeth.length > 0 ? formatTeethWithPosition(record.teeth) : 'General'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-right text-sm xl:px-6">{renderPatientBalance(record.patient_balance)}</td>
-                      <td className="px-4 py-4 text-right text-sm font-black text-slate-900 xl:px-6">{formatCurrency(treatmentAmount, currency)}</td>
-                      <td className="px-4 py-4 text-right text-sm font-black text-blue-700 xl:px-6">{collectedAmount > 0 ? formatCurrency(collectedAmount, currency) : '-'}</td>
-                      <td className="px-4 py-4 text-right text-sm font-bold xl:px-6">{renderTypedCost(record, 'material')}</td>
-                      <td className="px-4 py-4 text-right text-sm font-bold xl:px-6">{renderTypedCost(record, 'lab')}</td>
-                      <td className="px-4 py-4 text-right text-sm font-bold xl:px-6">{renderTypedCost(record, 'special_doctor')}</td>
-                      <td className="px-4 py-4 text-right text-sm font-black text-slate-800 xl:px-6">{getMaterialTotal(record) > 0 ? formatCurrency(getMaterialTotal(record), currency) : '-'}</td>
-                      <td className="px-4 py-4 text-right text-sm font-black text-teal-700 xl:px-6">{collectedAmount > 0 ? formatCurrency(netReceive, currency) : '-'}</td>
-                      <td className="px-4 py-4 text-right text-sm font-bold text-emerald-700 xl:px-6">{adjustedDoctorEarned > 0 ? formatCurrency(adjustedDoctorEarned, currency) : '-'}</td>
-                      <td className={`px-4 py-4 text-right text-sm font-black xl:px-6 ${netProfit >= 0 ? 'text-slate-900' : 'text-red-600'}`}>{formatCurrency(netProfit, currency)}</td>
-                      <td className="sticky right-0 z-10 min-w-[172px] border-l border-slate-100 bg-white px-4 py-4 text-right shadow-[-10px_0_16px_-14px_rgba(15,23,42,0.55)] transition-colors group-hover:bg-[var(--hover-50)] xl:px-6">
-                        {canManageMaterials ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditingRecord(record)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[var(--hover-200)] bg-[var(--hover-50)] px-3 py-1.5 text-xs font-bold text-[var(--hover-700)] hover:bg-[var(--hover-100)]"
-                          >
-                            <Package size={13} />
-                            <Plus size={12} />
-                            MLS Costs
-                          </button>
-                        ) : (
-                          <span className="text-xs font-semibold text-slate-400">No access</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-          </div>
-        </div>
-        <div className="space-y-3 bg-slate-50/70 p-3 sm:p-4 xl:hidden">
-          {statusFilteredRows.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center">
-              <p className="text-sm font-semibold text-slate-600">No treatment rows found</p>
-              <p className="mt-1 text-xs text-slate-400">Try another date range or clear the search field.</p>
-            </div>
-          ) : (
-            paginatedRows.map((row) => {
-              const record = row.record;
-              const treatmentAmount = getTreatmentAmount(record);
-              const collectedAmount = getCollectedAmount(record);
-              const adjustedDoctorEarned = getAdjustedDoctorEarned(record);
-              const netProfit = getNetProfit(record);
-              const totalCost = getMaterialTotal(record);
-              const netReceive = getNetReceive(record);
-              return (
-                <article key={`material-cost-card-${record.id}`} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-l-4 border-[var(--hover-300)] p-3 sm:p-4">
-                    <div className="flex min-w-0 items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="break-words text-base font-bold text-slate-900">{record.patient_name || 'Unknown'}</p>
-                        <p className="mt-1 break-words text-xs text-slate-500">{record.date} · {formatDoctorName(record.doctor_name)}</p>
-                      </div>
-                      <div className={`shrink-0 rounded-lg px-2.5 py-1 text-right ${netProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                        <p className="text-[10px] font-bold uppercase tracking-wide">Net profit</p>
-                        <p className="mt-0.5 text-sm font-black">{formatCurrency(netProfit, currency)}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 rounded-xl bg-slate-50 p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Clinical activity</p>
-                      <div className="mt-1 break-words text-sm text-slate-800">{renderTreatmentDescriptionList(record)}</div>
-                      <p className="mt-1 break-words font-mono text-xs text-slate-500">
-                        {record.teeth && record.teeth.length > 0 ? formatTeethWithPosition(record.teeth) : 'General'}
-                      </p>
-                    </div>
-
-                    <dl className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
-                      <div className="min-w-0 rounded-xl border border-slate-100 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Patient balance</dt>
-                        <dd className="mt-1 min-w-0 text-sm font-bold">{renderPatientBalance(record.patient_balance)}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-slate-100 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Treatment amount</dt>
-                        <dd className="mt-1 break-words text-sm font-black text-slate-900">{formatCurrency(treatmentAmount, currency)}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-blue-100 bg-blue-50 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-blue-600">Collected payment</dt>
-                        <dd className="mt-1 break-words text-sm font-black text-blue-700">{collectedAmount > 0 ? formatCurrency(collectedAmount, currency) : '-'}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-cyan-100 bg-cyan-50 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-cyan-700">Material cost</dt>
-                        <dd className="mt-1 text-sm font-bold">{renderTypedCost(record, 'material')}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-violet-100 bg-violet-50 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Lab cost</dt>
-                        <dd className="mt-1 text-sm font-bold">{renderTypedCost(record, 'lab')}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-amber-100 bg-amber-50 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Special doctor cost</dt>
-                        <dd className="mt-1 text-sm font-bold">{renderTypedCost(record, 'special_doctor')}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Total cost</dt>
-                        <dd className="mt-1 break-words text-sm font-black text-slate-800">{totalCost > 0 ? formatCurrency(totalCost, currency) : '-'}</dd>
-                      </div>
-                      <div className="min-w-0 rounded-xl border border-teal-100 bg-teal-50 p-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-teal-700">Net receive</dt>
-                        <dd className="mt-1 break-words text-sm font-black text-teal-700">{collectedAmount > 0 ? formatCurrency(netReceive, currency) : '-'}</dd>
-                      </div>
-                      <div className="col-span-2 min-w-0 rounded-xl border border-emerald-100 bg-emerald-50 p-3 sm:col-span-3">
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Doctor earned</dt>
-                        <dd className="mt-1 break-words text-sm font-black text-emerald-700">{adjustedDoctorEarned > 0 ? formatCurrency(adjustedDoctorEarned, currency) : '-'}</dd>
-                      </div>
-                    </dl>
-
-                    <div className="mt-3">
-                      {canManageMaterials ? (
-                        <button
-                          type="button"
-                          onClick={() => setEditingRecord(record)}
-                          className="flex min-h-10 w-full items-center justify-center gap-1 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] px-3 py-2 text-sm font-bold text-[var(--hover-700)] transition-colors hover:bg-[var(--hover-100)] focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)]"
-                        >
-                          <Package size={15} />
-                          <Plus size={13} />
-                          MLS Costs
-                        </button>
-                      ) : (
-                        <p className="rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-400">No access to manage costs</p>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              );
-            })
-          )}
-        </div>
-        </>
-      ) : (
-        <MaterialCostPaymentHistory rows={paginatedPaymentHistoryRows} currency={currency} />
-      )}
-      </div>
-
-      {!loading && activeRowCount > 0 && (
-        <Pagination
-          totalItems={activeRowCount}
-          itemsPerPage={itemsPerPage}
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          showAll={showAll}
-          onToggleShowAll={() => setShowAll(!showAll)}
-        />
-      )}
-
-      <MaterialCostModal
-        isOpen={!!editingRecord}
-        record={editingRecord}
-        currency={currency}
-        onClose={() => setEditingRecord(null)}
-        onSaved={handleMaterialSaved}
-      />
-    </div>
-  );
+      <div className="space-y-3 bg-slate-50/70 p-3 sm:p-4 xl:hidden">{!visibleRows.length ? <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm font-semibold text-slate-500">No payment records found.</div> : visibleRows.map((row) => <article key={row.paymentId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3"><div><p className="font-bold text-slate-900">{row.patientName}</p><p className="mt-1 text-xs text-slate-500">{row.paymentDate} · Receipt {row.receiptNumber || '-'}</p></div><span className="rounded-lg bg-blue-50 px-2.5 py-1 text-sm font-black text-blue-700">{formatCurrency(row.totalPaid, currency)}</span></div>
+        <dl className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">Doctor</dt><dd className="text-right font-semibold">{row.doctorNames.map(formatDoctorName).join(', ') || 'Unassigned'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Clinical activity</dt><dd className="text-right">{row.treatmentNames.join(', ') || '-'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Patient balance</dt><dd className="text-right">{renderBalance(row)}</dd></div></dl>
+        <dl className="mt-3 grid grid-cols-2 gap-2"><div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3"><dt className="text-[10px] font-bold uppercase text-cyan-700"><Package size={13} className="mr-1 inline" />Material</dt><dd className="mt-1 text-sm">{renderCost(row, 'material')}</dd></div><div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-[10px] font-bold uppercase text-violet-700"><Beaker size={13} className="mr-1 inline" />Lab</dt><dd className="mt-1 text-sm">{renderCost(row, 'lab')}</dd></div><div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><dt className="text-[10px] font-bold uppercase text-amber-700"><Stethoscope size={13} className="mr-1 inline" />Special Doctor</dt><dd className="mt-1 text-sm">{renderCost(row, 'special_doctor')}</dd></div><div className="rounded-xl border border-teal-100 bg-teal-50 p-3"><dt className="text-[10px] font-bold uppercase text-teal-700">Net Receive</dt><dd className="mt-1 text-sm font-black text-teal-700">{formatCurrency(netReceive(row), currency)}</dd></div></dl>
+        <button type="button" disabled={!canManageMaterials || !isDatabasePaymentId(row.paymentId)} onClick={() => setEditingRow(row)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] text-sm font-bold text-[var(--hover-700)] disabled:opacity-40"><Package size={15} /><Plus size={13} />{isDatabasePaymentId(row.paymentId) ? 'MLS Costs for Payment' : 'Legacy payment (read only)'}</button>
+      </article>)}</div>
+    </>}
+    {!loading && filteredRows.length > 0 && <Pagination totalItems={filteredRows.length} itemsPerPage={itemsPerPage} currentPage={currentPage} onPageChange={setCurrentPage} showAll={showAll} onToggleShowAll={() => setShowAll(!showAll)} />}
+    <MaterialCostModal isOpen={!!editingRow} payment={editingRow?.payment || null} context={editingRow} currency={currency} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
+  </div>;
 };
 
 export default MaterialCostView;

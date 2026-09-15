@@ -188,6 +188,10 @@ export interface TreatmentCostSummary {
   itemCount: number;
 }
 
+// MLS costs are now recorded against a payment. The shape intentionally
+// matches the legacy treatment summary so reporting code can remain compatible.
+export type PaymentCostSummary = TreatmentCostSummary;
+
 export interface PaymentRecord {
   id: string;
   location_id?: string;

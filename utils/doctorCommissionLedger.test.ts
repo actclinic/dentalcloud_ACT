@@ -303,6 +303,37 @@ describe('doctor commission ledger', () => {
     expect(entries.reduce((sum, entry) => sum + entry.earnings, 0)).toBe(29_000);
   });
 
+  it('deducts payment-based MLS only from the payment where it was recorded', () => {
+    const treatments = [treatment({ cost: 200_000, commissionPercentage: 10 })];
+    const allocations = allocateCommissionablePayments(treatments, [
+      { id: 'p1', patientId: 'patient-1', date: '2026-07-01', commissionableAmount: 100_000, treatmentIds: ['treatment-1'] },
+      { id: 'p2', patientId: 'patient-1', date: '2026-07-02', commissionableAmount: 100_000, treatmentIds: ['treatment-1'], paymentCost: 20_000 }
+    ]);
+    const entries = calculateCommissionLedgerEntries(treatments, allocations);
+
+    expect(entries).toEqual([
+      expect.objectContaining({ paymentId: 'p1', materialDeduction: 0, commissionBase: 100_000, earnings: 10_000 }),
+      expect.objectContaining({ paymentId: 'p2', materialDeduction: 20_000, commissionBase: 80_000, earnings: 8_000 })
+    ]);
+  });
+
+  it('splits a payment MLS cost across its treatment allocations without duplication', () => {
+    const treatments = [
+      treatment({ id: 't1', cost: 100_000 }),
+      treatment({ id: 't2', cost: 300_000 })
+    ];
+    const allocations = allocateCommissionablePayments(treatments, [{
+      id: 'p1', patientId: 'patient-1', date: '2026-07-01', commissionableAmount: 400_000,
+      treatmentIds: ['t1', 't2'], paymentCost: 40_000
+    }]);
+
+    expect(allocations).toEqual([
+      expect.objectContaining({ treatmentId: 't1', amount: 100_000, paymentCostShare: 10_000 }),
+      expect.objectContaining({ treatmentId: 't2', amount: 300_000, paymentCostShare: 30_000 })
+    ]);
+    expect(calculateCommissionLedgerEntries(treatments, allocations).reduce((sum, row) => sum + row.materialDeduction, 0)).toBe(40_000);
+  });
+
   it('falls back to zero instead of producing non-finite commission values', () => {
     const treatments = [treatment({ commissionPercentage: Number.NaN })];
     const allocations = allocateCommissionablePayments(treatments, [{

@@ -210,6 +210,10 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
     api.materialCosts.getTotalsByTreatmentIds(treatmentIds, { idBatchSize: 50 })
   ]);
   if (paymentError && !isMissingRelationError(paymentError, 'payments')) throw new Error(paymentError.message);
+  const materialByPayment = await api.materialCosts.getTotalsByPaymentIds(
+    (paymentRows || []).map((row: any) => row.id).filter(Boolean),
+    { idBatchSize: 50 }
+  );
 
   let customRows: any[] = [];
   if (doctorIds.length > 0) {
@@ -272,7 +276,8 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
     treatmentIds: Array.from(new Set([
       ...(Array.isArray(row.treatment_ids) ? row.treatment_ids : []),
       ...getPaymentReceiptTreatmentIds(row)
-    ]))
+    ])),
+    paymentCost: materialByPayment[row.id]?.totalAmount || 0
   }));
   const allocations = allocateCommissionablePayments(treatments, payments);
   const existingEntries = (existingResult.data || []).map((row: any) => ({
@@ -3477,6 +3482,136 @@ export const api = {
         console.warn('Error fetching material cost totals:', err);
         throw err;
       }
+    },
+
+    getTotalsByPaymentIds: async (
+      paymentIds: string[],
+      options?: { onProgress?: (completed: number, total: number) => void; requireCostTables?: boolean; idBatchSize?: number }
+    ): Promise<Record<string, TreatmentCostSummary>> => {
+      const uniqueIds = Array.from(new Set(paymentIds.filter(Boolean)));
+      if (uniqueIds.length === 0) return {};
+
+      const auditBatches = await mapWithConcurrency(
+        chunkUniqueIds(uniqueIds, options?.idBatchSize),
+        REPORT_REQUEST_CONCURRENCY,
+        async (idBatch) => {
+          const { data, error } = await supabase
+            .from('audit_logs')
+            .select('id, source_id')
+            .eq('source_type', 'payment')
+            .in('source_id', idBatch);
+          if (error) {
+            if (isMissingRelationError(error, 'audit_logs')) {
+              if (options?.requireCostTables) throw new Error('MLS payment cost storage is not installed.');
+              return [];
+            }
+            throw error;
+          }
+          return data || [];
+        },
+        (completed, total) => options?.onProgress?.(Math.round((completed / Math.max(total, 1)) * 50), 100)
+      );
+      const auditRows: any[] = auditBatches.flat();
+      const auditIds = auditRows.map((row) => row.id).filter(Boolean);
+      if (auditIds.length === 0) return {};
+
+      const costBatches = await mapWithConcurrency(
+        chunkUniqueIds(auditIds, options?.idBatchSize),
+        REPORT_REQUEST_CONCURRENCY,
+        async (idBatch) => {
+          const { data, error } = await supabase
+            .from('patient_material_costs')
+            .select('audit_log_id, cost_type, total_amount')
+            .in('audit_log_id', idBatch);
+          if (error) {
+            if (isMissingRelationError(error, 'patient_material_costs')) {
+              if (options?.requireCostTables) throw new Error('MLS payment cost storage is not installed.');
+              return [];
+            }
+            throw error;
+          }
+          return data || [];
+        },
+        (completed, total) => options?.onProgress?.(50 + Math.round((completed / Math.max(total, 1)) * 50), 100)
+      );
+
+      return summarizeTreatmentCostRows(
+        costBatches.flat(),
+        new Map(auditRows.map((row) => [row.id, row.source_id]))
+      );
+    },
+
+    getByPaymentId: async (paymentId: string): Promise<{ auditLogId: string | null; items: PatientMaterialCost[] }> => {
+      const { data: auditLog, error: auditLogError } = await supabase
+        .from('audit_logs')
+        .select('id')
+        .eq('source_type', 'payment')
+        .eq('source_id', paymentId)
+        .maybeSingle();
+      if (auditLogError) throw new Error(auditLogError.message);
+      if (!auditLog?.id) return { auditLogId: null, items: [] };
+
+      const { data, error } = await supabase
+        .from('patient_material_costs')
+        .select('*, users(username)')
+        .eq('audit_log_id', auditLog.id)
+        .order('created_at', { ascending: true });
+      if (error) throw new Error(error.message);
+      return { auditLogId: auditLog.id, items: (data || []).map(mapPatientMaterialCostRow) };
+    },
+
+    upsertForPayment: async (
+      payment: PaymentRecord,
+      items: PatientMaterialCostInput[],
+      createdBy?: { userId?: string | null; username?: string | null; authToken?: string }
+    ): Promise<{ auditLogId: string; items: PatientMaterialCost[]; commissionRefreshPending: boolean }> => {
+      const paymentId = trimRequired(payment.id, 'Payment record');
+      const normalizedItems = items.map((item) => ({
+        material_name: trimRequired(item.materialName, 'MLS cost name', { maxLength: 255 }),
+        cost_type: enumValue(item.costType, ['material', 'lab', 'special_doctor'] as const, 'Cost type'),
+        cost_amount: finiteNumber(item.costAmount, 'MLS unit cost', { min: 0.01 }),
+        quantity: finiteNumber(item.quantity, 'MLS quantity', { min: 0.01 })
+      }));
+      const auditPayload = {
+        source_type: 'payment' as AuditLogSourceType,
+        source_id: paymentId,
+        location_id: payment.location_id || null,
+        patient_id: payment.patientId || null,
+        doctor_id: null,
+        payment_id: paymentId
+      };
+      const { data: auditLog, error: auditLogError } = await supabase
+        .from('audit_logs')
+        .upsert(auditPayload, { onConflict: 'source_type,source_id' })
+        .select('id')
+        .single();
+      if (auditLogError) throw new Error(auditLogError.message);
+
+      const requestToken = generateRequestUuid();
+      const { data, error } = await supabase.rpc('replace_payment_costs', {
+        p_audit_log_id: auditLog.id,
+        p_items: normalizedItems,
+        p_user_id: createdBy?.userId || null,
+        p_session_token: createdBy?.authToken || '',
+        p_request_token: requestToken
+      });
+      if (error) {
+        if (isMissingRpcError(error, 'replace_payment_costs')) {
+          throw new Error('Payment-based MLS is not installed yet. Run supabase/migrations/20260915000000_payment_based_mls.sql.');
+        }
+        throw new Error(error.message);
+      }
+
+      let commissionRefreshPending = false;
+      try {
+        await processPendingCommissionRecalculation(payment.patientId, requestToken, {
+          userId: createdBy?.userId || '', authToken: createdBy?.authToken || ''
+        });
+      } catch (commissionError) {
+        commissionRefreshPending = true;
+        console.error('Payment MLS costs were saved, but doctor commission refresh needs retry.', commissionError);
+      }
+      return { auditLogId: auditLog.id, items: (data || []).map(mapPatientMaterialCostRow), commissionRefreshPending };
     },
 
     getByTreatmentId: async (treatmentId: string): Promise<{ auditLogId: string | null; items: PatientMaterialCost[] }> => {

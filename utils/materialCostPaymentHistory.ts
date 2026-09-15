@@ -8,6 +8,7 @@ import {
 } from './paymentTreatmentAllocation';
 
 export interface MaterialCostPaymentHistoryRow {
+  payment: PaymentRecord;
   paymentId: string;
   paymentDate: string;
   createdAt?: string;
@@ -101,8 +102,6 @@ export const buildMaterialCostPaymentHistoryRows = (
   return payments.flatMap((payment) => {
     const paymentAllocations = allocationsByPaymentId.get(payment.id) || [];
     const appliedToTreatment = roundMoney(paymentAllocations.reduce((sum, allocation) => sum + allocation.amount, 0));
-    if (appliedToTreatment <= 0) return [];
-
     const treatmentIds = distinct(paymentAllocations.map((allocation) => allocation.treatmentId));
     const treatments = treatmentIds
       .map((treatmentId) => treatmentById.get(treatmentId))
@@ -112,6 +111,7 @@ export const buildMaterialCostPaymentHistoryRows = (
     ), 0));
 
     return [{
+      payment,
       paymentId: payment.id,
       paymentDate: payment.date,
       ...(payment.createdAt ? { createdAt: payment.createdAt } : {}),
@@ -123,7 +123,9 @@ export const buildMaterialCostPaymentHistoryRows = (
         || 'Unknown',
       doctorNames: distinct(treatments.map((record) => record.doctor_name || 'Unassigned')),
       treatmentIds,
-      treatmentNames: treatments.map((record) => record.description?.trim() || 'Treatment record'),
+      treatmentNames: treatments.length > 0
+        ? treatments.map((record) => record.description?.trim() || 'Treatment record')
+        : (payment.receiptSnapshot?.treatments || []).map((item) => item.description?.trim() || 'Treatment record'),
       paymentMethod: payment.paymentMethod || payment.receiptSnapshot?.payment.method,
       paymentAllocations: payment.allocations || payment.receiptSnapshot?.payment.allocations,
       paymentStatus: payment.type,
