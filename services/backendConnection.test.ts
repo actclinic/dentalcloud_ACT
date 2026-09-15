@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { backendConnection, getBackendLatencyBand } from './backendConnection';
+import { backendConnection } from './backendConnection';
 
 describe('backendConnection', () => {
   const fetchMock = vi.fn<typeof fetch>();
@@ -40,11 +40,4 @@ describe('backendConnection', () => {
     expect(backendConnection.getStatus()).toBe('connected');
   });
 
-  it('maps latency thresholds to the specified rabbit motion bands', () => {
-    expect(getBackendLatencyBand(49, 'connected')).toBe('fast');
-    expect(getBackendLatencyBand(50, 'connected')).toBe('normal');
-    expect(getBackendLatencyBand(200, 'connected')).toBe('normal');
-    expect(getBackendLatencyBand(201, 'connected')).toBe('slow');
-    expect(getBackendLatencyBand(null, 'disconnected')).toBe('unavailable');
-  });
 });

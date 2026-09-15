@@ -2,9 +2,16 @@ import React, { useSyncExternalStore } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { backendConnection } from '../services/backendConnection';
 
+export const CONNECTION_LOSS_GRACE_MS = 10_000;
+
+export const shouldShowConnectionGate = (status: ReturnType<typeof backendConnection.getStatus>, disconnectGraceElapsed: boolean): boolean => (
+  status === 'disconnected' && disconnectGraceElapsed
+);
+
 export const BackendConnectionGate: React.FC = () => {
   const status = useSyncExternalStore(backendConnection.subscribe, backendConnection.getStatus, backendConnection.getStatus);
   const [isRetrying, setIsRetrying] = React.useState(false);
+  const [disconnectGraceElapsed, setDisconnectGraceElapsed] = React.useState(false);
 
   React.useEffect(() => {
     const check = () => { void backendConnection.checkNow(); };
@@ -22,7 +29,17 @@ export const BackendConnectionGate: React.FC = () => {
     };
   }, []);
 
-  if (status !== 'disconnected') return null;
+  React.useEffect(() => {
+    if (status !== 'disconnected') {
+      setDisconnectGraceElapsed(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setDisconnectGraceElapsed(true), CONNECTION_LOSS_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [status]);
+
+  if (!shouldShowConnectionGate(status, disconnectGraceElapsed)) return null;
 
   const retry = async () => {
     setIsRetrying(true);

@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { BackendConnectionGate } from './components/BackendConnectionGate';
-import { BackendLatencyRabbit } from './components/BackendLatencyRabbit';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -13,7 +12,6 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <BackendConnectionGate />
-    <BackendLatencyRabbit />
     <App />
   </React.StrictMode>
 );
