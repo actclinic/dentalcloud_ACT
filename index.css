@@ -242,6 +242,55 @@ body {
   }
 }
 
+/* Small global server-latency indicator. The Rabbit icon is provided by the
+   existing Lucide dependency (ISC); its motion is original application CSS. */
+.backend-latency-rabbit {
+  position: fixed;
+  z-index: 90;
+  top: max(0.45rem, env(safe-area-inset-top));
+  right: max(0.55rem, env(safe-area-inset-right));
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 1.65rem;
+  height: 1.4rem;
+  padding: 0 0.2rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 2px 7px rgb(15 23 42 / 0.14);
+  pointer-events: none;
+}
+
+.backend-latency-rabbit svg {
+  animation: backend-rabbit-hop 520ms ease-in-out infinite;
+}
+
+.backend-latency-rabbit__latency {
+  font-size: 0.55rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.backend-latency-rabbit--fast { color: #16a34a; }
+.backend-latency-rabbit--fast svg { animation-duration: 250ms; }
+.backend-latency-rabbit--normal { color: #2563eb; }
+.backend-latency-rabbit--normal svg { animation-duration: 520ms; }
+.backend-latency-rabbit--slow { color: #d97706; }
+.backend-latency-rabbit--slow svg { animation-duration: 950ms; }
+.backend-latency-rabbit--unavailable { color: #94a3b8; }
+.backend-latency-rabbit--unavailable svg { animation: none; }
+
+@keyframes backend-rabbit-hop {
+  0%, 100% { transform: translateX(-0.8px) translateY(0) rotate(-4deg); }
+  50% { transform: translateX(0.8px) translateY(-1.5px) rotate(4deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backend-latency-rabbit svg { animation: none; }
+}
+
 /* Appointment action buttons follow the selected Settings theme while keeping
    each action visually distinct. */
 .appointment-action-button {
