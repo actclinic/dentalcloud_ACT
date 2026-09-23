@@ -6916,54 +6916,24 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
-    undoSale: async (saleId: string, patientId: string, totalPrice: number, quantity: number, medicineId: string, locationId: string): Promise<{ new_balance: number }> => {
+    undoSale: async (saleId: string, patientId: string, locationId: string): Promise<{ new_balance: number; new_points: number; restored_stock: number; reversed_points: number }> => {
       if (!locationId) throw new Error('locationId is required to undo a medicine sale');
+      const { data, error } = await supabase.rpc('undo_medicine_sale', {
+        p_sale_id: saleId,
+        p_patient_id: patientId,
+        p_location_id: locationId
+      });
 
-      // 1. Delete the medicine_sales record
-      const { error: deleteError } = await supabase
-        .from('medicine_sales')
-        .delete()
-        .eq('id', saleId);
+      if (error) throw new Error(`Undo failed: ${error.message}`);
+      const result = Array.isArray(data) ? data[0] : data;
+      if (!result) throw new Error('Undo failed: no result was returned');
 
-      if (deleteError) throw new Error(`Undo failed: ${deleteError.message}`);
-
-      // 2. Restore medicine stock
-      const { data: currentMed, error: fetchMedError } = await supabase
-        .from('medicines')
-        .select('stock')
-        .eq('id', medicineId)
-        .eq('location_id', locationId)
-        .single();
-
-      if (!fetchMedError && currentMed) {
-        const restoredStock = Number(currentMed.stock) + quantity;
-        await supabase
-          .from('medicines')
-          .update({ stock: restoredStock })
-          .eq('id', medicineId);
-      }
-
-      // 3. Fetch current patient balance
-      const { data: patient, error: fetchError } = await supabase
-        .from('patients')
-        .select('balance')
-        .eq('id', patientId)
-        .eq('location_id', locationId)
-        .single();
-
-      if (fetchError) throw new Error(fetchError.message);
-
-      // 4. Deduct the total_price (revert the balance increase)
-      const newBalance = Math.max(0, (patient?.balance || 0) - totalPrice);
-
-      const { error: updateError } = await supabase
-        .from('patients')
-        .update({ balance: newBalance })
-        .eq('id', patientId);
-
-      if (updateError) throw new Error(updateError.message);
-
-      return { new_balance: newBalance };
+      return {
+        new_balance: Number(result.new_balance || 0),
+        new_points: Number(result.new_points || 0),
+        restored_stock: Number(result.restored_stock || 0),
+        reversed_points: Number(result.reversed_points || 0)
+      };
     },
     sell: async (
       patientId: string,
@@ -7073,7 +7043,9 @@ export const api = {
           location_id: locationId,
           points: earnedPoints,
           type: 'EARNED',
-          description: `Earned from medicine purchase: ${medicine.name} (Qty: ${parsedQuantity})`
+          description: `Earned from medicine purchase: ${medicine.name} (Qty: ${parsedQuantity})`,
+          source_type: 'MEDICINE_SALE',
+          source_id: saleResult.id
         });
       }
 
@@ -7371,6 +7343,8 @@ export const api = {
         points: data.points,
         type: data.type,
         description: data.description,
+        source_type: data.source_type || null,
+        source_id: data.source_id || null,
         date: new Date().toISOString()
       };
       const { data: result, error } = await supabase

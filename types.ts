@@ -581,6 +581,8 @@ export interface LoyaltyTransaction {
   type: 'EARNED' | 'REDEEMED' | 'EXPIRED';
   description: string;
   date: string;
+  source_type?: 'MEDICINE_SALE' | 'TREATMENT' | null;
+  source_id?: string | null;
 }
 
 export interface Expense {

@@ -484,6 +484,7 @@ const App: React.FC = () => {
   const treatmentHistoryRequestRef = React.useRef(0);
   const medicineHistoryRequestRef = React.useRef(0);
   const paymentHistoryRequestRef = React.useRef(0);
+  const medicineUndoInFlightRef = React.useRef(new Set<string>());
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -3480,30 +3481,41 @@ const App: React.FC = () => {
   const handleUndoMedicineSale = async (sale: MedicineSale) => {
     if (!selectedPatient) return;
     const saleLocationId = sale.location_id || currentLocationId;
+    if (medicineUndoInFlightRef.current.has(sale.id)) return;
+    medicineUndoInFlightRef.current.add(sale.id);
 
     try {
       const res = await api.medicines.undoSale(
         sale.id,
         selectedPatient.id,
-        sale.total_price,
-        sale.quantity,
-        sale.medicine_id,
         saleLocationId
       );
 
-      setSelectedPatient({ ...selectedPatient, balance: res.new_balance });
-      setPatientMedicineSales(patientMedicineSales.filter(s => s.id !== sale.id));
+      setSelectedPatient((current) => current?.id === sale.patient_id
+        ? { ...current, balance: res.new_balance, loyalty_points: res.new_points }
+        : current);
+      setPatients((current) => current.map((patient) => patient.id === sale.patient_id
+        ? { ...patient, balance: res.new_balance, loyalty_points: res.new_points }
+        : patient));
+      setDashboardPatients((current) => current.map((patient) => patient.id === sale.patient_id
+        ? { ...patient, balance: res.new_balance, loyalty_points: res.new_points }
+        : patient));
+      setPatientMedicineSales((current) => current.filter((item) => item.id !== sale.id));
+      setMedicineSales((current) => current.filter((item) => item.id !== sale.id));
+      setLoyaltyTransactions(await api.loyalty.getTransactions(sale.patient_id, saleLocationId));
 
       // Refresh medicines to update stock
       safeLoad('Refresh medicines after undoing sale', fetchMedicines(), undefined);
 
       setToast({
-        message: `Medicine sale undone. Stock restored and balance adjusted.`,
+        message: `Medicine sale undone. Stock, balance${res.reversed_points > 0 ? ` and ${res.reversed_points} loyalty points` : ''} restored.`,
         type: 'success',
         show: true
       });
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      medicineUndoInFlightRef.current.delete(sale.id);
     }
   };
 
