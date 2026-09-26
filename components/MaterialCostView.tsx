@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowLeftRight, Beaker, Package, Plus, RotateCw, Search, Stethoscope } from 'lucide-react';
-import type { ClinicalRecord, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
+import type { ClinicalRecord, Doctor, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
 import { toLocalISODate } from '../utils/auditLogFilters';
@@ -13,6 +13,7 @@ import ProgressBar from './ProgressBar';
 interface MaterialCostViewProps {
   records: ClinicalRecord[];
   paymentRecords: PaymentRecord[];
+  doctors: Doctor[];
   loading: boolean;
   currency: Currency;
   canManageMaterials: boolean;
@@ -23,11 +24,11 @@ interface MaterialCostViewProps {
 
 type DateFilter = 'all' | 'tomorrow' | 'today' | 'custom';
 const isDatabasePaymentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-const typedTotal = (summary: PaymentCostSummary | undefined, type: TreatmentCostType) => Number(
+  const typedTotal = (summary: PaymentCostSummary | undefined, type: TreatmentCostType) => Number(
   type === 'lab' ? summary?.labTotal : type === 'special_doctor' ? summary?.specialDoctorTotal : summary?.materialTotal
 ) || 0;
 
-const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null }) => {
+const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null }) => {
   const requestVersion = React.useRef(0);
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const tomorrow = useMemo(() => {
@@ -126,20 +127,20 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
       <div className="hidden xl:block"><div className="flex items-center justify-between gap-3 border-b border-[var(--hover-100)] bg-[var(--hover-50)] px-5 py-2.5 text-xs font-semibold text-[var(--hover-800)]"><span className="inline-flex items-center gap-2"><ArrowLeftRight size={16} className="text-[var(--hover-600)]" />Scroll sideways to view all columns.</span><span>The Action column stays visible</span></div><div className="overflow-x-auto" role="region" aria-label="Payment MLS cost table" tabIndex={0}>
         <table className="w-full min-w-[1500px]"><thead className="border-b border-slate-200 bg-slate-50"><tr>{['Payment Date', 'Patient', 'Clinician', 'Clinical Activity'].map((label) => <th key={label} className="px-5 py-5 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}{['Patient Balance', 'Collected Payment', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Total Cost', 'Net Receive', 'Doctor Earned'].map((label) => <th key={label} className="px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}<th className="sticky right-0 z-20 min-w-[145px] border-l border-slate-200 bg-slate-50 px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Action</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{!visibleRows.length ? <tr><td colSpan={13} className="px-6 py-12 text-center"><p className="text-sm font-semibold text-slate-600">No payment rows found</p><p className="mt-1 text-xs text-slate-400">Try another payment date range or clear the search fields.</p></td></tr> : visibleRows.map((row) => <tr key={row.paymentId} className="group border-l-4 border-[var(--hover-300)] hover:bg-[var(--hover-50)]/30">
-            <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{row.paymentDate}</td><td className="px-5 py-4 font-bold text-slate-900">{row.patientName}<span className="block font-mono text-[10px] font-normal text-slate-400">{row.patientId}</span></td><td className="px-5 py-4 text-sm text-slate-700">{row.doctorNames.map(formatDoctorName).join(', ') || 'Unassigned'}</td><td className="max-w-sm px-5 py-4 text-sm text-slate-700">{row.treatmentNames.join(', ') || '-'}</td>
+            <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">{row.paymentDate}</td><td className="px-5 py-4 font-bold text-slate-900">{row.patientName}<span className="block font-mono text-[10px] font-normal text-slate-400">{row.patientId}</span></td><td className="px-5 py-4 text-sm text-slate-700">{row.doctorNames.map((name) => formatDoctorName(name)).join(', ') || 'Unassigned'}</td><td className="max-w-sm px-5 py-4 text-sm text-slate-700">{row.treatmentNames.join(', ') || '-'}</td>
             <td className="px-5 py-4 text-right text-sm">{renderBalance(row)}</td><td className="px-5 py-4 text-right text-sm font-black text-blue-700">{formatCurrency(row.totalPaid, currency)}</td><td className="px-5 py-4 text-right text-sm">{renderCost(row, 'material')}</td><td className="px-5 py-4 text-right text-sm">{renderCost(row, 'lab')}</td><td className="px-5 py-4 text-right text-sm">{renderCost(row, 'special_doctor')}</td><td className="px-5 py-4 text-right text-sm font-black text-slate-800">{totalCost(row) ? formatCurrency(totalCost(row), currency) : '-'}</td><td className="px-5 py-4 text-right text-sm font-black text-teal-700">{formatCurrency(netReceive(row), currency)}</td><td className="px-5 py-4 text-right text-sm font-black text-emerald-700">{row.doctorEarned ? formatCurrency(row.doctorEarned, currency) : '-'}</td>
             <td className="sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 text-right shadow-[-10px_0_16px_-14px_rgba(15,23,42,0.55)] group-hover:bg-[var(--hover-50)]"><button type="button" disabled={!canManageMaterials || !isDatabasePaymentId(row.paymentId)} title={!isDatabasePaymentId(row.paymentId) ? 'This legacy local payment must be synchronized before costs can be added.' : undefined} onClick={() => setEditingRow(row)} className="inline-flex items-center gap-1 rounded-lg border border-[var(--hover-200)] bg-[var(--hover-50)] px-3 py-2 text-xs font-bold text-[var(--hover-700)] hover:bg-[var(--hover-100)] disabled:opacity-40"><Package size={13} /><Plus size={12} />{isDatabasePaymentId(row.paymentId) ? 'MLS Costs' : 'Legacy only'}</button></td>
           </tr>)}</tbody></table></div>
       </div>
       <div className="space-y-3 bg-slate-50/70 p-3 sm:p-4 xl:hidden">{!visibleRows.length ? <div className="rounded-2xl border border-dashed bg-white p-8 text-center text-sm font-semibold text-slate-500">No payment records found.</div> : visibleRows.map((row) => <article key={row.paymentId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3"><div><p className="font-bold text-slate-900">{row.patientName}</p><p className="mt-1 text-xs text-slate-500">{row.paymentDate} · Receipt {row.receiptNumber || '-'}</p></div><span className="rounded-lg bg-blue-50 px-2.5 py-1 text-sm font-black text-blue-700">{formatCurrency(row.totalPaid, currency)}</span></div>
-        <dl className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">Doctor</dt><dd className="text-right font-semibold">{row.doctorNames.map(formatDoctorName).join(', ') || 'Unassigned'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Clinical activity</dt><dd className="text-right">{row.treatmentNames.join(', ') || '-'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Patient balance</dt><dd className="text-right">{renderBalance(row)}</dd></div></dl>
+        <dl className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">Doctor</dt><dd className="text-right font-semibold">{row.doctorNames.map((name) => formatDoctorName(name)).join(', ') || 'Unassigned'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Clinical activity</dt><dd className="text-right">{row.treatmentNames.join(', ') || '-'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Patient balance</dt><dd className="text-right">{renderBalance(row)}</dd></div></dl>
         <dl className="mt-3 grid grid-cols-2 gap-2"><div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3"><dt className="text-[10px] font-bold uppercase text-cyan-700"><Package size={13} className="mr-1 inline" />Material</dt><dd className="mt-1 text-sm">{renderCost(row, 'material')}</dd></div><div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-[10px] font-bold uppercase text-violet-700"><Beaker size={13} className="mr-1 inline" />Lab</dt><dd className="mt-1 text-sm">{renderCost(row, 'lab')}</dd></div><div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><dt className="text-[10px] font-bold uppercase text-amber-700"><Stethoscope size={13} className="mr-1 inline" />Special Doctor</dt><dd className="mt-1 text-sm">{renderCost(row, 'special_doctor')}</dd></div><div className="rounded-xl border border-teal-100 bg-teal-50 p-3"><dt className="text-[10px] font-bold uppercase text-teal-700">Net Receive</dt><dd className="mt-1 text-sm font-black text-teal-700">{formatCurrency(netReceive(row), currency)}</dd></div></dl>
         <button type="button" disabled={!canManageMaterials || !isDatabasePaymentId(row.paymentId)} onClick={() => setEditingRow(row)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] text-sm font-bold text-[var(--hover-700)] disabled:opacity-40"><Package size={15} /><Plus size={13} />{isDatabasePaymentId(row.paymentId) ? 'MLS Costs for Payment' : 'Legacy payment (read only)'}</button>
       </article>)}</div>
     </>}
     {!loading && filteredRows.length > 0 && <Pagination totalItems={filteredRows.length} itemsPerPage={itemsPerPage} currentPage={currentPage} onPageChange={setCurrentPage} showAll={showAll} onToggleShowAll={() => setShowAll(!showAll)} />}
-    <MaterialCostModal isOpen={!!editingRow} payment={editingRow?.payment || null} context={editingRow} currency={currency} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
+    <MaterialCostModal isOpen={!!editingRow} payment={editingRow?.payment || null} context={editingRow} currency={currency} doctors={doctors} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
   </div>;
 };
 

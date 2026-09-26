@@ -20,6 +20,8 @@ export interface MonthlyReportData {
   allocationRecords?: MonthlyReportSourceRecord[];
   payments: PaymentRecord[];
   costSummaries: Record<string, TreatmentCostSummary>;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface MonthlyReportRow {
@@ -80,6 +82,9 @@ export interface MonthlyReportGroup {
 
 export interface MonthlyReport {
   rows: MonthlyReportRow[];
+  // Treatment rows drive summaries; detail rows also show later collections
+  // on their payment dates without moving treatment production.
+  detailRows?: MonthlyReportRow[];
   summary: MonthlyReportSummary;
   byTreatment: MonthlyReportGroup[];
   byDoctor: MonthlyReportGroup[];
@@ -185,9 +190,12 @@ export const groupMonthlyReportDetailRows = (rows: MonthlyReportRow[]): MonthlyR
   ));
 };
 
-const buildPaymentByTreatment = (records: MonthlyReportSourceRecord[], payments: PaymentRecord[]): Map<string, number> => {
+const buildPaymentAllocations = (
+  records: MonthlyReportSourceRecord[],
+  payments: PaymentRecord[]
+) => {
   const uniquePayments = dedupePaymentRecords(payments);
-  const allocations = allocateCommissionablePayments(
+  return allocateCommissionablePayments(
     records.map(record => ({
       id: record.id,
       patientId: record.patient_id,
@@ -204,10 +212,109 @@ const buildPaymentByTreatment = (records: MonthlyReportSourceRecord[], payments:
     }))
   );
 
+};
+
+const buildPaymentByTreatment = (allocations: ReturnType<typeof buildPaymentAllocations>): Map<string, number> => {
   return allocations.reduce((map, allocation) => {
     map.set(allocation.treatmentId, money((map.get(allocation.treatmentId) || 0) + allocation.amount));
     return map;
   }, new Map<string, number>());
+};
+
+const buildDateBasedDetailRows = (
+  treatmentRows: MonthlyReportRow[],
+  allocationRecords: MonthlyReportSourceRecord[],
+  payments: PaymentRecord[],
+  allocations: ReturnType<typeof buildPaymentAllocations>,
+  dateFrom?: string,
+  dateTo?: string
+): MonthlyReportRow[] => {
+  if (treatmentRows.length === 0) return [];
+  const inferredFrom = treatmentRows.reduce((earliest, row) => row.date < earliest ? row.date : earliest, treatmentRows[0].date);
+  const inferredTo = treatmentRows.reduce((latest, row) => row.date > latest ? row.date : latest, treatmentRows[0].date);
+  const from = dateFrom || inferredFrom;
+  const to = dateTo || inferredTo;
+  const paymentById = new Map(dedupePaymentRecords(payments).map(payment => [payment.id, payment]));
+  const recordsById = new Map(allocationRecords.map(record => [record.id, record]));
+  const paymentByPatientDate = new Map<string, { amount: number; paymentIds: string[]; treatmentIds: string[] }>();
+
+  allocations.forEach((allocation) => {
+    if (allocation.paymentDate < from || allocation.paymentDate > to) return;
+    const payment = paymentById.get(allocation.paymentId);
+    const linkedTreatment = recordsById.get(allocation.treatmentId);
+    if (!payment || !linkedTreatment) return;
+    const key = `${linkedTreatment.patient_id}|${allocation.paymentDate}`;
+    const current = paymentByPatientDate.get(key) || { amount: 0, paymentIds: [], treatmentIds: [] };
+    current.amount = money(current.amount + allocation.amount);
+    if (!current.paymentIds.includes(allocation.paymentId)) current.paymentIds.push(allocation.paymentId);
+    if (!current.treatmentIds.includes(allocation.treatmentId)) current.treatmentIds.push(allocation.treatmentId);
+    paymentByPatientDate.set(key, current);
+  });
+
+  const treatmentRowsByPatientDate = new Map<string, MonthlyReportRow[]>();
+  treatmentRows.forEach((row) => {
+    const key = `${row.patientId}|${row.date}`;
+    const rows = treatmentRowsByPatientDate.get(key) || [];
+    rows.push(row);
+    treatmentRowsByPatientDate.set(key, rows);
+  });
+
+  // Put each date-level collection on only one treatment row to avoid duplicate
+  // payment totals when same-day services are grouped for display.
+  const detailRows = treatmentRows.map((row) => ({ ...row, payment: 0, balance: row.cost }));
+  treatmentRowsByPatientDate.forEach((rows, key) => {
+    const collection = paymentByPatientDate.get(key);
+    if (!collection) return;
+    const firstRow = rows[0];
+    const index = treatmentRows.indexOf(firstRow);
+    if (index < 0) return;
+    detailRows[index] = {
+      ...detailRows[index],
+      payment: collection.amount,
+      balance: money(Math.max(0, detailRows[index].cost - collection.amount))
+    };
+    if (rows.length > 1) {
+      const totalCost = money(rows.reduce((sum, treatment) => sum + treatment.cost, 0));
+      detailRows[index].balance = money(Math.max(0, totalCost - collection.amount));
+    }
+    paymentByPatientDate.delete(key);
+  });
+
+  paymentByPatientDate.forEach((collection, key) => {
+    const [patientId, paymentDate] = key.split('|');
+    const patient = allocationRecords.find(record => record.patient_id === patientId);
+    if (!patient) return;
+    const linkedTreatments = collection.treatmentIds
+      .map(treatmentId => recordsById.get(treatmentId))
+      .filter((record): record is MonthlyReportSourceRecord => Boolean(record));
+    detailRows.push({
+      treatmentId: `payment-${collection.paymentIds.join('|')}`,
+      date: paymentDate,
+      patientId,
+      patientName: patient.patient_name?.trim() || 'Unknown patient',
+      age: patient.patient_age !== null && patient.patient_age !== undefined && Number.isFinite(Number(patient.patient_age)) ? Number(patient.patient_age) : null,
+      phone: patient.patient_phone?.trim() || 'Not recorded',
+      city: patient.patient_city?.trim() || 'Not recorded',
+      township: patient.patient_township?.trim() || 'Not recorded',
+      patientType: patient.patient_type?.trim() || 'Not assigned',
+      treatment: linkedTreatments.length > 0 ? 'Balance payment' : 'Payment',
+      doctor: Array.from(new Set(linkedTreatments.map(record => record.doctor_name?.trim()).filter(Boolean))).join('; ') || 'Unassigned',
+      cost: 0,
+      payment: collection.amount,
+      balance: 0,
+      labCost: 0,
+      materialCost: 0,
+      specialDoctorCost: 0,
+      doctorCost: 0,
+      totalCost: 0,
+      netProfit: 0,
+      netMargin: 0
+    });
+  });
+
+  return detailRows
+    .filter(row => row.date >= from && row.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.patientName.localeCompare(b.patientName) || a.treatmentId.localeCompare(b.treatmentId));
 };
 
 const summarizeRows = (rows: MonthlyReportRow[]): MonthlyReportSummary => {
@@ -254,7 +361,9 @@ const groupRows = (rows: MonthlyReportRow[], key: (row: MonthlyReportRow) => str
 };
 
 export const buildMonthlyReport = (data: MonthlyReportData): MonthlyReport => {
-  const paymentByTreatment = buildPaymentByTreatment(data.allocationRecords || data.records, data.payments);
+  const allocationRecords = data.allocationRecords || data.records;
+  const paymentAllocations = buildPaymentAllocations(allocationRecords, data.payments);
+  const paymentByTreatment = buildPaymentByTreatment(paymentAllocations);
   const rows = data.records.map((record): MonthlyReportRow => {
     const cost = positiveMoney(record.cost);
     const payment = Math.min(cost, positiveMoney(paymentByTreatment.get(record.id)));
@@ -294,6 +403,7 @@ export const buildMonthlyReport = (data: MonthlyReportData): MonthlyReport => {
 
   return {
     rows,
+    detailRows: buildDateBasedDetailRows(rows, allocationRecords, data.payments, paymentAllocations, data.dateFrom, data.dateTo),
     summary: summarizeRows(rows),
     byTreatment: groupRows(rows, row => row.treatment),
     byDoctor: groupRows(rows, row => row.doctor),

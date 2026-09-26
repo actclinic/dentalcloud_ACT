@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity, DoctorSpecialFee } from '../types';
 import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -30,6 +30,9 @@ let storageConfigVersion = 0;
 
 const MEDICINE_ITEM_TYPES = ['Medicine', 'Retail', 'Supply', 'Other'] as const;
 const SUPABASE_PAGE_SIZE = 1000;
+const AUTO_ONP_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+const autoOnpRefreshInFlight = new Map<string, Promise<void>>();
+const autoOnpLastCompletedAt = new Map<string, number>();
 
 const isMissingColumnError = (error: any, columnName: string): boolean => {
   return typeof error?.message === 'string' && error.message.toLowerCase().includes(columnName.toLowerCase());
@@ -672,6 +675,7 @@ const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
   return {
     id: row.id,
     auditLogId: row.audit_log_id,
+    doctorId: row.doctor_id || null,
     materialName: row.material_name,
     costType: row.cost_type === 'lab' ? 'lab' : row.cost_type === 'special_doctor' ? 'special_doctor' : 'material',
     costAmount,
@@ -1069,7 +1073,17 @@ const getAutoOnpPatientTypeEnabled = async (): Promise<boolean> => {
   }
 };
 
-const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<void> => {
+const runAutoOnpPatientTypeRefresh = async (locationId?: string): Promise<void> => {
+  const { error: rpcError } = await supabase.rpc('apply_auto_onp_patient_type', {
+    p_location_id: locationId || null
+  });
+  if (!rpcError) return;
+  if (!isMissingFunctionError(rpcError, 'apply_auto_onp_patient_type')) {
+    console.warn('Failed to auto-convert patients to ONP:', rpcError.message);
+    return;
+  }
+
+  // Compatibility fallback while the atomic database migration is rolling out.
   const enabled = await getAutoOnpPatientTypeEnabled();
   if (!enabled) return;
 
@@ -1098,14 +1112,38 @@ const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<vo
 
   if (eligibleIds.length === 0) return;
 
-  const { error: updateError } = await supabase
-    .from('patients')
-    .update({ patient_type: AUTO_ONP_PATIENT_TYPE_NAME })
-    .in('id', eligibleIds);
+  // PostgREST encodes `.in()` filters in the request URL. Keep each update
+  // below the proxy request-line limit while the atomic RPC rolls out.
+  for (const patientIdBatch of chunkUniqueIds(eligibleIds)) {
+    const { error: updateError } = await supabase
+      .from('patients')
+      .update({ patient_type: AUTO_ONP_PATIENT_TYPE_NAME })
+      .in('id', patientIdBatch);
 
-  if (updateError) {
-    console.warn('Failed to auto-convert patients to ONP:', updateError.message);
+    if (updateError) {
+      console.warn(`Failed to auto-convert ${patientIdBatch.length} patients to ONP:`, updateError.message);
+    }
   }
+};
+
+const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<void> => {
+  const scopeKey = locationId || '*';
+  const lastCompletedAt = autoOnpLastCompletedAt.get(scopeKey) || 0;
+  if (Date.now() - lastCompletedAt < AUTO_ONP_REFRESH_COOLDOWN_MS) return;
+
+  const existingRefresh = autoOnpRefreshInFlight.get(scopeKey);
+  if (existingRefresh) return existingRefresh;
+
+  const refresh = runAutoOnpPatientTypeRefresh(locationId)
+    .then(() => {
+      autoOnpLastCompletedAt.set(scopeKey, Date.now());
+    })
+    .finally(() => {
+      autoOnpRefreshInFlight.delete(scopeKey);
+    });
+
+  autoOnpRefreshInFlight.set(scopeKey, refresh);
+  return refresh;
 };
 
 const completeAppointmentWithClinicalFee = async (
@@ -3570,7 +3608,8 @@ export const api = {
         material_name: trimRequired(item.materialName, 'MLS cost name', { maxLength: 255 }),
         cost_type: enumValue(item.costType, ['material', 'lab', 'special_doctor'] as const, 'Cost type'),
         cost_amount: finiteNumber(item.costAmount, 'MLS unit cost', { min: 0.01 }),
-        quantity: finiteNumber(item.quantity, 'MLS quantity', { min: 0.01 })
+        quantity: finiteNumber(item.quantity, 'MLS quantity', { min: 0.01 }),
+        doctor_id: item.costType === 'special_doctor' ? (item.doctorId || null) : null
       }));
       const auditPayload = {
         source_type: 'payment' as AuditLogSourceType,
@@ -3589,7 +3628,7 @@ export const api = {
 
       const requestToken = generateRequestUuid();
       const { data, error } = await supabase.rpc('replace_payment_costs', {
-        p_audit_log_id: auditLog.id,
+        p_payment_id: paymentId,
         p_items: normalizedItems,
         p_user_id: createdBy?.userId || null,
         p_session_token: createdBy?.authToken || '',
@@ -3611,7 +3650,32 @@ export const api = {
         commissionRefreshPending = true;
         console.error('Payment MLS costs were saved, but doctor commission refresh needs retry.', commissionError);
       }
-      return { auditLogId: auditLog.id, items: (data || []).map(mapPatientMaterialCostRow), commissionRefreshPending };
+      const payload = data && !Array.isArray(data) ? data : {};
+      return {
+        auditLogId: String(payload.audit_log_id || auditLog.id),
+        items: (Array.isArray(payload.items) ? payload.items : []).map(mapPatientMaterialCostRow),
+        commissionRefreshPending
+      };
+    },
+
+    getSpecialDoctorFeesByDoctorId: async (doctorId: string, locationIds: string[] = []): Promise<DoctorSpecialFee[]> => {
+      const normalizedDoctorId = trimRequired(doctorId, 'Doctor');
+      const normalizedLocationIds = Array.from(new Set(locationIds.map((locationId) => String(locationId || '').trim()).filter(Boolean)));
+      if (normalizedLocationIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('patient_material_costs')
+        .select('id, total_amount, payments!inner(payment_date, location_id)')
+        .eq('doctor_id', normalizedDoctorId)
+        .eq('cost_type', 'special_doctor')
+        .in('payments.location_id', normalizedLocationIds);
+      if (error) throw new Error(error.message);
+
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        paymentDate: String(row.payments?.payment_date || ''),
+        totalAmount: Number(row.total_amount || 0)
+      })).filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.paymentDate));
     },
 
     getByTreatmentId: async (treatmentId: string): Promise<{ auditLogId: string | null; items: PatientMaterialCost[] }> => {

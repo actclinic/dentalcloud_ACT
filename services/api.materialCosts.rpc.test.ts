@@ -13,6 +13,18 @@ const supabaseMock = vi.hoisted(() => {
         error: null
       };
     }
+    if (name === 'replace_payment_costs') {
+      return {
+        data: {
+          audit_log_id: 'audit-1',
+          items: [
+            { id: 'cost-1', audit_log_id: 'audit-1', material_name: 'Composite', cost_type: 'material', cost_amount: 100, quantity: 2, total_amount: 200 },
+            { id: 'cost-2', audit_log_id: 'audit-1', doctor_id: 'doctor-1', material_name: 'Visiting surgeon', cost_type: 'special_doctor', cost_amount: 300, quantity: 1, total_amount: 300 }
+          ]
+        },
+        error: null
+      };
+    }
     return { data: null, error: null };
   });
   const from = vi.fn((table: string) => {
@@ -69,6 +81,39 @@ describe('api.materialCosts transactional RPC', () => {
     expect(result.items.map((item) => item.costType)).toEqual(['material', 'lab']);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       'Material and lab costs were saved, but doctor commission refresh needs retry.',
+      expect.any(Error)
+    );
+  });
+
+  it('uses the deployed payment-id RPC contract and maps its JSONB response', async () => {
+    const result = await api.materialCosts.upsertForPayment({
+      id: 'payment-1', location_id: 'location-1', patientId: 'patient-1', amount: 1000,
+      date: '2026-07-18', type: 'PARTIAL', remainingBalance: 0
+    }, [
+      { materialName: ' Composite ', costType: 'material', costAmount: 100, quantity: 2 },
+      { materialName: 'Visiting surgeon', costType: 'special_doctor', costAmount: 300, quantity: 1, doctorId: 'doctor-1' }
+    ], { userId: 'admin-1', username: 'Admin', authToken: 'session-token-1' });
+
+    expect(supabaseMock.rpcCalls[0]).toEqual({
+      name: 'replace_payment_costs',
+      payload: {
+        p_payment_id: 'payment-1',
+        p_items: [
+          { material_name: 'Composite', cost_type: 'material', cost_amount: 100, quantity: 2, doctor_id: null },
+          { material_name: 'Visiting surgeon', cost_type: 'special_doctor', cost_amount: 300, quantity: 1, doctor_id: 'doctor-1' }
+        ],
+        p_user_id: 'admin-1',
+        p_session_token: 'session-token-1',
+        p_request_token: expect.any(String)
+      }
+    });
+    expect(result.auditLogId).toBe('audit-1');
+    expect(result.items).toMatchObject([
+      { id: 'cost-1', costType: 'material', totalAmount: 200 },
+      { id: 'cost-2', doctorId: 'doctor-1', costType: 'special_doctor', totalAmount: 300 }
+    ]);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Payment MLS costs were saved, but doctor commission refresh needs retry.',
       expect.any(Error)
     );
   });
