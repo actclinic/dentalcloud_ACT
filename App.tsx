@@ -4125,6 +4125,32 @@ const App: React.FC = () => {
     );
   };
 
+  // Keep this hook before the conditional screen returns below. React requires
+  // the same hook order on login, authenticated, and error renders.
+  const specialDoctorFeeSession = auth.getSession();
+  const specialDoctorFeeDoctor = isDoctor && specialDoctorFeeSession?.doctor_id
+    ? doctors.find((doctor) => doctor.id === specialDoctorFeeSession.doctor_id) || null
+    : null;
+  const specialDoctorFeeLocationIds = specialDoctorFeeDoctor
+    ? Array.from(new Set([...(specialDoctorFeeDoctor.location_ids || []), specialDoctorFeeDoctor.location_id].filter(Boolean)))
+    : [];
+  useEffect(() => {
+    let cancelled = false;
+    if (!isDoctor || !specialDoctorFeeDoctor?.id || specialDoctorFeeLocationIds.length === 0) {
+      setSpecialDoctorFees([]);
+      return () => { cancelled = true; };
+    }
+    api.materialCosts.getSpecialDoctorFeesByDoctorId(specialDoctorFeeDoctor.id, specialDoctorFeeLocationIds)
+      .then((fees) => { if (!cancelled) setSpecialDoctorFees(fees); })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('Unable to load assigned special doctor fees.', error);
+          setSpecialDoctorFees([]);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [isDoctor, specialDoctorFeeDoctor?.id, specialDoctorFeeLocationIds.join('|')]);
+
   // Password recovery must stay on the login/reset screen even if this device
   // still has an older local auth session saved.
   if (isRecoveryFlowActive()) {
@@ -4188,22 +4214,6 @@ const App: React.FC = () => {
   const currentDoctorLocationIds = currentDoctor
     ? Array.from(new Set([...(currentDoctor.location_ids || []), currentDoctor.location_id].filter(Boolean)))
     : [];
-  useEffect(() => {
-    let cancelled = false;
-    if (!isDoctor || !currentDoctor?.id || currentDoctorLocationIds.length === 0) {
-      setSpecialDoctorFees([]);
-      return () => { cancelled = true; };
-    }
-    api.materialCosts.getSpecialDoctorFeesByDoctorId(currentDoctor.id, currentDoctorLocationIds)
-      .then((fees) => { if (!cancelled) setSpecialDoctorFees(fees); })
-      .catch((error) => {
-        if (!cancelled) {
-          console.warn('Unable to load assigned special doctor fees.', error);
-          setSpecialDoctorFees([]);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [isDoctor, currentDoctor?.id, currentDoctorLocationIds.join('|')]);
   const shouldShowAdminBadge = isAdmin && currentUser.trim().toLowerCase() !== 'admin';
   const isWorkspaceView = currentView === 'ai-assistant' || currentView === 'messaging' || currentView === 'patients' || currentView === 'appointments';
   const editableAllowedTabs = resolveAllowedTabs('normal', newUserData.allowed_tabs).filter((tab) => (
