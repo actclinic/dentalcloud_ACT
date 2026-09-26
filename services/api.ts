@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity, DoctorSpecialFee } from '../types';
 import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -30,6 +30,9 @@ let storageConfigVersion = 0;
 
 const MEDICINE_ITEM_TYPES = ['Medicine', 'Retail', 'Supply', 'Other'] as const;
 const SUPABASE_PAGE_SIZE = 1000;
+const AUTO_ONP_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+const autoOnpRefreshInFlight = new Map<string, Promise<void>>();
+const autoOnpLastCompletedAt = new Map<string, number>();
 
 const isMissingColumnError = (error: any, columnName: string): boolean => {
   return typeof error?.message === 'string' && error.message.toLowerCase().includes(columnName.toLowerCase());
@@ -672,6 +675,7 @@ const mapPatientMaterialCostRow = (row: any): PatientMaterialCost => {
   return {
     id: row.id,
     auditLogId: row.audit_log_id,
+    doctorId: row.doctor_id || null,
     materialName: row.material_name,
     costType: row.cost_type === 'lab' ? 'lab' : row.cost_type === 'special_doctor' ? 'special_doctor' : 'material',
     costAmount,
@@ -1069,7 +1073,17 @@ const getAutoOnpPatientTypeEnabled = async (): Promise<boolean> => {
   }
 };
 
-const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<void> => {
+const runAutoOnpPatientTypeRefresh = async (locationId?: string): Promise<void> => {
+  const { error: rpcError } = await supabase.rpc('apply_auto_onp_patient_type', {
+    p_location_id: locationId || null
+  });
+  if (!rpcError) return;
+  if (!isMissingFunctionError(rpcError, 'apply_auto_onp_patient_type')) {
+    console.warn('Failed to auto-convert patients to ONP:', rpcError.message);
+    return;
+  }
+
+  // Compatibility fallback while the atomic database migration is rolling out.
   const enabled = await getAutoOnpPatientTypeEnabled();
   if (!enabled) return;
 
@@ -1098,14 +1112,38 @@ const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<vo
 
   if (eligibleIds.length === 0) return;
 
-  const { error: updateError } = await supabase
-    .from('patients')
-    .update({ patient_type: AUTO_ONP_PATIENT_TYPE_NAME })
-    .in('id', eligibleIds);
+  // PostgREST encodes `.in()` filters in the request URL. Keep each update
+  // below the proxy request-line limit while the atomic RPC rolls out.
+  for (const patientIdBatch of chunkUniqueIds(eligibleIds)) {
+    const { error: updateError } = await supabase
+      .from('patients')
+      .update({ patient_type: AUTO_ONP_PATIENT_TYPE_NAME })
+      .in('id', patientIdBatch);
 
-  if (updateError) {
-    console.warn('Failed to auto-convert patients to ONP:', updateError.message);
+    if (updateError) {
+      console.warn(`Failed to auto-convert ${patientIdBatch.length} patients to ONP:`, updateError.message);
+    }
   }
+};
+
+const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<void> => {
+  const scopeKey = locationId || '*';
+  const lastCompletedAt = autoOnpLastCompletedAt.get(scopeKey) || 0;
+  if (Date.now() - lastCompletedAt < AUTO_ONP_REFRESH_COOLDOWN_MS) return;
+
+  const existingRefresh = autoOnpRefreshInFlight.get(scopeKey);
+  if (existingRefresh) return existingRefresh;
+
+  const refresh = runAutoOnpPatientTypeRefresh(locationId)
+    .then(() => {
+      autoOnpLastCompletedAt.set(scopeKey, Date.now());
+    })
+    .finally(() => {
+      autoOnpRefreshInFlight.delete(scopeKey);
+    });
+
+  autoOnpRefreshInFlight.set(scopeKey, refresh);
+  return refresh;
 };
 
 const completeAppointmentWithClinicalFee = async (
@@ -3570,7 +3608,8 @@ export const api = {
         material_name: trimRequired(item.materialName, 'MLS cost name', { maxLength: 255 }),
         cost_type: enumValue(item.costType, ['material', 'lab', 'special_doctor'] as const, 'Cost type'),
         cost_amount: finiteNumber(item.costAmount, 'MLS unit cost', { min: 0.01 }),
-        quantity: finiteNumber(item.quantity, 'MLS quantity', { min: 0.01 })
+        quantity: finiteNumber(item.quantity, 'MLS quantity', { min: 0.01 }),
+        doctor_id: item.costType === 'special_doctor' ? (item.doctorId || null) : null
       }));
       const auditPayload = {
         source_type: 'payment' as AuditLogSourceType,
@@ -3589,7 +3628,7 @@ export const api = {
 
       const requestToken = generateRequestUuid();
       const { data, error } = await supabase.rpc('replace_payment_costs', {
-        p_audit_log_id: auditLog.id,
+        p_payment_id: paymentId,
         p_items: normalizedItems,
         p_user_id: createdBy?.userId || null,
         p_session_token: createdBy?.authToken || '',
@@ -3611,7 +3650,32 @@ export const api = {
         commissionRefreshPending = true;
         console.error('Payment MLS costs were saved, but doctor commission refresh needs retry.', commissionError);
       }
-      return { auditLogId: auditLog.id, items: (data || []).map(mapPatientMaterialCostRow), commissionRefreshPending };
+      const payload = data && !Array.isArray(data) ? data : {};
+      return {
+        auditLogId: String(payload.audit_log_id || auditLog.id),
+        items: (Array.isArray(payload.items) ? payload.items : []).map(mapPatientMaterialCostRow),
+        commissionRefreshPending
+      };
+    },
+
+    getSpecialDoctorFeesByDoctorId: async (doctorId: string, locationIds: string[] = []): Promise<DoctorSpecialFee[]> => {
+      const normalizedDoctorId = trimRequired(doctorId, 'Doctor');
+      const normalizedLocationIds = Array.from(new Set(locationIds.map((locationId) => String(locationId || '').trim()).filter(Boolean)));
+      if (normalizedLocationIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('patient_material_costs')
+        .select('id, total_amount, payments!inner(payment_date, location_id)')
+        .eq('doctor_id', normalizedDoctorId)
+        .eq('cost_type', 'special_doctor')
+        .in('payments.location_id', normalizedLocationIds);
+      if (error) throw new Error(error.message);
+
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        paymentDate: String(row.payments?.payment_date || ''),
+        totalAmount: Number(row.total_amount || 0)
+      })).filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.paymentDate));
     },
 
     getByTreatmentId: async (treatmentId: string): Promise<{ auditLogId: string | null; items: PatientMaterialCost[] }> => {
@@ -6916,54 +6980,24 @@ export const api = {
 
       if (error) throw new Error(error.message);
     },
-    undoSale: async (saleId: string, patientId: string, totalPrice: number, quantity: number, medicineId: string, locationId: string): Promise<{ new_balance: number }> => {
+    undoSale: async (saleId: string, patientId: string, locationId: string): Promise<{ new_balance: number; new_points: number; restored_stock: number; reversed_points: number }> => {
       if (!locationId) throw new Error('locationId is required to undo a medicine sale');
+      const { data, error } = await supabase.rpc('undo_medicine_sale', {
+        p_sale_id: saleId,
+        p_patient_id: patientId,
+        p_location_id: locationId
+      });
 
-      // 1. Delete the medicine_sales record
-      const { error: deleteError } = await supabase
-        .from('medicine_sales')
-        .delete()
-        .eq('id', saleId);
+      if (error) throw new Error(`Undo failed: ${error.message}`);
+      const result = Array.isArray(data) ? data[0] : data;
+      if (!result) throw new Error('Undo failed: no result was returned');
 
-      if (deleteError) throw new Error(`Undo failed: ${deleteError.message}`);
-
-      // 2. Restore medicine stock
-      const { data: currentMed, error: fetchMedError } = await supabase
-        .from('medicines')
-        .select('stock')
-        .eq('id', medicineId)
-        .eq('location_id', locationId)
-        .single();
-
-      if (!fetchMedError && currentMed) {
-        const restoredStock = Number(currentMed.stock) + quantity;
-        await supabase
-          .from('medicines')
-          .update({ stock: restoredStock })
-          .eq('id', medicineId);
-      }
-
-      // 3. Fetch current patient balance
-      const { data: patient, error: fetchError } = await supabase
-        .from('patients')
-        .select('balance')
-        .eq('id', patientId)
-        .eq('location_id', locationId)
-        .single();
-
-      if (fetchError) throw new Error(fetchError.message);
-
-      // 4. Deduct the total_price (revert the balance increase)
-      const newBalance = Math.max(0, (patient?.balance || 0) - totalPrice);
-
-      const { error: updateError } = await supabase
-        .from('patients')
-        .update({ balance: newBalance })
-        .eq('id', patientId);
-
-      if (updateError) throw new Error(updateError.message);
-
-      return { new_balance: newBalance };
+      return {
+        new_balance: Number(result.new_balance || 0),
+        new_points: Number(result.new_points || 0),
+        restored_stock: Number(result.restored_stock || 0),
+        reversed_points: Number(result.reversed_points || 0)
+      };
     },
     sell: async (
       patientId: string,
@@ -7073,7 +7107,9 @@ export const api = {
           location_id: locationId,
           points: earnedPoints,
           type: 'EARNED',
-          description: `Earned from medicine purchase: ${medicine.name} (Qty: ${parsedQuantity})`
+          description: `Earned from medicine purchase: ${medicine.name} (Qty: ${parsedQuantity})`,
+          source_type: 'MEDICINE_SALE',
+          source_id: saleResult.id
         });
       }
 
@@ -7371,6 +7407,8 @@ export const api = {
         points: data.points,
         type: data.type,
         description: data.description,
+        source_type: data.source_type || null,
+        source_id: data.source_id || null,
         date: new Date().toISOString()
       };
       const { data: result, error } = await supabase

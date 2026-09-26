@@ -1,4 +1,4 @@
-import type { Appointment, ClinicalRecord, DoctorEarningEntry } from '../types';
+import type { Appointment, ClinicalRecord, DoctorEarningEntry, DoctorSpecialFee } from '../types';
 
 export interface DoctorReportingRange {
   startDate: string;
@@ -14,6 +14,8 @@ export interface DoctorReportingSummary {
   treatmentCount: number;
   production: number;
   commission: number;
+  specialDoctorFees: number;
+  totalDoctorRevenue: number;
   legacyCommissionEntryCount: number;
 }
 
@@ -66,13 +68,18 @@ export const isDateInDoctorReportingRange = (date: string | null | undefined, ra
 export const buildDoctorReportingSummary = (
   appointments: Appointment[],
   treatmentRecords: ClinicalRecord[],
-  range: DoctorReportingRange
+  range: DoctorReportingRange,
+  specialDoctorFees: DoctorSpecialFee[] = []
 ): DoctorReportingSummary => {
   const rangedAppointments = appointments.filter((appointment) => isDateInDoctorReportingRange(appointment.date, range));
   const rangedTreatmentRecords = treatmentRecords.filter((record) => isDateInDoctorReportingRange(record.date, range));
   const commissionEntries = treatmentRecords
     .flatMap((record) => record.doctorEarningEntries || [])
     .filter((entry) => isDateInDoctorReportingRange(entry.paymentDate, range));
+  const commission = commissionEntries.reduce((sum, entry) => sum + Number(entry.earnings || 0), 0);
+  const specialDoctorFeeTotal = specialDoctorFees
+    .filter((fee) => isDateInDoctorReportingRange(fee.paymentDate, range))
+    .reduce((sum, fee) => sum + Number(fee.totalAmount || 0), 0);
 
   return {
     appointments: rangedAppointments,
@@ -82,7 +89,9 @@ export const buildDoctorReportingSummary = (
     completedAppointmentCount: rangedAppointments.filter((appointment) => appointment.status === 'Completed').length,
     treatmentCount: rangedTreatmentRecords.length,
     production: rangedTreatmentRecords.reduce((sum, record) => sum + Number(record.cost || 0), 0),
-    commission: commissionEntries.reduce((sum, entry) => sum + Number(entry.earnings || 0), 0),
+    commission,
+    specialDoctorFees: specialDoctorFeeTotal,
+    totalDoctorRevenue: commission + specialDoctorFeeTotal,
     legacyCommissionEntryCount: commissionEntries.filter((entry) => entry.paymentId.startsWith('legacy-')).length
   };
 };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Beaker, Loader2, Package, Plus, Settings2, Stethoscope, Trash2 } from 'lucide-react';
-import type { MaterialLabCostPreset, MaterialLabCostPresetInput, PatientMaterialCostInput, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
+import type { Doctor, MaterialLabCostPreset, MaterialLabCostPresetInput, PatientMaterialCostInput, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
 import type { MaterialCostPaymentHistoryRow } from '../utils/materialCostPaymentHistory';
 import { api } from '../services/api';
 import { auth } from '../services/auth';
@@ -9,6 +9,7 @@ import { formatDoctorName } from '../utils/doctorName';
 import { canManageMaterialCosts } from '../utils/permissions';
 import { applyMaterialCostPreset, sortMaterialCostPresets, type MaterialCostDraftRow } from '../utils/materialCostPresets';
 import { Modal } from './Shared';
+import { SearchableSelect } from './SearchableSelect';
 import MaterialCostPresetManager from './MaterialCostPresetManager';
 
 interface MaterialCostModalProps {
@@ -16,6 +17,7 @@ interface MaterialCostModalProps {
   payment: PaymentRecord | null;
   context?: MaterialCostPaymentHistoryRow | null;
   currency: Currency;
+  doctors: Doctor[];
   onClose: () => void;
   onSaved: (summary: PaymentCostSummary & { paymentId: string; patientId?: string | null }) => void | Promise<void>;
 }
@@ -27,7 +29,7 @@ const getTotal = (items: CostDraft[]) => items.filter(isVisible).reduce((sum, it
 const getRecordActivity = (context?: MaterialCostPaymentHistoryRow | null) =>
   context?.treatmentNames.filter(Boolean).join(' + ') || 'Payment / balance collection';
 
-const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, payment, context, currency, onClose, onSaved }) => {
+const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, payment, context, currency, doctors, onClose, onSaved }) => {
   const [items, setItems] = React.useState<CostDraft[]>([createEmptyDraft('material'), createEmptyDraft('lab'), createEmptyDraft('special_doctor')]);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -48,7 +50,7 @@ const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, payment, 
     setLoading(true); setSaving(false); setError(null); setLoadFailed(false);
     api.materialCosts.getByPaymentId(payment.id).then(({ items: saved }) => {
       if (cancelled) return;
-      const drafts: CostDraft[] = saved.map((item) => ({ localId: item.id, materialName: item.materialName, costType: item.costType, costAmount: item.costAmount, quantity: item.quantity, isPristine: false }));
+      const drafts: CostDraft[] = saved.map((item) => ({ localId: item.id, materialName: item.materialName, costType: item.costType, costAmount: item.costAmount, quantity: item.quantity, doctorId: item.doctorId || null, isPristine: false }));
       if (!drafts.some((item) => item.costType === 'material')) drafts.push(createEmptyDraft('material'));
       if (!drafts.some((item) => item.costType === 'lab')) drafts.push(createEmptyDraft('lab'));
       if (!drafts.some((item) => item.costType === 'special_doctor')) drafts.push(createEmptyDraft('special_doctor'));
@@ -152,7 +154,7 @@ const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, payment, 
       if (!session.staffAuthToken) throw new Error('Your staff session needs a one-time refresh. Sign out and sign back in, then save again.');
       const incomplete = visibleItems.find((item) => !item.materialName.trim() || Number(item.costAmount) <= 0 || Number(item.quantity) <= 0);
       if (incomplete) throw new Error(`Each ${incomplete.costType === 'lab' ? 'lab cost' : incomplete.costType === 'special_doctor' ? 'special doctor cost' : 'material'} needs a name, a cost greater than zero, and a quantity greater than zero.`);
-      const result = await api.materialCosts.upsertForPayment(payment, visibleItems.map((item) => ({ materialName: item.materialName.trim(), costType: item.costType, costAmount: Number(item.costAmount), quantity: Number(item.quantity) })), { userId: session.userId, username: session.username, authToken: session.staffAuthToken });
+      const result = await api.materialCosts.upsertForPayment(payment, visibleItems.map((item) => ({ materialName: item.materialName.trim(), costType: item.costType, costAmount: Number(item.costAmount), quantity: Number(item.quantity), doctorId: item.costType === 'special_doctor' ? item.doctorId || null : null })), { userId: session.userId, username: session.username, authToken: session.staffAuthToken });
       const materialRows = result.items.filter((item) => item.costType === 'material');
       const labRows = result.items.filter((item) => item.costType === 'lab');
       const specialDoctorRows = result.items.filter((item) => item.costType === 'special_doctor');
@@ -184,12 +186,12 @@ const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, payment, 
       <div className="flex items-center justify-between gap-3"><div><h3 id={`${costType}-heading`} className="text-sm font-black text-slate-900">{label}</h3><p className="mt-0.5 text-xs text-slate-500">{lab ? 'External laboratory services and fabrication costs for this payment.' : specialDoctor ? 'Specialist or visiting doctor fees for this payment.' : 'Materials associated with this payment record.'}</p></div><span className={`rounded-full px-3 py-1 text-xs font-black ${lab ? 'bg-violet-50 text-violet-700' : specialDoctor ? 'bg-amber-50 text-amber-700' : 'bg-cyan-50 text-cyan-700'}`}>{formatCurrency(lab ? labTotal : specialDoctor ? specialDoctorTotal : materialTotal, currency)}</span></div>
       <div className="hidden grid-cols-[minmax(0,1fr)_150px_120px_44px] gap-3 px-1 text-[10px] font-black uppercase tracking-wider text-slate-400 sm:grid"><span>{lab ? 'Lab / Service' : specialDoctor ? 'Doctor / Service' : 'Material'}</span><span>Unit Cost</span><span>Quantity</span><span /></div>
       {items.filter((item) => item.costType === costType).map((item, index) => <div key={item.localId} className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-[minmax(0,1fr)_150px_120px_44px] sm:border-0 sm:bg-transparent sm:p-0">
-        <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-name`}>{lab ? 'Lab / Service' : specialDoctor ? 'Doctor / Service' : 'Material'}</label><input id={`${item.localId}-name`} aria-label={`${label} row ${index + 1} name`} type="text" maxLength={255} value={item.materialName} onChange={(e) => updateItem(item.localId, { materialName: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder={lab ? 'e.g. Crown fabrication' : specialDoctor ? 'e.g. Visiting implant surgeon' : 'e.g. Composite resin'} /></div>
+        <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-name`}>{lab ? 'Lab / Service' : specialDoctor ? 'Doctor / Service' : 'Material'}</label>{specialDoctor ? <SearchableSelect value={item.doctorId || ''} onChange={(value) => updateItem(item.localId, { doctorId: value || null, materialName: value ? (doctors.find((doctor) => doctor.id === value)?.name || item.materialName) : item.materialName })} options={doctors.map((doctor) => ({ value: doctor.id || '', label: doctor.name }))} placeholder="Assign special doctor" searchPlaceholder="Search doctors..." emptyMessage="No doctors found" ariaLabel={`${label} row ${index + 1} doctor`} /> : <input id={`${item.localId}-name`} aria-label={`${label} row ${index + 1} name`} type="text" maxLength={255} value={item.materialName} onChange={(e) => updateItem(item.localId, { materialName: e.target.value })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder={lab ? 'e.g. Crown fabrication' : 'e.g. Composite resin'} />}</div>
         <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-cost`}>Unit Cost</label><input id={`${item.localId}-cost`} aria-label={`${label} row ${index + 1} unit cost`} type="number" min="0.01" step="0.01" value={item.costAmount || ''} onChange={(e) => updateItem(item.localId, { costAmount: Number(e.target.value || 0) })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder="0" /></div>
         <div><label className="mb-1 block text-xs font-bold text-slate-500 sm:hidden" htmlFor={`${item.localId}-quantity`}>Quantity</label><input id={`${item.localId}-quantity`} aria-label={`${label} row ${index + 1} quantity`} type="number" min="0.01" step="0.01" value={item.quantity || ''} onChange={(e) => updateItem(item.localId, { quantity: Number(e.target.value || 0) })} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[var(--hover-500)] focus:ring-4 focus:ring-[var(--hover-100)]" placeholder="1" /></div>
         <button type="button" onClick={() => removeItem(item.localId, costType)} className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 sm:w-11" aria-label={`Remove ${label.toLowerCase()} row`}><Trash2 size={16} /></button>
       </div>)}
-      <button type="button" onClick={() => setItems((current) => [...current, createEmptyDraft(costType)])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] px-4 py-2.5 text-sm font-bold text-[var(--hover-700)] hover:bg-[var(--hover-100)]"><Plus size={16} />Add {lab ? 'Lab Cost' : 'Material'}</button>
+      <button type="button" onClick={() => setItems((current) => [...current, createEmptyDraft(costType)])} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] px-4 py-2.5 text-sm font-bold text-[var(--hover-700)] hover:bg-[var(--hover-100)]"><Plus size={16} />Add {lab ? 'Lab Cost' : specialDoctor ? 'Special Doctor Cost' : 'Material'}</button>
     </section>;
   };
 

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowLeftRight, Beaker, Package, Plus, RotateCw, Search, Stethoscope } from 'lucide-react';
-import type { ClinicalRecord, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
+import type { ClinicalRecord, Doctor, PaymentCostSummary, PaymentRecord, TreatmentCostType } from '../types';
 import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
 import { toLocalISODate } from '../utils/auditLogFilters';
@@ -14,6 +14,7 @@ import ProgressBar from './ProgressBar';
 interface MaterialCostViewProps {
   records: ClinicalRecord[];
   paymentRecords: PaymentRecord[];
+  doctors: Doctor[];
   loading: boolean;
   currency: Currency;
   canManageMaterials: boolean;
@@ -26,11 +27,11 @@ interface MaterialCostViewProps {
 
 type DateFilter = 'all' | 'tomorrow' | 'today' | 'custom';
 const isDatabasePaymentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-const typedTotal = (summary: PaymentCostSummary | undefined, type: TreatmentCostType) => Number(
+  const typedTotal = (summary: PaymentCostSummary | undefined, type: TreatmentCostType) => Number(
   type === 'lab' ? summary?.labTotal : type === 'special_doctor' ? summary?.specialDoctorTotal : summary?.materialTotal
 ) || 0;
 
-const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, cacheScope, cacheRevision = 0 }) => {
+const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, cacheScope, cacheRevision = 0 }) => {
   const requestVersion = React.useRef(0);
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const tomorrow = useMemo(() => {
@@ -152,7 +153,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
       </article>)}</div>
     </>}
     {!loading && filteredRows.length > 0 && <Pagination totalItems={filteredRows.length} itemsPerPage={itemsPerPage} currentPage={currentPage} onPageChange={setCurrentPage} showAll={showAll} onToggleShowAll={() => setShowAll(!showAll)} />}
-    <MaterialCostModal isOpen={!!editingRow} payment={editingRow?.payment || null} context={editingRow} currency={currency} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
+    <MaterialCostModal isOpen={!!editingRow} payment={editingRow?.payment || null} context={editingRow} currency={currency} doctors={doctors} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
   </div>;
 };
 

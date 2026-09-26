@@ -140,6 +140,7 @@ export type TreatmentCostType = 'material' | 'lab' | 'special_doctor';
 export interface PatientMaterialCost {
   id: string;
   auditLogId: string;
+  doctorId?: string | null;
   materialName: string;
   costType: TreatmentCostType;
   costAmount: number;
@@ -156,6 +157,13 @@ export interface PatientMaterialCostInput {
   costType: TreatmentCostType;
   costAmount: number;
   quantity: number;
+  doctorId?: string | null;
+}
+
+export interface DoctorSpecialFee {
+  id: string;
+  paymentDate: string;
+  totalAmount: number;
 }
 
 export interface MaterialLabCostPreset {
@@ -581,6 +589,8 @@ export interface LoyaltyTransaction {
   type: 'EARNED' | 'REDEEMED' | 'EXPIRED';
   description: string;
   date: string;
+  source_type?: 'MEDICINE_SALE' | 'TREATMENT' | null;
+  source_id?: string | null;
 }
 
 export interface Expense {

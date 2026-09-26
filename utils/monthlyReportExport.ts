@@ -26,7 +26,7 @@ const addPdfGroupTable = (doc: jsPDF, title: string, groups: MonthlyReportGroup[
   doc.text(title, 14, startY);
   autoTable(doc, {
     startY: startY + 4,
-    head: [['Category', 'Treatments', 'Patients', 'Total Cost', 'Payment', 'Total Cost', 'Net Profit', 'Margin']],
+    head: [['Category', 'Treatments', 'Patients', 'Production', 'Payment', 'Total Cost', 'Net Profit', 'Margin']],
     body: groups.slice(0, 15).map(group => [
       group.name, String(group.treatments), String(group.patients), formatCurrency(group.production, metadata.currency),
       formatCurrency(group.payment, metadata.currency), formatCurrency(group.totalCost, metadata.currency),
@@ -42,7 +42,7 @@ const addPdfGroupTable = (doc: jsPDF, title: string, groups: MonthlyReportGroup[
 
 export const exportMonthlyReportToPDF = (report: MonthlyReport, metadata: MonthlyReportMetadata) => {
   const generatedAt = metadata.generatedAt || new Date();
-  const detailRows = groupMonthlyReportDetailRows(report.rows);
+  const detailRows = groupMonthlyReportDetailRows(report.detailRows || report.rows);
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3', compress: true } as any);
   const drawingDoc = doc as any;
   const width = doc.internal.pageSize.width;
@@ -96,12 +96,12 @@ export const exportMonthlyReportToPDF = (report: MonthlyReport, metadata: Monthl
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
       0: { cellWidth: 18 }, 1: { cellWidth: 25 }, 2: { cellWidth: 9, halign: 'center' }, 3: { cellWidth: 20 },
-      4: { cellWidth: 17 }, 5: { cellWidth: 18 }, 6: { cellWidth: 18 }, 7: { cellWidth: 31 }, 8: { cellWidth: 25 },
+      4: { cellWidth: 16 }, 5: { cellWidth: 18 }, 6: { cellWidth: 17 }, 7: { cellWidth: 29 }, 8: { cellWidth: 23 },
       9: { halign: 'right' }, 10: { halign: 'right' }, 11: { halign: 'right' }, 12: { halign: 'right' },
-      13: { halign: 'right' }, 14: { halign: 'right' }, 15: { halign: 'right' }, 16: { halign: 'right' }
+      13: { halign: 'right' }, 14: { halign: 'right' }, 15: { halign: 'right' }, 16: { halign: 'right' }, 17: { halign: 'right' }
     },
     didParseCell: hook => {
-      if (hook.section === 'body' && hook.column.index === 16 && detailRows[hook.row.index]?.netProfit < 0) {
+      if (hook.section === 'body' && hook.column.index === 17 && detailRows[hook.row.index]?.netProfit < 0) {
         hook.cell.styles.textColor = [190, 24, 93];
         hook.cell.styles.fontStyle = 'bold';
       }

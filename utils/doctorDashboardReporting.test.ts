@@ -86,6 +86,17 @@ describe('doctor dashboard reporting', () => {
     expect(summary).toMatchObject({ treatedPatientCount: 0, completedAppointmentCount: 0, treatmentCount: 0, production: 0, commission: 0 });
   });
 
+  it('adds assigned special doctor fees to total doctor revenue by payment date', () => {
+    const summary = buildDoctorReportingSummary(
+      [],
+      [treatment({ doctorEarningEntries: [{ paymentId: 'payment-1', treatmentId: 'treatment-1', doctorId: 'doctor-1', paymentDate: '2026-08-10', treatmentDate: '2026-08-10', calculationMode: 'percentage', allocatedPayment: 100, commissionRate: 20, earnings: 20 }] })],
+      { startDate: '2026-08-10', endDate: '2026-08-10' },
+      [{ id: 'fee-1', paymentDate: '2026-08-10', totalAmount: 35 }]
+    );
+    expect(summary.specialDoctorFees).toBe(35);
+    expect(summary.totalDoctorRevenue).toBe(55);
+  });
+
   it('does not include operational today and tomorrow appointments outside the reporting range', () => {
     const summary = buildDoctorReportingSummary(
       [appointment({ id: 'today', date: '2026-08-10' }), appointment({ id: 'tomorrow', date: '2026-08-11' })],

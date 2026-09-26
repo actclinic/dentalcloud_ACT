@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Users, Activity, CalendarCheck2, TrendingUp, DollarSign, CalendarRange, RotateCcw } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
-import { Appointment, ClinicalRecord, Location, Patient } from '../types';
+import { Appointment, ClinicalRecord, DoctorSpecialFee, Location, Patient } from '../types';
 import PatientQRScanButton from './PatientQRScanButton';
 import {
   buildDoctorReportingSummary,
@@ -20,6 +20,7 @@ interface DoctorHomeViewProps {
   patients: Patient[];
   locations: Location[];
   activeLocationIds?: string[];
+  specialDoctorFees?: DoctorSpecialFee[];
   onSelectPatient: (patient: Patient) => void;
   onOpenAppointmentsForDate: (filter: 'today' | 'tomorrow') => void;
 }
@@ -31,7 +32,8 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
   locations,
   activeLocationIds = [],
   onSelectPatient,
-  onOpenAppointmentsForDate
+  onOpenAppointmentsForDate,
+  specialDoctorFees = []
 }) => {
   const [calendarNow, setCalendarNow] = useState(() => new Date());
   const today = useMemo(() => toLocalISODate(calendarNow), [calendarNow]);
@@ -59,8 +61,8 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
   const [rangeError, setRangeError] = useState('');
 
   const reportingSummary = useMemo(
-    () => buildDoctorReportingSummary(appointments, treatmentRecords, appliedRange),
-    [appointments, treatmentRecords, appliedRange]
+    () => buildDoctorReportingSummary(appointments, treatmentRecords, appliedRange, specialDoctorFees),
+    [appointments, treatmentRecords, appliedRange, specialDoctorFees]
   );
 
   const applyRange = (range: DoctorReportingRange) => {
@@ -310,6 +312,22 @@ const DoctorHomeView: React.FC<DoctorHomeViewProps> = ({
               ? 'Includes legacy earnings dated by treatment where payment-date ledger data is unavailable.'
               : 'Based on payments collected in this period.'}
           </p>
+        </div>
+        <div className="rounded-xl border border-amber-100 bg-white p-3">
+          <div className="mb-1 flex items-center gap-2 text-amber-600">
+            <DollarSign className="h-4 w-4" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide">Special Doctor Fees</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{reportingSummary.specialDoctorFees.toLocaleString()} MMK</p>
+          <p className="mt-1 text-xs text-gray-500">Separate from commission</p>
+        </div>
+        <div className="rounded-xl border border-violet-100 bg-white p-3">
+          <div className="mb-1 flex items-center gap-2 text-violet-600">
+            <DollarSign className="h-4 w-4" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide">Total Doctor Revenue</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{reportingSummary.totalDoctorRevenue.toLocaleString()} MMK</p>
+          <p className="mt-1 text-xs text-gray-500">Commission + special doctor fees</p>
         </div>
 
       </div>
