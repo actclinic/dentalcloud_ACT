@@ -98,30 +98,46 @@ To run this project locally, follow these steps:
 
 ## 🐳 Docker Deployment
 
-To deploy this application using Docker:
+The production Compose configuration runs the static site with nginx and applies
+bounded CPU, memory, swap, PID, temporary-storage, and log usage. It also uses a
+read-only root filesystem, drops Linux capabilities, enables health checks, and
+restarts the service after a process or host failure.
 
-1.  **Build the Docker image:**
+1.  **Build and start the production service:**
     ```bash
-    docker build -t dentalcloud-pro .
+    docker compose -f compose.production.yml up -d --build
     ```
 
-2.  **Build with environment variables:**
+2.  **Optional build-time AI configuration:**
     ```bash
-    docker build --build-arg AI_API_KEY=your_api_key_here -t dentalcloud-pro .
+    AI_API_KEY=your_api_key_here docker compose -f compose.production.yml up -d --build
     ```
 
-3.  **Run the container:**
+    Vite embeds this value in browser JavaScript. It is **not a secret** and must
+    not be a privileged provider credential.
+
+3.  **Inspect status, health, and resource use:**
     ```bash
-    docker run -d \
-    -p 3000:3000 \
-    --name dentalcloud \
-    --restart unless-stopped \
-    -v dental_data:/app/data \
-    dentalcloud-pro
+    docker compose -f compose.production.yml ps
+    docker stats dentalcloud-web
+    docker inspect --format='{{.State.Health.Status}}' dentalcloud-web
     ```
 
 4.  **Access the application:**
-    Open your browser and navigate to `http://localhost:3000`
+    Open your browser and navigate to `http://localhost:18082`
+
+The defaults are `0.50` CPU, a `128 MiB` memory/swap ceiling, a `64 MiB` memory
+reservation, and 100 PIDs. Override them when necessary:
+
+```bash
+DENTALCLOUD_CPU_LIMIT=1.0 DENTALCLOUD_MEMORY_LIMIT=256m \
+docker compose -f compose.production.yml up -d
+```
+
+These controls contain failures; they cannot guarantee years of uninterrupted
+operation. Keep Docker and the host patched, monitor health/OOM/restart counts,
+test backups for Supabase and other persistent services, and schedule controlled
+maintenance. The frontend container itself stores no persistent application data.
 
 ---
 

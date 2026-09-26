@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { backendConnection } from './backendConnection';
 
-// Configuration with hardcoded keys to ensure immediate connectivity
-const SUPABASE_URL = 'https://supabaseact.dentalcloud.asia';
+// In production, use the same-origin nginx gateway so browser API requests do
+// not depend on Cloudflare's handling of cross-origin OPTIONS preflights.
+const SUPABASE_URL = typeof window !== 'undefined'
+  ? `${window.location.origin}/supabase`
+  : 'https://supabaseact.dentalcloud.asia';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgzOTIwMTM5LCJleHAiOjQxMDI0NDQ3OTl9.sWZxqAefSfaaAepGZ8VI4OIG3FVgt0rjAxpYvqamMnk';
 
 backendConnection.configure(SUPABASE_URL, globalThis.fetch.bind(globalThis));

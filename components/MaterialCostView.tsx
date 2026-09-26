@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { formatCurrency, type Currency } from '../utils/currency';
 import { toLocalISODate } from '../utils/auditLogFilters';
 import { formatDoctorName } from '../utils/doctorName';
+import { dataCache } from '../utils/dataCache';
 import { buildMaterialCostPaymentHistoryRows, filterMaterialCostPaymentHistoryRows, type MaterialCostPaymentHistoryRow } from '../utils/materialCostPaymentHistory';
 import Pagination from './Pagination';
 import MaterialCostModal from './MaterialCostModal';
@@ -20,6 +21,8 @@ interface MaterialCostViewProps {
   onRefresh: () => void | Promise<void>;
   onCostsSaved?: (patientId?: string | null) => Promise<void> | void;
   syncProgress?: number | null;
+  cacheScope: string;
+  cacheRevision?: number;
 }
 
 type DateFilter = 'all' | 'tomorrow' | 'today' | 'custom';
@@ -28,7 +31,7 @@ const isDatabasePaymentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a
   type === 'lab' ? summary?.labTotal : type === 'special_doctor' ? summary?.specialDoctorTotal : summary?.materialTotal
 ) || 0;
 
-const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null }) => {
+const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, cacheScope, cacheRevision = 0 }) => {
   const requestVersion = React.useRef(0);
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const tomorrow = useMemo(() => {
@@ -55,16 +58,27 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
 
   const loadSummaries = React.useCallback(async (paymentIds: string[]) => {
     const version = ++requestVersion.current;
-    if (!paymentIds.length) return;
+    if (!paymentIds.length) {
+      setSummaries({});
+      return;
+    }
     try {
-      const next = await api.materialCosts.getTotalsByPaymentIds(paymentIds);
+      const uniqueIds = Array.from(new Set(paymentIds.filter(isDatabasePaymentId))).sort();
+      const cacheKey = `mls-payments:${cacheScope}:${uniqueIds.join(',')}`;
+      const next = await dataCache.getOrLoad(cacheKey, async () => {
+        const loaded = await api.materialCosts.getTotalsByPaymentIds(uniqueIds);
+        return Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] || {
+          auditLogId: '', materialTotal: 0, materialItemCount: 0, labTotal: 0, labItemCount: 0,
+          specialDoctorTotal: 0, specialDoctorItemCount: 0, totalAmount: 0, itemCount: 0
+        }]));
+      }, 120_000);
       if (version === requestVersion.current) setSummaries((current) => {
         const updated = { ...current };
         paymentIds.forEach((paymentId) => { delete updated[paymentId]; });
         return { ...updated, ...next };
       });
     } catch (error) { console.warn('Unable to load payment MLS totals.', error); }
-  }, []);
+  }, [cacheScope, cacheRevision]);
   React.useEffect(() => { if (!loading) void loadSummaries(visibleRows.map((row) => row.paymentId)); }, [loading, loadSummaries, visibleRows]);
   React.useEffect(() => setCurrentPage(1), [dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm, paymentRecords]);
 
@@ -93,7 +107,6 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
   const saveSummary = async (summary: PaymentCostSummary & { paymentId: string; patientId?: string | null }) => {
     setSummaries((current) => ({ ...current, [summary.paymentId]: summary }));
     if (onCostsSaved) await onCostsSaved(summary.patientId); else await onRefresh();
-    await loadSummaries([summary.paymentId]);
   };
   const refresh = async () => {
     if (refreshing || loading) return;

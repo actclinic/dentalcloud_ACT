@@ -54,7 +54,7 @@ class BackendConnectionMonitor {
       const controller = new AbortController();
       const timeout = globalThis.setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
       try {
-        const response = await this.fetchImplementation!(`${this.backendUrl}/auth/v1/health`, {
+        const response = await this.fetchImplementation!(`${this.backendUrl}/storage/v1/status`, {
           method: 'GET',
           signal: controller.signal,
         });

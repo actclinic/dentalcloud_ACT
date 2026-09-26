@@ -33,6 +33,8 @@ dist-ssr
 Dockerfile
 .dockerignore
 docker-compose.yml
+compose*.yml
+compose*.yaml
 
 # Documentation
 *.md

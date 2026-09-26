@@ -23,7 +23,7 @@ describe('backendConnection', () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     await expect(backendConnection.checkNow()).resolves.toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith('https://clinic.example/auth/v1/health', expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenCalledWith('https://clinic.example/storage/v1/status', expect.objectContaining({ method: 'GET' }));
     expect(backendConnection.getStatus()).toBe('connected');
   });
 

@@ -1,0 +1,79 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dentalcloud-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - name: Check out the deployment commit
+        uses: actions/checkout@v4
+
+      - name: Build immutable production image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "dentalcloud-pro:${GITHUB_SHA}" \
+            .
+
+      - name: Smoke-test the image
+        run: |
+          docker run --detach --name dentalcloud-smoke \
+            --read-only \
+            --tmpfs /tmp:size=16m,mode=1777,noexec,nosuid,nodev \
+            "dentalcloud-pro:${GITHUB_SHA}"
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' dentalcloud-smoke)"
+            if [ "$status" = healthy ]; then exit 0; fi
+            if [ "$status" = unhealthy ]; then docker logs dentalcloud-smoke; exit 1; fi
+            sleep 2
+          done
+          docker logs dentalcloud-smoke
+          exit 1
+
+      - name: Package the image
+        run: docker image save "dentalcloud-pro:${GITHUB_SHA}" | gzip -1 > "dentalcloud-${GITHUB_SHA}.tar.gz"
+
+      - name: Configure pinned SSH access
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 0600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+
+      - name: Upload release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh_options=(-i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes)
+          scp "${ssh_options[@]}" \
+            "dentalcloud-${GITHUB_SHA}.tar.gz" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:/opt/dentalcloud/incoming/dentalcloud-${GITHUB_SHA}.tar.gz"
+      - name: Deploy and verify with automatic rollback
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sudo /usr/local/sbin/deploy-dentalcloud '${GITHUB_SHA}'"

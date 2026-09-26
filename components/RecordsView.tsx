@@ -16,6 +16,7 @@ import EditPaymentModal from './EditPaymentModal';
 import { api } from '../services/api';
 import { calculateMaterialAdjustedDoctorEarnings } from '../utils/materialCostCalculations';
 import ProgressBar from './ProgressBar';
+import { dataCache } from '../utils/dataCache';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -35,9 +36,11 @@ interface RecordsViewProps {
   canEditPayments?: boolean;
   onPaymentCorrected?: (payment: PaymentRecord) => void | Promise<void>;
   onPaymentVoided?: (result: { paymentId: string; patientId: string; newBalance: number }) => void | Promise<void>;
+  cacheScope: string;
+  cacheRevision?: number;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, syncProgress = null, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided }) => {
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, syncProgress = null, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided, cacheScope, cacheRevision = 0 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -191,7 +194,15 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
     }
 
     let isMounted = true;
-    void api.materialCosts.getTotalsByTreatmentIds(treatmentIds)
+    const uniqueIds = Array.from(new Set(treatmentIds)).sort();
+    const cacheKey = `mls-treatments:${cacheScope}:${uniqueIds.join(',')}`;
+    void dataCache.getOrLoad(cacheKey, async () => {
+      const loaded = await api.materialCosts.getTotalsByTreatmentIds(uniqueIds);
+      return Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] || {
+        auditLogId: '', materialTotal: 0, materialItemCount: 0, labTotal: 0, labItemCount: 0,
+        specialDoctorTotal: 0, specialDoctorItemCount: 0, totalAmount: 0, itemCount: 0
+      }]));
+    }, 120_000)
       .then((summaries) => {
         if (!isMounted) return;
         setMaterialSummaries((current) => {
@@ -209,7 +220,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
     return () => {
       isMounted = false;
     };
-  }, [paginatedRows, loading]);
+  }, [paginatedRows, loading, cacheScope, cacheRevision]);
 
   const filteredSummary = useMemo(() => {
     return filteredRows.reduce(

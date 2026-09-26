@@ -482,10 +482,34 @@ const App: React.FC = () => {
   const paymentSubmissionKeyRef = React.useRef<string | null>(null);
   const dashboardFetchRequestRef = React.useRef(0);
   const initialDataFetchRequestRef = React.useRef(0);
+  const currentLocationIdRef = React.useRef(currentLocationId);
+  currentLocationIdRef.current = currentLocationId;
+  const medicinesFetchRequestRef = React.useRef(0);
+  const expensesFetchRequestRef = React.useRef(0);
+  const medicineSalesFetchRequestRef = React.useRef(0);
+  const auditFetchRequestRef = React.useRef(0);
   const treatmentHistoryRequestRef = React.useRef(0);
   const medicineHistoryRequestRef = React.useRef(0);
   const paymentHistoryRequestRef = React.useRef(0);
   const medicineUndoInFlightRef = React.useRef(new Set<string>());
+  const [materialCostCacheRevision, setMaterialCostCacheRevision] = useState(0);
+
+  const getClinicCacheScope = (locationId = currentLocationId): string => {
+    const session = auth.getSession();
+    return `${session?.userId || 'anonymous'}:${session?.doctor_id || 'all'}:${locationId || 'none'}`;
+  };
+
+  const getClinicCacheKey = (domain: string, locationId = currentLocationId): string =>
+    `clinic:${getClinicCacheScope(locationId)}:${domain}`;
+
+  const invalidateMaterialCostCaches = (locationId = currentLocationId) => {
+    const scope = getClinicCacheScope(locationId);
+    dataCache.invalidatePrefix(`mls-payments:${scope}:`);
+    dataCache.invalidatePrefix(`mls-treatments:${scope}:`);
+    dataCache.invalidate(getClinicCacheKey('expenses', locationId));
+    dataCache.invalidate(getClinicCacheKey('audit', locationId));
+    setMaterialCostCacheRevision((current) => current + 1);
+  };
   
   // -- Selection State --
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -1487,6 +1511,7 @@ const App: React.FC = () => {
     medicineHistoryRequestRef.current += 1;
     paymentHistoryRequestRef.current += 1;
     resetStaffSession();
+    dataCache.clear();
     setCurrentView('dashboard');
     localStorage.removeItem('currentView');
     // Reset all data state
@@ -1825,6 +1850,12 @@ const App: React.FC = () => {
         setPaymentRecords(isDoctorSession ? [] : mergeLegacyPaymentRecords(paymentsData, locId));
         setAppointmentRescheduleLogs(isDoctorSession ? [] : rescheduleLogsData);
         setMedicines(medData);
+        dataCache.set(getClinicCacheKey('audit', locId), {
+          records: doctorRecords,
+          payments: isDoctorSession ? [] : paymentsData,
+          rescheduleLogs: isDoctorSession ? [] : rescheduleLogsData
+        }, 30_000);
+        dataCache.set(getClinicCacheKey('inventory', locId), medData, 60_000);
         setLoyaltyRules([]);
         setExpenses([]);
             setMedicineSales([]);
@@ -1849,6 +1880,8 @@ const App: React.FC = () => {
             setLoyaltyRules(loyaltyData);
             setExpenses(expenseData);
             setMedicineSales(salesData);
+            dataCache.set(getClinicCacheKey('expenses', locId), expenseData, 60_000);
+            dataCache.set(getClinicCacheKey('medicine-sales', locId), salesData, 60_000);
             advanceInitialSync(6);
           } catch (deferredErr) {
             console.warn('Deferred data fetch failed:', deferredErr);
@@ -2039,11 +2072,11 @@ const App: React.FC = () => {
       fetchUsers();
     }
     if (currentView === 'inventory' && canAccessView('inventory')) {
-      fetchMedicines();
+      void fetchMedicines();
     }
     if (currentView === 'expenses' && canAccessView('expenses')) {
-      fetchExpenses();
-      fetchMedicineSales();
+      void fetchExpenses();
+      void fetchMedicineSales();
     }
     if (currentView === 'ai-assistant' && canAccessView('ai-assistant')) {
       fetchAssistantData().catch(err => {
@@ -2088,43 +2121,63 @@ const App: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [isAuthenticated, currentLocationId, currency, locations]);
 
-  const fetchMedicines = async () => {
+  const fetchMedicines = async (force = false) => {
+    const requestId = ++medicinesFetchRequestRef.current;
     try {
-      if (!currentLocationId) {
+      const locationId = currentLocationId;
+      if (!locationId) {
         setMedicines([]);
         setTopSellingMedicines([]);
         return;
       }
-      const medData = await api.medicines.getAll(currentLocationId);
+      const inventoryKey = getClinicCacheKey('inventory', locationId);
+      const topSellingKey = getClinicCacheKey('top-selling', locationId);
+      if (force) {
+        dataCache.invalidate(inventoryKey);
+        dataCache.invalidate(topSellingKey);
+      }
+      const [medData, topSellingData] = await Promise.all([
+        dataCache.getOrLoad(inventoryKey, () => api.medicines.getAll(locationId), 60_000),
+        dataCache.getOrLoad(topSellingKey, () => api.medicines.getTopSelling(locationId, 10), 180_000)
+      ]);
+      if (requestId !== medicinesFetchRequestRef.current || currentLocationIdRef.current !== locationId) return;
       setMedicines(medData);
-      // Fetch top selling medicines for reporting
-      const topSellingData = await api.medicines.getTopSelling(currentLocationId, 10);
       setTopSellingMedicines(topSellingData);
     } catch (err: any) {
       console.warn('Error fetching medicines:', err);
     }
   };
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = async (force = false) => {
+    const requestId = ++expensesFetchRequestRef.current;
     try {
-      if (!currentLocationId) {
+      const locationId = currentLocationId;
+      if (!locationId) {
         setExpenses([]);
         return;
       }
-      const expenseData = await api.expenses.getAll(currentLocationId);
+      const key = getClinicCacheKey('expenses', locationId);
+      if (force) dataCache.invalidate(key);
+      const expenseData = await dataCache.getOrLoad(key, () => api.expenses.getAll(locationId), 60_000);
+      if (requestId !== expensesFetchRequestRef.current || currentLocationIdRef.current !== locationId) return;
       setExpenses(expenseData);
     } catch (err: any) {
       console.warn('Error fetching expenses:', err);
     }
   };
 
-  const fetchMedicineSales = async () => {
+  const fetchMedicineSales = async (force = false) => {
+    const requestId = ++medicineSalesFetchRequestRef.current;
     try {
-      if (!currentLocationId) {
+      const locationId = currentLocationId;
+      if (!locationId) {
         setMedicineSales([]);
         return;
       }
-      const salesData = await api.medicines.getSales(currentLocationId);
+      const key = getClinicCacheKey('medicine-sales', locationId);
+      if (force) dataCache.invalidate(key);
+      const salesData = await dataCache.getOrLoad(key, () => api.medicines.getSales(locationId), 60_000);
+      if (requestId !== medicineSalesFetchRequestRef.current || currentLocationIdRef.current !== locationId) return;
       setMedicineSales(salesData);
     } catch (err: any) {
       console.warn('Error fetching medicine sales:', err);
@@ -2221,14 +2274,21 @@ const App: React.FC = () => {
       });
   };
 
-  const fetchGlobalRecords = async () => {
-    setLoading(true);
+  const fetchGlobalRecords = async (force = false) => {
+    const requestId = ++auditFetchRequestRef.current;
+    const locationId = currentLocationId;
+    const key = getClinicCacheKey('audit', locationId);
+    if (force) dataCache.invalidate(key);
     try {
-      const [records, payments, rescheduleLogs] = await Promise.all([
-        api.treatments.getAllRecords(currentLocationId || undefined, { limit: null }),
-        safeLoad('Audit log payments', api.finance.getPayments(currentLocationId || undefined), []),
-        safeLoad('Audit log reschedule logs', api.appointmentRescheduleLogs.getAll(currentLocationId || undefined), [])
-      ]);
+      const { records, payments, rescheduleLogs } = await dataCache.getOrLoad(key, async () => {
+        const [nextRecords, nextPayments, nextRescheduleLogs] = await Promise.all([
+          api.treatments.getAllRecords(locationId || undefined, { limit: null }),
+          safeLoad('Audit log payments', api.finance.getPayments(locationId || undefined), []),
+          safeLoad('Audit log reschedule logs', api.appointmentRescheduleLogs.getAll(locationId || undefined), [])
+        ]);
+        return { records: nextRecords, payments: nextPayments, rescheduleLogs: nextRescheduleLogs };
+      }, 30_000);
+      if (requestId !== auditFetchRequestRef.current || currentLocationIdRef.current !== locationId) return;
       const session = auth.getSession();
       if (session?.role === 'doctor' && session.doctor_id) {
         setGlobalRecords(records.filter((record) => record.doctor_id === session.doctor_id));
@@ -2236,13 +2296,13 @@ const App: React.FC = () => {
         setAppointmentRescheduleLogs([]);
       } else {
         setGlobalRecords(records);
-        setPaymentRecords(mergeLegacyPaymentRecords(payments, currentLocationId || undefined));
+        setPaymentRecords(mergeLegacyPaymentRecords(payments, locationId || undefined));
         setAppointmentRescheduleLogs(rescheduleLogs);
       }
     } catch (err: any) {
       console.error(err);
     } finally {
-      setLoading(false);
+      // Keep existing rows visible while a stale audit dataset refreshes.
     }
   };
 
@@ -2254,8 +2314,9 @@ const App: React.FC = () => {
       await fetchGlobalRecords();
       return;
     }
+    const locationId = currentLocationId;
     try {
-      const records = await api.treatments.getAllRecords(currentLocationId || undefined, {
+      const records = await api.treatments.getAllRecords(locationId || undefined, {
         limit: null,
         patientId
       });
@@ -2263,12 +2324,13 @@ const App: React.FC = () => {
       const scopedRecords = session?.role === 'doctor' && session.doctor_id
         ? records.filter((record) => record.doctor_id === session.doctor_id)
         : records;
+      if (currentLocationIdRef.current !== locationId) return;
       setGlobalRecords((prev) => [...prev.filter((record) => record.patient_id !== patientId), ...scopedRecords].sort((a, b) => (
         String(b.date || '').localeCompare(String(a.date || '')) || String(a.id || '').localeCompare(String(b.id || ''))
       )));
     } catch (err) {
       console.error('Patient-scoped record refresh failed; falling back to a full reload.', err);
-      await fetchGlobalRecords();
+      await fetchGlobalRecords(true);
     }
   };
 
@@ -2301,7 +2363,9 @@ const App: React.FC = () => {
       setSelectedPatient({ ...selectedPatient, balance: updatedPatientBalance });
     }
 
-    await fetchGlobalRecords();
+    dataCache.invalidate(getClinicCacheKey('audit'));
+    invalidateMaterialCostCaches();
+    await fetchGlobalRecords(true);
   };
 
   const handlePaymentVoided = async ({ paymentId, patientId, newBalance }: { paymentId: string; patientId: string; newBalance: number }) => {
@@ -2313,11 +2377,13 @@ const App: React.FC = () => {
     setPatients((prev) => prev.map((patient) => patient.id === patientId ? { ...patient, balance: newBalance } : patient));
     setDashboardPatients((prev) => prev.map((patient) => patient.id === patientId ? { ...patient, balance: newBalance } : patient));
     if (selectedPatient?.id === patientId) setSelectedPatient({ ...selectedPatient, balance: newBalance });
-    await fetchGlobalRecords();
+    dataCache.invalidate(getClinicCacheKey('audit'));
+    invalidateMaterialCostCaches();
+    await fetchGlobalRecords(true);
   };
 
   useEffect(() => {
-    if (currentView === 'records') fetchGlobalRecords();
+    if (currentView === 'records') void fetchGlobalRecords();
   }, [currentView, currentLocationId]);
 
   const checkDuplicatePatientDraft = async (params: {
@@ -3128,7 +3194,8 @@ const App: React.FC = () => {
   const handleDeleteAllRecords = async () => {
     try {
       await api.treatments.deleteAllRecords(currentLocationId || undefined);
-      fetchGlobalRecords();
+      invalidateMaterialCostCaches();
+      await fetchGlobalRecords(true);
       alert('All audit log records for the current branch have been deleted successfully.');
     } catch (err: any) {
       alert(err.message || 'Failed to delete records');
@@ -3236,7 +3303,7 @@ const App: React.FC = () => {
       setShowMedicineModal(false);
       setEditingMedicine(null);
       setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' });
-      fetchMedicines();
+      await fetchMedicines(true);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -3247,7 +3314,7 @@ const App: React.FC = () => {
   const handleDeleteMedicine = async (id: string) => {
     try {
       await api.medicines.delete(id);
-      fetchMedicines();
+      await fetchMedicines(true);
     } catch (err: any) {
       alert(err.message);
     }
@@ -3269,7 +3336,8 @@ const App: React.FC = () => {
       setShowExpenseModal(false);
       setEditingExpense(null);
       setNewExpenseData(getDefaultExpenseFormData());
-      fetchExpenses();
+      dataCache.invalidate(getClinicCacheKey('expenses'));
+      await fetchExpenses(true);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -3280,7 +3348,8 @@ const App: React.FC = () => {
   const handleDeleteExpense = async (id: string) => {
     try {
       await api.expenses.delete(id);
-      fetchExpenses();
+      dataCache.invalidate(getClinicCacheKey('expenses'));
+      await fetchExpenses(true);
     } catch (err: any) {
       alert(err.message);
     }
@@ -3506,7 +3575,8 @@ const App: React.FC = () => {
       setLoyaltyTransactions(await api.loyalty.getTransactions(sale.patient_id, saleLocationId));
 
       // Refresh medicines to update stock
-      safeLoad('Refresh medicines after undoing sale', fetchMedicines(), undefined);
+      dataCache.invalidate(getClinicCacheKey('medicine-sales'));
+      safeLoad('Refresh medicines after undoing sale', fetchMedicines(true), undefined);
 
       setToast({
         message: `Medicine sale undone. Stock, balance${res.reversed_points > 0 ? ` and ${res.reversed_points} loyalty points` : ''} restored.`,
@@ -3592,8 +3662,8 @@ const App: React.FC = () => {
       
       // Refresh medicines to update stock
       await Promise.all([
-        safeLoad('Refresh medicines after inventory sale', fetchMedicines(), undefined),
-        safeLoad('Refresh medicine sales after inventory sale', fetchMedicineSales(), undefined)
+        safeLoad('Refresh medicines after inventory sale', fetchMedicines(true), undefined),
+        safeLoad('Refresh medicine sales after inventory sale', fetchMedicineSales(true), undefined)
       ]);
 
       void fetchDashboardData(dashboardLocationId);
@@ -3629,8 +3699,8 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (successfulSaleCount > 0) {
         await Promise.all([
-          safeLoad('Reconcile medicines after partial inventory sale', fetchMedicines(), undefined),
-          safeLoad('Reconcile medicine sales after partial inventory sale', fetchMedicineSales(), undefined)
+          safeLoad('Reconcile medicines after partial inventory sale', fetchMedicines(true), undefined),
+          safeLoad('Reconcile medicine sales after partial inventory sale', fetchMedicineSales(true), undefined)
         ]);
 
         if (salePatientRequestId === medicineHistoryRequestRef.current) {
@@ -4540,9 +4610,9 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', commission_type: 'percentage', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} syncProgress={(!treatmentTypesReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} doctors={doctors} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} onRefresh={async () => { await fetchGlobalRecords(); await fetchExpenses(); await fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId); }} onCostsSaved={async (patientId) => { await refreshGlobalRecordsForPatient(patientId); void fetchExpenses(); void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => { console.warn('Dashboard refresh after MLS cost save needs a manual refresh.'); }); }} />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={fetchGlobalRecords} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} onPaymentVoided={handlePaymentVoided} />}
-            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} syncProgress={(!medicinesReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
+            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} doctors={doctors} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} onRefresh={async () => { invalidateMaterialCostCaches(); await fetchGlobalRecords(true); }} onCostsSaved={async (patientId) => { invalidateMaterialCostCaches(); await refreshGlobalRecordsForPatient(patientId); void fetchExpenses(true); void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => { console.warn('Dashboard refresh after MLS cost save needs a manual refresh.'); }); }} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={() => fetchGlobalRecords(true)} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} onPaymentVoided={handlePaymentVoided} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} />}
+            {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} syncProgress={(!medicinesReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} onRefresh={() => fetchMedicines(true)} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
                 expenses={expenses}
@@ -4552,7 +4622,7 @@ const App: React.FC = () => {
                 currentLocationId={currentLocationId}
                 loading={loading}
                 currency={currency}
-                onRefresh={async () => { await fetchExpenses(); }}
+                onRefresh={async () => { await Promise.all([fetchExpenses(true), fetchMedicineSales(true)]); }}
                 onAdd={() => {setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData()); setShowExpenseModal(true);}}
                 onEdit={(expense) => {setEditingExpense(expense); setNewExpenseData({ description: expense.description, amount: expense.amount, category: expense.category, date: expense.date }); setShowExpenseModal(true);}}
                 onDelete={handleDeleteExpense}

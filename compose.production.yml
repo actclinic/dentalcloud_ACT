@@ -1,0 +1,47 @@
+name: dentalcloud
+
+services:
+  web:
+    image: ${DENTALCLOUD_IMAGE:-dentalcloud-pro:latest}
+    pull_policy: never
+    container_name: dentalcloud-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        AI_API_KEY: ${AI_API_KEY:-}
+    ports:
+      # Never expose the frontend backend publicly or collide with Supabase.
+      - "127.0.0.1:${DENTALCLOUD_HOST_PORT:-18082}:8081"
+
+    # Restart nginx after a process failure and after a Docker daemon/host restart.
+    restart: unless-stopped
+    stop_signal: SIGQUIT
+    stop_grace_period: 30s
+
+    # Safe initial limits for this static nginx workload. Monitor real usage before
+    # reducing them; increase DENTALCLOUD_MEMORY_LIMIT if Docker reports OOMKilled.
+    cpus: "${DENTALCLOUD_CPU_LIMIT:-0.50}"
+    mem_limit: "${DENTALCLOUD_MEMORY_LIMIT:-128m}"
+    mem_reservation: "${DENTALCLOUD_MEMORY_RESERVATION:-64m}"
+    memswap_limit: "${DENTALCLOUD_MEMORY_LIMIT:-128m}"
+    pids_limit: 100
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 4096
