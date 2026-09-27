@@ -17,6 +17,7 @@ describe('treatment cost summaries', () => {
       labTotal: 30_000,
       labItemCount: 1,
       specialDoctorTotal: 0,
+      assignedSpecialDoctorTotal: 0,
       specialDoctorItemCount: 0,
       totalAmount: 50_000,
       itemCount: 3
@@ -26,13 +27,14 @@ describe('treatment cost summaries', () => {
   it('separates special doctor costs and includes them in the combined total', () => {
     const summaries = summarizeTreatmentCostRows([
       { audit_log_id: 'audit-1', cost_type: 'material', total_amount: 10_000 },
-      { audit_log_id: 'audit-1', cost_type: 'special_doctor', total_amount: 40_000 },
-      { audit_log_id: 'audit-1', cost_type: 'special_doctor', total_amount: 5_000 }
+      { audit_log_id: 'audit-1', cost_type: 'special_doctor', total_amount: 40_000, doctor_id: 'doctor-1' },
+      { audit_log_id: 'audit-1', cost_type: 'special_doctor', total_amount: 5_000, doctor_id: null }
     ], new Map([['audit-1', 'treatment-1']]));
 
     expect(summaries['treatment-1']).toMatchObject({
       materialTotal: 10_000,
       specialDoctorTotal: 45_000,
+      assignedSpecialDoctorTotal: 40_000,
       specialDoctorItemCount: 2,
       totalAmount: 55_000,
       itemCount: 3

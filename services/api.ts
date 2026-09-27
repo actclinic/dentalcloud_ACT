@@ -3488,7 +3488,7 @@ export const api = {
         const materialBatches = await mapWithConcurrency(materialIdBatches, REPORT_REQUEST_CONCURRENCY, async (auditIdBatch) => {
           let { data, error: materialError } = await supabase
             .from('patient_material_costs')
-            .select('audit_log_id, cost_type, total_amount')
+            .select('audit_log_id, cost_type, total_amount, doctor_id')
             .in('audit_log_id', auditIdBatch);
 
           if (materialError && isMissingColumnError(materialError, 'cost_type')) {
@@ -3559,7 +3559,7 @@ export const api = {
         async (idBatch) => {
           const { data, error } = await supabase
             .from('patient_material_costs')
-            .select('audit_log_id, cost_type, total_amount')
+            .select('audit_log_id, cost_type, total_amount, doctor_id')
             .in('audit_log_id', idBatch);
           if (error) {
             if (isMissingRelationError(error, 'patient_material_costs')) {
@@ -5058,7 +5058,12 @@ export const api = {
         }
         throw new Error(error.message || 'Patient payment history could not be loaded.');
       }
-      return (data || []).map(mapPaymentRow);
+      const payments = (data || []).map(mapPaymentRow);
+      const costsByPayment = await api.materialCosts.getTotalsByPaymentIds(payments.map((payment) => payment.id), { idBatchSize: 50 });
+      return payments.map((payment) => ({
+        ...payment,
+        assignedSpecialDoctorTotal: costsByPayment[payment.id]?.assignedSpecialDoctorTotal || 0
+      }));
     },
     getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
       let query = supabase
@@ -5129,7 +5134,12 @@ export const api = {
         throw new Error(error.message);
       }
 
-      return (data || []).map(mapPaymentRow);
+      const payments = (data || []).map(mapPaymentRow);
+      const costsByPayment = await api.materialCosts.getTotalsByPaymentIds(payments.map((payment) => payment.id), { idBatchSize: 50 });
+      return payments.map((payment) => ({
+        ...payment,
+        assignedSpecialDoctorTotal: costsByPayment[payment.id]?.assignedSpecialDoctorTotal || 0
+      }));
     },
     processPayment: async (input: {
       patientId: string;

@@ -161,7 +161,8 @@ const MaterialCostModal: React.FC<MaterialCostModalProps> = ({ isOpen, payment, 
       const savedMaterialTotal = materialRows.reduce((sum, item) => sum + item.totalAmount, 0);
       const savedLabTotal = labRows.reduce((sum, item) => sum + item.totalAmount, 0);
       const savedSpecialDoctorTotal = specialDoctorRows.reduce((sum, item) => sum + item.totalAmount, 0);
-      const summary = { paymentId: payment.id, patientId: payment.patientId || null, auditLogId: result.auditLogId, materialTotal: savedMaterialTotal, materialItemCount: materialRows.length, labTotal: savedLabTotal, labItemCount: labRows.length, specialDoctorTotal: savedSpecialDoctorTotal, specialDoctorItemCount: specialDoctorRows.length, totalAmount: savedMaterialTotal + savedLabTotal + savedSpecialDoctorTotal, itemCount: result.items.length };
+      const assignedSpecialDoctorTotal = specialDoctorRows.filter((item) => item.doctorId).reduce((sum, item) => sum + item.totalAmount, 0);
+      const summary = { paymentId: payment.id, patientId: payment.patientId || null, auditLogId: result.auditLogId, materialTotal: savedMaterialTotal, materialItemCount: materialRows.length, labTotal: savedLabTotal, labItemCount: labRows.length, specialDoctorTotal: savedSpecialDoctorTotal, assignedSpecialDoctorTotal, specialDoctorItemCount: specialDoctorRows.length, totalAmount: savedMaterialTotal + savedLabTotal + savedSpecialDoctorTotal, itemCount: result.items.length };
       if (result.commissionRefreshPending) {
         setError('Payment costs were saved, but doctor commission refresh is still pending. Keep this window open and save again to retry.');
         return;

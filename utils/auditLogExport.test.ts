@@ -443,6 +443,27 @@ describe('audit log export rows', () => {
     expect(tableRows.find((row) => row.amount === 700000)?.doctorEarned).toBe(70000);
   });
 
+  it('adds assigned special doctor fees to payment doctor earned', () => {
+    const payment: PaymentRecord = {
+      ...payments[0],
+      assignedSpecialDoctorTotal: 40_000
+    };
+    const commissionRecords: ClinicalRecord[] = [{
+      ...records[0],
+      doctorEarningEntries: [{
+        paymentId: payment.id, treatmentId: records[0].id, doctorId: 'doctor-1',
+        paymentDate: payment.date, treatmentDate: records[0].date,
+        calculationMode: 'percentage', allocatedPayment: 60_000, commissionRate: 10, earnings: 6_000
+      }]
+    }];
+
+    const paymentRow = buildAuditLogRows(commissionRecords, [], true, [payment]).find((row) => row.kind === 'payment');
+    expect(paymentRow?.kind).toBe('payment');
+    if (paymentRow?.kind === 'payment') {
+      expect(buildAuditLogExportTableRows([paymentRow], 'MMK')[0].doctorEarned).toBe(46_000);
+    }
+  });
+
   it('includes rescheduled appointments only in the reschedule filter and export rows', () => {
     const rows = buildAuditLogRows(records, appointments, true, payments, rescheduleLogs);
     const appointmentRows = filterAuditLogRowsForExport(rows, {

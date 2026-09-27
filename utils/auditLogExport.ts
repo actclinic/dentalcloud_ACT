@@ -69,7 +69,7 @@ export const getAuditPaymentDiscount = (
 
 export const getAuditPaymentDoctorEarnings = (
   payment: PaymentRecord & { _doctorEarnings?: number }
-): number => getPositiveNumber(payment._doctorEarnings);
+): number => getPositiveNumber(payment._doctorEarnings) + getPositiveNumber(payment.assignedSpecialDoctorTotal);
 
 const getPaymentServiceFeeAmount = (payment: PaymentRecord): number => {
   const snapshotFee = getPositiveNumber(payment.receiptSnapshot?.payment?.serviceFeeAmount);
