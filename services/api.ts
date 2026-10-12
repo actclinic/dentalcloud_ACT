@@ -2801,36 +2801,65 @@ export const api = {
     },
     getAll: async (locationId?: string, options?: { doctorId?: string }): Promise<Appointment[]> => {
       try {
-        let query = supabase
-          .from('appointments')
-          .select('*, patients!appointments_patient_id_fkey(name, balance), doctors(name)')
-          .order('date');
+        // Do not rely on the REST endpoint's implicit row limit. In production
+        // that limit can be configured lower than the number of appointments
+        // for a day, which makes the UI silently show only part of the list.
+        // The exact count also lets us detect a server cap and retry with a
+        // smaller page size when the first response was truncated.
+        const fetchAppointmentPages = async (selectClause: string) => {
+          const fetchPage = async (offset: number, pageSize: number) => {
+            let query = supabase
+              .from('appointments')
+              .select(selectClause, { count: 'exact' })
+              .order('date')
+              .order('time')
+              .order('id')
+              .range(offset, offset + pageSize - 1);
 
-        if (locationId) {
-          query = query.eq('location_id', locationId);
-        }
-        if (options?.doctorId) {
-          query = query.eq('doctor_id', options.doctorId);
-        }
+            if (locationId) {
+              query = query.eq('location_id', locationId);
+            }
+            if (options?.doctorId) {
+              query = query.eq('doctor_id', options.doctorId);
+            }
 
-        const initialResult = await query;
+            return query;
+          };
+
+          const firstPage = await fetchPage(0, SUPABASE_PAGE_SIZE);
+          if (firstPage.error) return firstPage;
+
+          const totalCount = firstPage.count;
+          const firstRows = firstPage.data || [];
+          const rows: any[] = [];
+
+          // If the endpoint returned fewer rows than requested but reports a
+          // larger total, its configured max-rows value truncated the page.
+          // Re-read with the returned size so ranges advance correctly.
+          const pageSize = totalCount !== null && totalCount > firstRows.length && firstRows.length < SUPABASE_PAGE_SIZE
+            ? Math.max(1, firstRows.length)
+            : SUPABASE_PAGE_SIZE;
+
+          for (let offset = 0; offset < (totalCount ?? Number.POSITIVE_INFINITY); offset += pageSize) {
+            const page = pageSize === SUPABASE_PAGE_SIZE && offset === 0
+              ? firstPage
+              : await fetchPage(offset, pageSize);
+            if (page.error) return page;
+
+            const pageRows = page.data || [];
+            rows.push(...pageRows);
+            if (pageRows.length < pageSize) break;
+          }
+
+          return { ...firstPage, data: rows };
+        };
+
+        const initialResult = await fetchAppointmentPages('*, patients!appointments_patient_id_fkey(name, balance), doctors(name)');
         let data: any[] | null = initialResult.data;
         let error: any = initialResult.error;
 
         if (error && isOptionalRelationAccessError(error, ['patients', 'doctors'])) {
-          let fallbackQuery = supabase
-            .from('appointments')
-            .select('*')
-            .order('date');
-
-          if (locationId) {
-            fallbackQuery = fallbackQuery.eq('location_id', locationId);
-          }
-          if (options?.doctorId) {
-            fallbackQuery = fallbackQuery.eq('doctor_id', options.doctorId);
-          }
-
-          const fallback = await fallbackQuery;
+          const fallback = await fetchAppointmentPages('*');
           data = fallback.data;
           error = fallback.error;
         }
