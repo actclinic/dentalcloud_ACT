@@ -1,6 +1,6 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity, DoctorSpecialFee } from '../types';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity, DoctorSpecialFee, PatientDirectorySummary } from '../types';
 import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
@@ -1857,6 +1857,22 @@ export const api = {
         console.warn('Error fetching patient page:', err);
         return [];
       }
+    },
+    getDirectorySummaries: async (locationId: string | undefined, patientIds: string[]): Promise<PatientDirectorySummary[]> => {
+      const ids = [...new Set(patientIds.filter(Boolean))].slice(0, 100);
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase.rpc('patient_directory_summaries', {
+        p_location_id: locationId ?? null,
+        p_patient_ids: ids
+      });
+      if (error) throw new Error(error.message);
+      return (data || []).map((row: any) => ({
+        patientId: row.patient_id,
+        lastVisit: row.last_visit || null,
+        nextAppointment: row.next_appointment || null,
+        treatments: Array.isArray(row.treatments) ? row.treatments : [],
+        doctorNames: Array.isArray(row.doctor_names) ? row.doctor_names.filter(Boolean) : []
+      }));
     },
     getAll: async (locationId?: string): Promise<Patient[]> => {
       try {

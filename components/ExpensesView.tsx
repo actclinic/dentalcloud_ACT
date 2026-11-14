@@ -42,7 +42,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const itemsPerPage = 10;
+  const itemsPerPage = 100;
 
   const categories = useMemo(() => {
     const unique = new Set<string>();
@@ -459,7 +459,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div role="region" aria-label="Expenses table" tabIndex={0} className="table-scroll">
               <table className="w-full">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                   <tr>

@@ -26,6 +26,41 @@ body {
   margin: 0;
 }
 
+/* Each screen table owns its scrolling; filters and pagination stay outside. */
+.table-scroll {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: thin;
+  scrollbar-color: #c7c7c7 #f1f1f1;
+  scrollbar-gutter: stable;
+  -ms-overflow-style: auto;
+}
+
+@media (min-width: 1024px) {
+  .table-scroll-fill {
+    height: 100%;
+    max-height: none;
+    overflow-y: auto;
+  }
+}
+
+.table-scroll::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
+.table-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+.table-scroll::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 9999px; }
+.table-scroll::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+.table-scroll:focus-visible { outline: 2px solid var(--hover-500); outline-offset: -2px; }
+.table-scroll > table > thead { position: sticky; top: 0; z-index: 30; }
+.table-scroll > table > thead:not([class*="bg-"]) { background-color: #fff; }
+
+@media print {
+  .table-scroll { height: auto; max-height: none; overflow: visible; scrollbar-gutter: auto; }
+  .table-scroll > table > thead { position: static; }
+}
+
 /* Keep scrolling functional while hiding visible scrollbars app-wide */
 * {
   scrollbar-width: none;

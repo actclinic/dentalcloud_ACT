@@ -51,7 +51,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
   const [dateTo, setDateTo] = useState(todayKey);
   const [materialSummaries, setMaterialSummaries] = useState<Record<string, TreatmentCostSummary>>({});
   const isTodayRange = dateFrom === todayKey && dateTo === todayKey;
-  const itemsPerPage = 10;
+  const itemsPerPage = 100;
 
   const handleDateFromChange = (value: string) => {
     setDateFrom(value);
@@ -420,7 +420,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
         </div>
       ) : (
         <>
-          <div className="hidden lg:block overflow-x-auto">
+          <div role="region" aria-label="Audit records table" tabIndex={0} className="table-scroll hidden lg:block">
             <table className="min-w-[1440px] w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>

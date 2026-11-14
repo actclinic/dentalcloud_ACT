@@ -8,6 +8,10 @@ const supabaseMock = vi.hoisted(() => {
         state.calls.push({ action: 'order', column });
         return query;
       }),
+      range: vi.fn((from: number, to: number) => {
+        state.calls.push({ action: 'range', from, to });
+        return query;
+      }),
       eq: vi.fn((column: string, value: string) => {
         state.calls.push({ action: 'eq', column, value });
         return query;

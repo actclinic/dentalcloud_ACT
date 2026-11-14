@@ -23,7 +23,7 @@ const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentType
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const itemsPerPage = 10;
+  const itemsPerPage = 100;
 
   const filteredTypes = useMemo(() => {
     if (!searchTerm) return treatmentTypes;
@@ -102,7 +102,7 @@ const TreatmentConfigView: React.FC<TreatmentConfigViewProps> = ({ treatmentType
     ) : (
       <>
     {/* Desktop table */}
-    <div className="hidden md:block overflow-x-auto">
+    <div role="region" aria-label="Treatment configuration table" tabIndex={0} className="table-scroll hidden md:block">
       <table className="w-full">
         <thead className="bg-gray-50 border-b border-gray-100">
           <tr>
