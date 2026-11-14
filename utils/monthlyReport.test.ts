@@ -59,10 +59,22 @@ describe('monthly report', () => {
 
     const detailRows = groupMonthlyReportDetailRows(report.detailRows || []);
     expect(detailRows.map((row) => ({ date: row.date, cost: row.cost, payment: row.payment, balance: row.balance }))).toEqual([
-      { date: '2026-09-16', cost: 250000, payment: 100000, balance: 150000 },
+      { date: '2026-09-16', cost: 250000, payment: 100000, balance: 0 },
       { date: '2026-09-25', cost: 0, payment: 150000, balance: 0 }
     ]);
     expect(report.summary).toMatchObject({ production: 250000, payment: 250000 });
+  });
+
+  it('preserves full period receipts when a receipt exceeds remaining treatment debt', () => {
+    const report = buildMonthlyReport({
+      records: [record({ cost: 270000, date: '2026-07-10' })],
+      payments: [170000, 50000, 100000].map((amount, index) => payment({
+        id: `payment-${index}`, amount, clearedAmount: amount, date: `2026-07-${10 + index}`
+      })),
+      costSummaries: {}, dateFrom: '2026-07-01', dateTo: '2026-07-31'
+    });
+    expect(report.detailRows?.map(row => row.payment)).toEqual([170000, 50000, 100000]);
+    expect(report.summary).toMatchObject({ payment: 270000, balance: 0, periodCollected: 320000 });
   });
 
   it('allocates a shared payment proportionally and never overpays a treatment', () => {
