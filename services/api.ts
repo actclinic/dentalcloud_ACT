@@ -2815,7 +2815,8 @@ export const api = {
         }
       );
     },
-    getAll: async (locationId?: string, options?: { doctorId?: string }): Promise<Appointment[]> => {
+    getAll: async (locationId?: string, options?: { ids?: string[]; doctorId?: string; throwOnError?: boolean }): Promise<Appointment[]> => {
+      if (options?.ids?.length === 0) return [];
       try {
         // Do not rely on the REST endpoint's implicit row limit. In production
         // that limit can be configured lower than the number of appointments
@@ -2837,6 +2838,9 @@ export const api = {
             }
             if (options?.doctorId) {
               query = query.eq('doctor_id', options.doctorId);
+            }
+            if (options?.ids) {
+              query = query.in('id', options.ids);
             }
 
             return query;
@@ -2949,6 +2953,7 @@ export const api = {
         }));
       } catch (err) {
         console.warn("Error fetching appointments:", err);
+        if (options?.throwOnError) throw err;
         return [];
       }
     },
@@ -3325,7 +3330,8 @@ export const api = {
   },
 
   appointmentRescheduleLogs: {
-    getAll: async (locationId?: string): Promise<AppointmentRescheduleLog[]> => {
+    getAll: async (locationId?: string, options?: { ids?: string[]; throwOnError?: boolean }): Promise<AppointmentRescheduleLog[]> => {
+      if (options?.ids?.length === 0) return [];
       try {
         let query = supabase
           .from('appointment_reschedule_logs')
@@ -3334,6 +3340,9 @@ export const api = {
 
         if (locationId) {
           query = query.eq('location_id', locationId);
+        }
+        if (options?.ids) {
+          query = query.in('id', options.ids);
         }
 
         const { data, error } = await query;
@@ -3350,6 +3359,7 @@ export const api = {
           return [];
         }
         console.warn('Failed to load appointment reschedule logs:', error?.message || error);
+        if (options?.throwOnError) throw error;
         return [];
       }
     },
@@ -4082,7 +4092,15 @@ export const api = {
       }
       return { records, allocationRecords };
     },
-    getAllRecords: async (locationId?: string, options?: { limit?: number | null; patientId?: string }): Promise<ClinicalRecord[]> => {
+    getAllRecords: async (locationId?: string, options?: {
+      limit?: number | null;
+      patientId?: string;
+      treatmentIds?: string[];
+      doctorId?: string;
+      includeCommissionEntries?: boolean;
+      throwOnError?: boolean;
+    }): Promise<ClinicalRecord[]> => {
+      if (options?.treatmentIds?.length === 0) return [];
       try {
         let query = supabase
           .from('treatments')
@@ -4099,6 +4117,12 @@ export const api = {
         }
         if (options?.patientId) {
           query = query.eq('patient_id', options.patientId);
+        }
+        if (options?.treatmentIds) {
+          query = query.in('id', options.treatmentIds);
+        }
+        if (options?.doctorId) {
+          query = query.eq('doctor_id', options.doctorId);
         }
 
         const initialResult = await query;
@@ -4121,6 +4145,12 @@ export const api = {
           if (options?.patientId) {
             fallbackQuery = fallbackQuery.eq('patient_id', options.patientId);
           }
+          if (options?.treatmentIds) {
+            fallbackQuery = fallbackQuery.in('id', options.treatmentIds);
+          }
+          if (options?.doctorId) {
+            fallbackQuery = fallbackQuery.eq('doctor_id', options.doctorId);
+          }
 
           const fallback = await fallbackQuery;
           data = fallback.data;
@@ -4129,7 +4159,9 @@ export const api = {
 
         if (error) throw error;
 
-        const entriesByTreatment = await getDoctorEarningEntriesByTreatmentIds((data || []).map((rec: any) => rec.id));
+        const entriesByTreatment = options?.includeCommissionEntries === false
+          ? new Map<string, any[]>()
+          : await getDoctorEarningEntriesByTreatmentIds((data || []).map((rec: any) => rec.id));
 
         return (data || []).map((rec: any) => ({
           ...rec,
@@ -4165,6 +4197,7 @@ export const api = {
         }));
       } catch (err) {
         console.warn("Error fetching records:", err);
+        if (options?.throwOnError) throw err;
         return [];
       }
     },
@@ -5110,7 +5143,8 @@ export const api = {
         assignedSpecialDoctorTotal: costsByPayment[payment.id]?.assignedSpecialDoctorTotal || 0
       }));
     },
-    getPayments: async (locationId?: string): Promise<PaymentRecord[]> => {
+    getPayments: async (locationId?: string, options?: { ids?: string[] }): Promise<PaymentRecord[]> => {
+      if (options?.ids?.length === 0) return [];
       let query = supabase
         .from('payments')
         .select(`
@@ -5137,6 +5171,7 @@ export const api = {
         .order('created_at', { ascending: false });
 
       if (locationId) query = query.eq('location_id', locationId);
+      if (options?.ids) query = query.in('id', options.ids);
 
       let { data, error } = await query;
       if (error && isOptionalRelationAccessError(error, ['payment_allocations'])) {
@@ -5145,6 +5180,7 @@ export const api = {
           .select('*, patients(name, balance, patient_type), payment_corrections(*, editor:users!payment_corrections_edited_by_fkey(username))')
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        if (options?.ids) fallbackQuery = fallbackQuery.in('id', options.ids);
         const fallback = await fallbackQuery;
         data = fallback.data;
         error = fallback.error;
@@ -5155,6 +5191,7 @@ export const api = {
           .select('*, patients(name, balance, patient_type)')
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        if (options?.ids) fallbackQuery = fallbackQuery.in('id', options.ids);
         const fallback = await fallbackQuery;
         data = fallback.data;
         error = fallback.error;
@@ -5166,6 +5203,7 @@ export const api = {
           .select('*')
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
+        if (options?.ids) fallbackQuery = fallbackQuery.in('id', options.ids);
         const fallback = await fallbackQuery;
         data = fallback.data;
         error = fallback.error;

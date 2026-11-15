@@ -79,6 +79,8 @@ import { canManageMaterialCosts, resolveAllowedTabs } from './utils/permissions'
 import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
+import { databaseFilteredDirectories } from './utils/directoryFeature';
+import { getAllFilteredAuditRows, getAuditDirectoryPage, type AuditDirectoryPage, type AuditQuery } from './services/auditDirectory';
 import { mergePatientsById } from './utils/patientMerge';
 import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTotal, getPaymentHeaderMethod, isSelectablePaymentMethod, normalizePaymentAllocations, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS, validatePaymentAllocations } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaymentReceiptCapturedValue, mergePaymentTreatmentBatch, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
@@ -431,6 +433,15 @@ const App: React.FC = () => {
   const [treatmentHistoryLoading, setTreatmentHistoryLoading] = useState(false);
   const [globalRecords, setGlobalRecords] = useState<ClinicalRecord[]>([]); 
   const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
+  const [auditRecords, setAuditRecords] = useState<ClinicalRecord[]>([]);
+  const [auditAppointments, setAuditAppointments] = useState<Appointment[]>([]);
+  const [auditPayments, setAuditPayments] = useState<PaymentRecord[]>([]);
+  const [auditRescheduleLogs, setAuditRescheduleLogs] = useState<AppointmentRescheduleLog[]>([]);
+  const [auditDisplayRows, setAuditDisplayRows] = useState<AuditDirectoryPage['auditRows']>([]);
+  const [auditDirectoryMeta, setAuditDirectoryMeta] = useState<Pick<AuditDirectoryPage, 'total' | 'counts'> | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditLoadError, setAuditLoadError] = useState<string | null>(null);
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const [dashboardPatients, setDashboardPatients] = useState<Patient[]>([]);
   const [dashboardAppointments, setDashboardAppointments] = useState<Appointment[]>([]);
   const [dashboardRecords, setDashboardRecords] = useState<ClinicalRecord[]>([]);
@@ -488,6 +499,7 @@ const App: React.FC = () => {
   const expensesFetchRequestRef = React.useRef(0);
   const medicineSalesFetchRequestRef = React.useRef(0);
   const auditFetchRequestRef = React.useRef(0);
+  const auditDirectoryRequestRef = React.useRef(0);
   const treatmentHistoryRequestRef = React.useRef(0);
   const medicineHistoryRequestRef = React.useRef(0);
   const paymentHistoryRequestRef = React.useRef(0);
@@ -2273,6 +2285,66 @@ const App: React.FC = () => {
         setPatientFiles([]);
       });
   };
+
+  const loadDatabaseAuditLog = React.useCallback(async (query: AuditQuery) => {
+    const locationId = currentLocationId || undefined;
+    const requestId = ++auditDirectoryRequestRef.current;
+    const clearRows = () => {
+      setAuditRecords([]);
+      setAuditAppointments([]);
+      setAuditPayments([]);
+      setAuditRescheduleLogs([]);
+      setAuditDisplayRows([]);
+      setAuditDirectoryMeta(null);
+    };
+    if (!locationId) {
+      clearRows();
+      setAuditLoading(false);
+      return;
+    }
+    const session = auth.getSession();
+    if (session?.role === 'doctor' && !session.doctor_id) {
+      clearRows();
+      setAuditLoadError('Doctor account is not linked to a doctor.');
+      setAuditLoading(false);
+      return;
+    }
+    const doctorId = session?.role === 'doctor' ? session.doctor_id || undefined : undefined;
+    const cacheKey = `${getClinicCacheKey('audit-directory', locationId)}:${auditRefreshKey}:${JSON.stringify(query)}`;
+    setAuditLoading(true);
+    setAuditLoadError(null);
+    clearRows();
+    try {
+      const bundle = await dataCache.getOrLoad(cacheKey, () => query.showAll
+        ? getAllFilteredAuditRows(locationId, query, doctorId)
+        : getAuditDirectoryPage(locationId, query, doctorId), Infinity);
+      if (requestId !== auditDirectoryRequestRef.current || currentLocationIdRef.current !== locationId) return;
+      setAuditRecords(bundle.records);
+      setAuditAppointments(bundle.appointments);
+      setAuditPayments(bundle.payments);
+      setAuditRescheduleLogs(bundle.rescheduleLogs);
+      setAuditDisplayRows(bundle.auditRows);
+      setAuditDirectoryMeta({ total: bundle.total, counts: bundle.counts });
+    } catch (err: any) {
+      if (requestId !== auditDirectoryRequestRef.current) return;
+      clearRows();
+      setAuditLoadError(err?.message || 'Audit log data could not be loaded. Please retry.');
+    } finally {
+      if (requestId === auditDirectoryRequestRef.current) setAuditLoading(false);
+    }
+  }, [currentLocationId, auditRefreshKey]);
+
+  const exportDatabaseAuditLog = React.useCallback(async (query: AuditQuery) => {
+    const locationId = currentLocationId;
+    const session = auth.getSession();
+    if (!locationId || (session?.role === 'doctor' && !session.doctor_id)) throw new Error('No audit scope available.');
+    const scope = getClinicCacheScope(locationId);
+    const bundle = await getAllFilteredAuditRows(locationId, query, session?.role === 'doctor' ? session.doctor_id || undefined : undefined);
+    if (currentLocationIdRef.current !== locationId || scope !== getClinicCacheScope(locationId)) {
+      throw new Error('Branch or account changed during export. Please retry.');
+    }
+    return bundle;
+  }, [currentLocationId]);
 
   const fetchGlobalRecords = async (force = false) => {
     const requestId = ++auditFetchRequestRef.current;
@@ -4621,7 +4693,31 @@ const App: React.FC = () => {
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', commission_type: 'percentage', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} syncProgress={(!treatmentTypesReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
             {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} doctors={doctors} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} onRefresh={async () => { invalidateMaterialCostCaches(); await fetchGlobalRecords(true); }} onCostsSaved={async (patientId) => { invalidateMaterialCostCaches(); await refreshGlobalRecordsForPatient(patientId); void fetchExpenses(true); void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => { console.warn('Dashboard refresh after MLS cost save needs a manual refresh.'); }); }} />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={() => fetchGlobalRecords(true)} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} onPaymentVoided={handlePaymentVoided} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView
+              records={databaseFilteredDirectories ? auditRecords : globalRecords}
+              appointments={databaseFilteredDirectories ? auditAppointments : appointments}
+              rescheduleLogs={databaseFilteredDirectories ? auditRescheduleLogs : appointmentRescheduleLogs}
+              payments={databaseFilteredDirectories ? auditPayments : paymentRecords}
+              loading={databaseFilteredDirectories ? auditLoading : loading}
+              syncProgress={databaseFilteredDirectories ? null : ((!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null)}
+              loadError={databaseFilteredDirectories ? auditLoadError : null}
+              onQueryChange={databaseFilteredDirectories ? loadDatabaseAuditLog : undefined}
+              legacyPaymentsNotice={databaseFilteredDirectories && !isDoctor && readPaymentRecords().some((payment) => payment.location_id === currentLocationId)}
+              directoryMeta={databaseFilteredDirectories ? auditDirectoryMeta : undefined}
+              displayRows={databaseFilteredDirectories ? auditDisplayRows : undefined}
+              onExportAll={databaseFilteredDirectories ? exportDatabaseAuditLog : undefined}
+              onRefresh={() => databaseFilteredDirectories ? setAuditRefreshKey((key) => key + 1) : fetchGlobalRecords(true)}
+              onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords}
+              currency={currency}
+              isDoctor={isDoctor}
+              initialFilter={recordsInitialFilter}
+              onOpenPaymentReceipt={handleOpenStoredPaymentReceipt}
+              canEditPayments={isAdmin && !isDoctor}
+              onPaymentCorrected={async (payment) => { await handlePaymentCorrected(payment); if (databaseFilteredDirectories) setAuditRefreshKey((key) => key + 1); }}
+              onPaymentVoided={async (result) => { await handlePaymentVoided(result); if (databaseFilteredDirectories) setAuditRefreshKey((key) => key + 1); }}
+              cacheScope={getClinicCacheScope()}
+              cacheRevision={materialCostCacheRevision}
+            />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} syncProgress={(!medicinesReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} onRefresh={() => fetchMedicines(true)} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView

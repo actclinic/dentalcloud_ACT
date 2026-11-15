@@ -281,7 +281,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       .sort((a, b) => a.localeCompare(b));
   };
 
-  const getUniquePatientDoctorNames = (records: ClinicalRecord[]) => (
+  const getUniquePatientDoctorNames = (records: Array<Pick<ClinicalRecord, 'doctor_id' | 'doctor_name'>>) => (
     [...new Set(records.map((record) => normalizeDoctorName(record.doctor_name)).filter(Boolean))]
   );
 

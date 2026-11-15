@@ -17,6 +17,7 @@ import { api } from '../services/api';
 import { calculateMaterialAdjustedDoctorEarnings } from '../utils/materialCostCalculations';
 import ProgressBar from './ProgressBar';
 import { dataCache } from '../utils/dataCache';
+import type { AuditBundle, AuditDirectoryPage, AuditQuery } from '../services/auditDirectory';
 
 interface RecordsViewProps {
   records: ClinicalRecord[];
@@ -36,11 +37,17 @@ interface RecordsViewProps {
   canEditPayments?: boolean;
   onPaymentCorrected?: (payment: PaymentRecord) => void | Promise<void>;
   onPaymentVoided?: (result: { paymentId: string; patientId: string; newBalance: number }) => void | Promise<void>;
+  loadError?: string | null;
+  onQueryChange?: (query: AuditQuery) => void;
+  legacyPaymentsNotice?: boolean;
+  displayRows?: AuditExportRow[];
+  directoryMeta?: Pick<AuditDirectoryPage, 'total' | 'counts'> | null;
+  onExportAll?: (query: AuditQuery) => Promise<AuditBundle>;
   cacheScope: string;
   cacheRevision?: number;
 }
 
-const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, syncProgress = null, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided, cacheScope, cacheRevision = 0 }) => {
+const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], rescheduleLogs = [], payments = [], loading, syncProgress = null, onRefresh, onDeleteAll, currency, isDoctor = false, initialFilter = 'all', onOpenPaymentReceipt, canEditPayments = false, onPaymentCorrected, onPaymentVoided, loadError = null, onQueryChange, legacyPaymentsNotice, displayRows, directoryMeta, onExportAll, cacheScope, cacheRevision = 0 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,6 +59,14 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
   const [materialSummaries, setMaterialSummaries] = useState<Record<string, TreatmentCostSummary>>({});
   const isTodayRange = dateFrom === todayKey && dateTo === todayKey;
   const itemsPerPage = 100;
+  const serverPagination = displayRows !== undefined;
+
+  React.useEffect(() => {
+    if (!loading && serverPagination && directoryMeta && !showAll) {
+      const lastPage = Math.max(1, Math.ceil(directoryMeta.total / itemsPerPage));
+      if (currentPage > lastPage) setCurrentPage(lastPage);
+    }
+  }, [loading, serverPagination, directoryMeta, showAll, currentPage]);
 
   const handleDateFromChange = (value: string) => {
     setDateFrom(value);
@@ -172,14 +187,15 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
   );
 
   const filteredRows = useMemo(() => {
+    if (serverPagination) return displayRows || [];
     return filterAuditLogRowsForExport(auditRows, buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm }));
-  }, [auditRows, auditFilter, searchTerm, dateFrom, dateTo, isDoctor]);
+  }, [auditRows, displayRows, serverPagination, auditFilter, searchTerm, dateFrom, dateTo, isDoctor]);
 
   const paginatedRows = useMemo(() => {
-    if (showAll) return filteredRows;
+    if (serverPagination || showAll) return filteredRows;
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredRows.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredRows, currentPage, showAll]);
+  }, [filteredRows, currentPage, showAll, serverPagination]);
 
   React.useEffect(() => {
     if (loading) return;
@@ -223,6 +239,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
   }, [paginatedRows, loading, cacheScope, cacheRevision]);
 
   const filteredSummary = useMemo(() => {
+    if (serverPagination && directoryMeta) return directoryMeta.counts;
     return filteredRows.reduce(
       (summary, row) => {
         if (row.kind === 'appointment') summary.appointments += 1;
@@ -234,58 +251,65 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
       },
       { appointments: 0, reschedules: 0, treatments: 0, payments: 0 }
     );
-  }, [filteredRows]);
+  }, [filteredRows, directoryMeta, serverPagination]);
 
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [records, appointments, rescheduleLogs, payments, auditFilter, dateFrom, dateTo]);
+  }, [auditFilter, dateFrom, dateTo, searchTerm]);
 
   React.useEffect(() => {
     setAuditFilter(initialFilter);
     setCurrentPage(1);
   }, [initialFilter]);
 
-  const handleDownloadPDF = () => {
-    exportClinicalRecordsToPDF(records, currency, {
-      appointments,
-      payments,
-      rescheduleLogs,
-      includeAppointments: !isDoctor,
-      ...buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm })
-    });
-  };
+  React.useEffect(() => {
+    onQueryChange?.({ dateFrom, dateTo, auditFilter, searchTerm, page: currentPage, showAll });
+  }, [dateFrom, dateTo, auditFilter, searchTerm, currentPage, showAll, onQueryChange]);
 
-  const handleDownloadExcel = async () => {
-    await exportClinicalRecordsToExcel(records, currency, {
-      appointments,
-      payments,
-      rescheduleLogs,
-      includeAppointments: !isDoctor,
-      ...buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm })
-    });
-  };
-
-  const handleDownloadJSON = () => {
-    const dataStr = JSON.stringify(filteredRows, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${isDoctor ? 'patient-records' : 'clinic-audit-logs'}-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setTimeout(() => {
-      if (confirm(`Download complete. Delete all ${records.length} clinical treatment records for this branch? Appointments and payment audit records will be kept. This cannot be undone.`)) {
-        onDeleteAll();
+  const [exporting, setExporting] = useState(false);
+  const getExportBundle = async (): Promise<AuditBundle> => onExportAll
+    ? onExportAll({ dateFrom, dateTo, auditFilter, searchTerm, page: 1 })
+    : { records, appointments, payments, rescheduleLogs };
+  const runExport = async (format: 'pdf' | 'excel' | 'json') => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const bundle = await getExportBundle();
+      const options = {
+        appointments: bundle.appointments,
+        payments: bundle.payments,
+        rescheduleLogs: bundle.rescheduleLogs,
+        includeAppointments: !isDoctor,
+        auditRows: bundle.auditRows,
+        ...(onExportAll ? {} : buildRecordsViewFilterOptions({ isDoctor, auditFilter, dateFrom, dateTo, searchTerm }))
+      };
+      if (format === 'pdf') exportClinicalRecordsToPDF(bundle.records, currency, options);
+      else if (format === 'excel') await exportClinicalRecordsToExcel(bundle.records, currency, options);
+      else {
+        const rows = onExportAll ? bundle.auditRows || [] : filteredRows;
+        const url = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${isDoctor ? 'patient-records' : 'clinic-audit-logs'}-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
       }
-    }, 500);
+    } catch (error: any) {
+      alert(error?.message || 'Audit export failed. Please retry.');
+    } finally {
+      setExporting(false);
+    }
   };
+  const handleDownloadPDF = () => runExport('pdf');
+  const handleDownloadExcel = () => runExport('excel');
+  const handleDownloadJSON = () => runExport('json');
 
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in">
+      {legacyPaymentsNotice && <div className="m-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This audit directory and its exports include database records only. This browser contains legacy local payment backups; reconcile or migrate those records before using these exports as a complete payment ledger.</div>}
+      {loadError && <div className="m-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 sm:m-4">{loadError}</div>}
       <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/40">
         <div className="flex min-w-0 flex-col gap-4 p-3 sm:p-4 md:p-6 xl:flex-row xl:items-start xl:justify-between xl:gap-5">
         <div className="flex min-w-0 items-start gap-3">
@@ -300,7 +324,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
             </p>
             {!isDoctor && (
               <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1 text-xs sm:flex-wrap sm:overflow-visible sm:pb-0">
-                <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-center font-semibold text-slate-700 sm:text-left">{filteredRows.length} visible</span>
+                <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-center font-semibold text-slate-700 sm:text-left">{directoryMeta?.total ?? filteredRows.length} matching</span>
                 <span className="shrink-0 rounded-full border theme-accent-border theme-accent-soft-bg px-3 py-1 text-center font-semibold theme-accent-text sm:text-left">{filteredSummary.appointments} appts</span>
                 <span className="shrink-0 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-center font-semibold text-amber-700 sm:text-left">{filteredSummary.reschedules} reschedules</span>
                 <span className="shrink-0 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-center font-semibold text-emerald-700 sm:text-left">{filteredSummary.treatments} treatments</span>
@@ -388,7 +412,7 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
             </div>
             <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-3 lg:w-auto lg:flex lg:flex-row">
             <ExportMenu
-              disabled={auditRows.length === 0}
+              disabled={exporting || loading || !!loadError || filteredRows.length === 0}
               onExportPDF={handleDownloadPDF}
               onExportExcel={handleDownloadExcel}
               className="!w-full !rounded-xl !bg-slate-800 !font-semibold !shadow-sm hover:!bg-slate-900 lg:!w-auto"
@@ -396,10 +420,10 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
             />
             <button
               onClick={handleDownloadJSON}
-              disabled={auditRows.length === 0}
+              disabled={exporting || loading || !!loadError || filteredRows.length === 0}
               className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--hover-300)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
             >
-              <Download size={16} /> <span className="whitespace-nowrap">JSON Backup</span>
+              <Download size={16} /> <span className="whitespace-nowrap">Export filtered JSON</span>
             </button>
             <button
               onClick={onRefresh}
@@ -828,9 +852,9 @@ const RecordsView: React.FC<RecordsViewProps> = ({ records, appointments = [], r
         </>
       )}
 
-      {!loading && filteredRows.length > 0 && (
+      {!loading && (directoryMeta?.total ?? filteredRows.length) > 0 && (
         <Pagination
-          totalItems={filteredRows.length}
+          totalItems={directoryMeta?.total ?? filteredRows.length}
           itemsPerPage={itemsPerPage}
           currentPage={currentPage}
           onPageChange={setCurrentPage}
