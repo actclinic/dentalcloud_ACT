@@ -48,11 +48,12 @@ const distinct = (values: Array<string | null | undefined>): string[] => (
 
 export const buildMaterialCostPaymentHistoryRows = (
   records: ClinicalRecord[],
-  paymentRecords: PaymentRecord[]
+  paymentRecords: PaymentRecord[],
+  allocationPayments: PaymentRecord[] = paymentRecords
 ): MaterialCostPaymentHistoryRow[] => {
   const payments = dedupePaymentRecords(paymentRecords);
   const paymentAliasesByKey = new Map<string, Set<string>>();
-  paymentRecords.forEach((payment) => {
+  allocationPayments.forEach((payment) => {
     const key = getPaymentDedupeKey(payment);
     const aliases = paymentAliasesByKey.get(key) || new Set<string>();
     if (payment.id) aliases.add(payment.id);
@@ -66,7 +67,7 @@ export const buildMaterialCostPaymentHistoryRows = (
       date: record.date,
       cost: positiveMoney(record.cost)
     })),
-    payments.map((payment) => ({
+    dedupePaymentRecords(allocationPayments).map((payment) => ({
       id: payment.id,
       patientId: payment.patientId,
       date: payment.date,
@@ -85,7 +86,7 @@ export const buildMaterialCostPaymentHistoryRows = (
   });
 
   const canonicalPaymentIdByAlias = new Map<string, string>();
-  payments.forEach((payment) => {
+  dedupePaymentRecords(allocationPayments).forEach((payment) => {
     const aliases = paymentAliasesByKey.get(getPaymentDedupeKey(payment)) || new Set([payment.id]);
     aliases.forEach((alias) => canonicalPaymentIdByAlias.set(alias, payment.id));
   });

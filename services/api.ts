@@ -4095,13 +4095,16 @@ export const api = {
     getAllRecords: async (locationId?: string, options?: {
       limit?: number | null;
       patientId?: string;
+      patientIds?: string[];
       treatmentIds?: string[];
       doctorId?: string;
       includeCommissionEntries?: boolean;
       throwOnError?: boolean;
+      signal?: AbortSignal;
     }): Promise<ClinicalRecord[]> => {
-      if (options?.treatmentIds?.length === 0) return [];
+      if (options?.treatmentIds?.length === 0 || options?.patientIds?.length === 0) return [];
       try {
+        options?.signal?.throwIfAborted();
         let query = supabase
           .from('treatments')
           .select('*, patients(name, balance, patient_type), doctors(name, specialization, commission_type, commission_percentage, commission_per_visit)')
@@ -4118,12 +4121,16 @@ export const api = {
         if (options?.patientId) {
           query = query.eq('patient_id', options.patientId);
         }
+        if (options?.patientIds) {
+          query = query.in('patient_id', options.patientIds);
+        }
         if (options?.treatmentIds) {
           query = query.in('id', options.treatmentIds);
         }
         if (options?.doctorId) {
           query = query.eq('doctor_id', options.doctorId);
         }
+        if (options?.signal) query = query.abortSignal(options.signal);
 
         const initialResult = await query;
         let data: any[] | null = initialResult.data;
@@ -4145,12 +4152,16 @@ export const api = {
           if (options?.patientId) {
             fallbackQuery = fallbackQuery.eq('patient_id', options.patientId);
           }
+          if (options?.patientIds) {
+            fallbackQuery = fallbackQuery.in('patient_id', options.patientIds);
+          }
           if (options?.treatmentIds) {
             fallbackQuery = fallbackQuery.in('id', options.treatmentIds);
           }
           if (options?.doctorId) {
             fallbackQuery = fallbackQuery.eq('doctor_id', options.doctorId);
           }
+          if (options?.signal) fallbackQuery = fallbackQuery.abortSignal(options.signal);
 
           const fallback = await fallbackQuery;
           data = fallback.data;
@@ -5143,8 +5154,14 @@ export const api = {
         assignedSpecialDoctorTotal: costsByPayment[payment.id]?.assignedSpecialDoctorTotal || 0
       }));
     },
-    getPayments: async (locationId?: string, options?: { ids?: string[] }): Promise<PaymentRecord[]> => {
-      if (options?.ids?.length === 0) return [];
+    getPayments: async (locationId?: string, options?: {
+      ids?: string[];
+      patientIds?: string[];
+      includeCorrections?: boolean;
+      signal?: AbortSignal;
+    }): Promise<PaymentRecord[]> => {
+      if (options?.ids?.length === 0 || options?.patientIds?.length === 0) return [];
+      options?.signal?.throwIfAborted();
       let query = supabase
         .from('payments')
         .select(`
@@ -5172,6 +5189,8 @@ export const api = {
 
       if (locationId) query = query.eq('location_id', locationId);
       if (options?.ids) query = query.in('id', options.ids);
+      if (options?.patientIds) query = query.in('patient_id', options.patientIds);
+      if (options?.signal) query = query.abortSignal(options.signal);
 
       let { data, error } = await query;
       if (error && isOptionalRelationAccessError(error, ['payment_allocations'])) {
@@ -5181,6 +5200,8 @@ export const api = {
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
         if (options?.ids) fallbackQuery = fallbackQuery.in('id', options.ids);
+        if (options?.patientIds) fallbackQuery = fallbackQuery.in('patient_id', options.patientIds);
+        if (options?.signal) fallbackQuery = fallbackQuery.abortSignal(options.signal);
         const fallback = await fallbackQuery;
         data = fallback.data;
         error = fallback.error;
@@ -5192,6 +5213,8 @@ export const api = {
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
         if (options?.ids) fallbackQuery = fallbackQuery.in('id', options.ids);
+        if (options?.patientIds) fallbackQuery = fallbackQuery.in('patient_id', options.patientIds);
+        if (options?.signal) fallbackQuery = fallbackQuery.abortSignal(options.signal);
         const fallback = await fallbackQuery;
         data = fallback.data;
         error = fallback.error;
@@ -5204,6 +5227,8 @@ export const api = {
           .order('created_at', { ascending: false });
         if (locationId) fallbackQuery = fallbackQuery.eq('location_id', locationId);
         if (options?.ids) fallbackQuery = fallbackQuery.in('id', options.ids);
+        if (options?.patientIds) fallbackQuery = fallbackQuery.in('patient_id', options.patientIds);
+        if (options?.signal) fallbackQuery = fallbackQuery.abortSignal(options.signal);
         const fallback = await fallbackQuery;
         data = fallback.data;
         error = fallback.error;

@@ -81,6 +81,7 @@ import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } fro
 import { dataCache } from './utils/dataCache';
 import { databaseFilteredDirectories } from './utils/directoryFeature';
 import { getAllFilteredAuditRows, getAuditDirectoryPage, type AuditDirectoryPage, type AuditQuery } from './services/auditDirectory';
+import { loadMlsDirectoryPage, type MlsDirectoryQuery } from './services/mlsDirectory';
 import { mergePatientsById } from './utils/patientMerge';
 import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTotal, getPaymentHeaderMethod, isSelectablePaymentMethod, normalizePaymentAllocations, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS, validatePaymentAllocations } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaymentReceiptCapturedValue, mergePaymentTreatmentBatch, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
@@ -442,6 +443,17 @@ const App: React.FC = () => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditLoadError, setAuditLoadError] = useState<string | null>(null);
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
+  const [mlsRecords, setMlsRecords] = useState<ClinicalRecord[]>([]);
+  const [mlsPayments, setMlsPayments] = useState<PaymentRecord[]>([]);
+  const [mlsAllocationPayments, setMlsAllocationPayments] = useState<PaymentRecord[]>([]);
+  const [mlsTotal, setMlsTotal] = useState(0);
+  const [mlsLoading, setMlsLoading] = useState(false);
+  const [mlsLoadError, setMlsLoadError] = useState<string | null>(null);
+  const [mlsRefreshKey, setMlsRefreshKey] = useState(0);
+  const [mlsQuery, setMlsQuery] = useState<MlsDirectoryQuery>(() => {
+    const today = toLocalDateInputValue();
+    return { dateFrom: today, dateTo: today, page: 1, pageSize: 100 };
+  });
   const [dashboardPatients, setDashboardPatients] = useState<Patient[]>([]);
   const [dashboardAppointments, setDashboardAppointments] = useState<Appointment[]>([]);
   const [dashboardRecords, setDashboardRecords] = useState<ClinicalRecord[]>([]);
@@ -500,6 +512,8 @@ const App: React.FC = () => {
   const medicineSalesFetchRequestRef = React.useRef(0);
   const auditFetchRequestRef = React.useRef(0);
   const auditDirectoryRequestRef = React.useRef(0);
+  const mlsDirectoryRequestRef = React.useRef(0);
+  const mlsDirectoryAbortRef = React.useRef<AbortController | null>(null);
   const treatmentHistoryRequestRef = React.useRef(0);
   const medicineHistoryRequestRef = React.useRef(0);
   const paymentHistoryRequestRef = React.useRef(0);
@@ -2285,6 +2299,44 @@ const App: React.FC = () => {
         setPatientFiles([]);
       });
   };
+
+  const loadDatabaseMls = React.useCallback(async (query: MlsDirectoryQuery) => {
+    setMlsQuery(query);
+    const locationId = currentLocationId || undefined;
+    const requestId = ++mlsDirectoryRequestRef.current;
+    mlsDirectoryAbortRef.current?.abort();
+    const controller = new AbortController();
+    mlsDirectoryAbortRef.current = controller;
+    const clearRows = () => {
+      setMlsRecords([]);
+      setMlsPayments([]);
+      setMlsAllocationPayments([]);
+      setMlsTotal(0);
+    };
+    if (!locationId) {
+      clearRows();
+      setMlsLoading(false);
+      return;
+    }
+    const cacheKey = `${getClinicCacheKey('mls-directory', locationId)}:${mlsRefreshKey}:${JSON.stringify(query)}`;
+    setMlsLoading(true);
+    setMlsLoadError(null);
+    clearRows();
+    try {
+      const bundle = await dataCache.getOrLoad(cacheKey, () => loadMlsDirectoryPage(locationId, query, controller.signal), Infinity);
+      if (requestId !== mlsDirectoryRequestRef.current || currentLocationIdRef.current !== locationId || controller.signal.aborted) return;
+      setMlsRecords(bundle.records);
+      setMlsPayments(bundle.payments);
+      setMlsAllocationPayments(bundle.allocationPayments);
+      setMlsTotal(bundle.total);
+    } catch (err: any) {
+      if (requestId !== mlsDirectoryRequestRef.current || controller.signal.aborted) return;
+      clearRows();
+      setMlsLoadError(err?.message || 'MLS directory could not be loaded. Please retry.');
+    } finally {
+      if (requestId === mlsDirectoryRequestRef.current) setMlsLoading(false);
+    }
+  }, [currentLocationId, mlsRefreshKey]);
 
   const loadDatabaseAuditLog = React.useCallback(async (query: AuditQuery) => {
     const locationId = currentLocationId || undefined;
@@ -4692,7 +4744,36 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', commission_type: 'percentage', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} syncProgress={(!treatmentTypesReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} doctors={doctors} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} onRefresh={async () => { invalidateMaterialCostCaches(); await fetchGlobalRecords(true); }} onCostsSaved={async (patientId) => { invalidateMaterialCostCaches(); await refreshGlobalRecordsForPatient(patientId); void fetchExpenses(true); void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => { console.warn('Dashboard refresh after MLS cost save needs a manual refresh.'); }); }} />}
+            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView
+              records={databaseFilteredDirectories ? mlsRecords : globalRecords}
+              paymentRecords={databaseFilteredDirectories ? mlsPayments : paymentRecords}
+              allocationPayments={databaseFilteredDirectories ? mlsAllocationPayments : undefined}
+              doctors={doctors}
+              loading={databaseFilteredDirectories ? mlsLoading : loading}
+              syncProgress={databaseFilteredDirectories ? null : ((!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null)}
+              loadError={databaseFilteredDirectories ? mlsLoadError : null}
+              totalItems={databaseFilteredDirectories ? mlsTotal : undefined}
+              onQueryChange={databaseFilteredDirectories ? loadDatabaseMls : undefined}
+              initialQuery={databaseFilteredDirectories ? mlsQuery : undefined}
+              currency={currency}
+              canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)}
+              cacheScope={getClinicCacheScope()}
+              cacheRevision={materialCostCacheRevision}
+              onRefresh={async () => {
+                invalidateMaterialCostCaches();
+                if (databaseFilteredDirectories) setMlsRefreshKey((key) => key + 1);
+                else await fetchGlobalRecords(true);
+              }}
+              onCostsSaved={async (patientId) => {
+                invalidateMaterialCostCaches();
+                await refreshGlobalRecordsForPatient(patientId);
+                if (databaseFilteredDirectories) setMlsRefreshKey((key) => key + 1);
+                void fetchExpenses(true);
+                void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => {
+                  console.warn('Dashboard refresh after MLS cost save needs a manual refresh.');
+                });
+              }}
+            />}
             {currentView === 'records' && canAccessView('records') && <RecordsView
               records={databaseFilteredDirectories ? auditRecords : globalRecords}
               appointments={databaseFilteredDirectories ? auditAppointments : appointments}

@@ -10,6 +10,7 @@ import { buildMaterialCostPaymentHistoryRows, filterMaterialCostPaymentHistoryRo
 import Pagination from './Pagination';
 import MaterialCostModal from './MaterialCostModal';
 import ProgressBar from './ProgressBar';
+import type { MlsDirectoryQuery } from '../services/mlsDirectory';
 
 interface MaterialCostViewProps {
   records: ClinicalRecord[];
@@ -23,6 +24,11 @@ interface MaterialCostViewProps {
   syncProgress?: number | null;
   cacheScope: string;
   cacheRevision?: number;
+  loadError?: string | null;
+  totalItems?: number;
+  onQueryChange?: (query: MlsDirectoryQuery) => void;
+  allocationPayments?: PaymentRecord[];
+  initialQuery?: MlsDirectoryQuery;
 }
 
 type DateFilter = 'all' | 'tomorrow' | 'today' | 'custom';
@@ -31,7 +37,7 @@ const isDatabasePaymentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a
   type === 'lab' ? summary?.labTotal : type === 'special_doctor' ? summary?.specialDoctorTotal : summary?.materialTotal
 ) || 0;
 
-const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, cacheScope, cacheRevision = 0 }) => {
+const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, cacheScope, cacheRevision = 0, loadError = null, totalItems, onQueryChange, allocationPayments, initialQuery }) => {
   const requestVersion = React.useRef(0);
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const tomorrow = useMemo(() => {
@@ -39,22 +45,28 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     date.setDate(date.getDate() + 1);
     return toLocalISODate(date);
   }, []);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [showAll, setShowAll] = useState(false);
-  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
-  const [patientTerm, setPatientTerm] = useState('');
-  const [doctorTerm, setDoctorTerm] = useState('');
-  const [treatmentTerm, setTreatmentTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(initialQuery?.page ?? 1);
+  const [showAll, setShowAll] = useState(initialQuery?.showAll ?? false);
+  const [dateFilter, setDateFilter] = useState<DateFilter>(initialQuery ? (initialQuery.dateFrom || initialQuery.dateTo ? 'custom' : 'all') : 'today');
+  const [dateFrom, setDateFrom] = useState(initialQuery?.dateFrom ?? today);
+  const [dateTo, setDateTo] = useState(initialQuery?.dateTo ?? today);
+  const [patientTerm, setPatientTerm] = useState(initialQuery?.patientSearch ?? '');
+  const [doctorTerm, setDoctorTerm] = useState(initialQuery?.doctorSearch ?? '');
+  const [treatmentTerm, setTreatmentTerm] = useState(initialQuery?.treatmentSearch ?? '');
   const [refreshing, setRefreshing] = useState(false);
   const [editingRow, setEditingRow] = useState<MaterialCostPaymentHistoryRow | null>(null);
   const [summaries, setSummaries] = useState<Record<string, PaymentCostSummary>>({});
   const itemsPerPage = 100;
 
-  const rows = useMemo(() => buildMaterialCostPaymentHistoryRows(records, paymentRecords), [records, paymentRecords]);
-  const filteredRows = useMemo(() => filterMaterialCostPaymentHistoryRows(rows, { dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm }), [rows, dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm]);
-  const visibleRows = useMemo(() => showAll ? filteredRows : filteredRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filteredRows, currentPage, showAll]);
+  const rows = useMemo(() => buildMaterialCostPaymentHistoryRows(records, paymentRecords, allocationPayments), [records, paymentRecords, allocationPayments]);
+  const filteredRows = useMemo(() => onQueryChange
+    ? rows
+    : filterMaterialCostPaymentHistoryRows(rows, { dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm }),
+  [rows, dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm, onQueryChange]);
+  const visibleRows = useMemo(() => onQueryChange || showAll
+    ? filteredRows
+    : filteredRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+  [filteredRows, currentPage, showAll, onQueryChange]);
 
   const loadSummaries = React.useCallback(async (paymentIds: string[]) => {
     const version = ++requestVersion.current;
@@ -80,7 +92,35 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     } catch (error) { console.warn('Unable to load payment MLS totals.', error); }
   }, [cacheScope, cacheRevision]);
   React.useEffect(() => { if (!loading) void loadSummaries(visibleRows.map((row) => row.paymentId)); }, [loading, loadSummaries, visibleRows]);
-  React.useEffect(() => setCurrentPage(1), [dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm, paymentRecords]);
+  const filterKey = JSON.stringify([dateFrom, dateTo, patientTerm, doctorTerm, treatmentTerm]);
+  const appliedFilterRef = React.useRef(filterKey);
+  React.useEffect(() => { if (!onQueryChange) setCurrentPage(1); }, [paymentRecords, onQueryChange]);
+  React.useEffect(() => {
+    if (!loading && totalItems !== undefined && !showAll) {
+      const lastPage = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+      if (currentPage > lastPage) setCurrentPage(lastPage);
+    }
+  }, [loading, totalItems, showAll, currentPage]);
+  React.useEffect(() => {
+    const filtersChanged = appliedFilterRef.current !== filterKey;
+    appliedFilterRef.current = filterKey;
+    if (filtersChanged && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+    if (!onQueryChange) return;
+    const timeout = setTimeout(() => onQueryChange({
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      patientSearch: patientTerm.trim(),
+      doctorSearch: doctorTerm.trim(),
+      treatmentSearch: treatmentTerm.trim(),
+      page: currentPage,
+      pageSize: itemsPerPage,
+      showAll
+    }), 250);
+    return () => clearTimeout(timeout);
+  }, [filterKey, currentPage, showAll, onQueryChange]);
 
   const chooseDateFilter = (filter: DateFilter) => {
     setDateFilter(filter);
@@ -139,6 +179,7 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
       </div>
     </header>
 
+    {loadError && <div className="m-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 sm:m-4">{loadError}</div>}
     {(loading || typeof syncProgress === 'number') ? <div className="p-10"><ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label="Loading payment MLS records…" /></div> : <>
       <div className="hidden xl:block"><div className="flex items-center justify-between gap-3 border-b border-[var(--hover-100)] bg-[var(--hover-50)] px-5 py-2.5 text-xs font-semibold text-[var(--hover-800)]"><span className="inline-flex items-center gap-2"><ArrowLeftRight size={16} className="text-[var(--hover-600)]" />Scroll sideways to view all columns.</span><span>The Action column stays visible</span></div><div className="table-scroll" role="region" aria-label="Payment MLS cost table" tabIndex={0}>
         <table className="w-full min-w-[1500px]"><thead className="border-b border-slate-200 bg-slate-50"><tr>{['Payment Date', 'Patient', 'Clinician', 'Clinical Activity'].map((label) => <th key={label} className="px-5 py-5 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}{['Patient Balance', 'Collected Payment', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Total Cost', 'Net Receive', 'Doctor Earned'].map((label) => <th key={label} className="px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}<th className="sticky right-0 z-20 min-w-[145px] border-l border-slate-200 bg-slate-50 px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Action</th></tr></thead>
@@ -155,8 +196,8 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
         <button type="button" disabled={!canManageMaterials || !isDatabasePaymentId(row.paymentId)} onClick={() => setEditingRow(row)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-xl border border-[var(--hover-200)] bg-[var(--hover-50)] text-sm font-bold text-[var(--hover-700)] disabled:opacity-40"><Package size={15} /><Plus size={13} />{isDatabasePaymentId(row.paymentId) ? 'MLS Costs for Payment' : 'Legacy payment (read only)'}</button>
       </article>)}</div>
     </>}
-    {!loading && filteredRows.length > 0 && <Pagination totalItems={filteredRows.length} itemsPerPage={itemsPerPage} currentPage={currentPage} onPageChange={setCurrentPage} showAll={showAll} onToggleShowAll={() => setShowAll(!showAll)} />}
-    <MaterialCostModal isOpen={!!editingRow} payment={editingRow?.payment || null} context={editingRow} currency={currency} doctors={doctors} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
+    {!loading && !loadError && (totalItems ?? filteredRows.length) > 0 && <Pagination totalItems={totalItems ?? filteredRows.length} itemsPerPage={itemsPerPage} currentPage={currentPage} onPageChange={setCurrentPage} showAll={showAll} onToggleShowAll={() => { setShowAll(!showAll); setCurrentPage(1); }} />}
+    <MaterialCostModal isOpen={!loadError && !!editingRow} payment={!loadError ? editingRow?.payment || null : null} context={!loadError ? editingRow : null} currency={currency} doctors={doctors} onClose={() => setEditingRow(null)} onSaved={saveSummary} />
   </div>;
 };
 
