@@ -10,6 +10,7 @@ services:
       dockerfile: Dockerfile
       args:
         AI_API_KEY: ${AI_API_KEY:-}
+        VITE_DATABASE_FILTERED_DIRECTORIES: ${VITE_DATABASE_FILTERED_DIRECTORIES:-false}
     ports:
       # Never expose the frontend backend publicly or collide with Supabase.
       - "127.0.0.1:${DENTALCLOUD_HOST_PORT:-18082}:8081"
