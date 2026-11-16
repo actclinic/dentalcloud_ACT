@@ -10,7 +10,7 @@ import { buildMaterialCostPaymentHistoryRows, filterMaterialCostPaymentHistoryRo
 import Pagination from './Pagination';
 import MaterialCostModal from './MaterialCostModal';
 import ProgressBar from './ProgressBar';
-import type { MlsDirectoryQuery } from '../services/mlsDirectory';
+import type { MlsDirectoryQuery, MlsLoadProgress } from '../services/mlsDirectory';
 
 interface MaterialCostViewProps {
   records: ClinicalRecord[];
@@ -22,6 +22,7 @@ interface MaterialCostViewProps {
   onRefresh: () => void | Promise<void>;
   onCostsSaved?: (patientId?: string | null) => Promise<void> | void;
   syncProgress?: number | null;
+  loadProgress?: MlsLoadProgress | null;
   cacheScope: string;
   cacheRevision?: number;
   loadError?: string | null;
@@ -37,7 +38,7 @@ const isDatabasePaymentId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a
   type === 'lab' ? summary?.labTotal : type === 'special_doctor' ? summary?.specialDoctorTotal : summary?.materialTotal
 ) || 0;
 
-const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, cacheScope, cacheRevision = 0, loadError = null, totalItems, onQueryChange, allocationPayments, initialQuery }) => {
+const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRecords, doctors, loading, currency, canManageMaterials, onRefresh, onCostsSaved, syncProgress = null, loadProgress = null, cacheScope, cacheRevision = 0, loadError = null, totalItems, onQueryChange, allocationPayments, initialQuery }) => {
   const requestVersion = React.useRef(0);
   const today = useMemo(() => toLocalISODate(new Date()), []);
   const tomorrow = useMemo(() => {
@@ -180,7 +181,27 @@ const MaterialCostView: React.FC<MaterialCostViewProps> = ({ records, paymentRec
     </header>
 
     {loadError && <div className="m-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 sm:m-4">{loadError}</div>}
-    {(loading || typeof syncProgress === 'number') ? <div className="p-10"><ProgressBar progress={typeof syncProgress === 'number' ? syncProgress : null} label="Loading payment MLS records…" /></div> : <>
+    {(loading || typeof syncProgress === 'number') ? <div className="p-10">
+      <ProgressBar
+        progress={loadProgress?.percentage ?? (typeof syncProgress === 'number' ? syncProgress : null)}
+        label={loadProgress?.label || 'Loading payment MLS records…'}
+      />
+      {loadProgress && <div className="mt-4 space-y-2" role="status" aria-live="polite" aria-atomic="true">
+        {loadProgress.stages.map(stage => <div key={stage.label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+          <span className={stage.status === 'active' ? 'font-bold text-slate-800' : 'text-slate-500'}>{stage.label}</span>
+          <span className="tabular-nums text-slate-600">
+            {stage.status === 'waiting'
+              ? 'Waiting'
+              : stage.total === null
+                ? `${stage.completed} ${stage.unit}`
+                : `${stage.completed} / ${stage.total} ${stage.unit}`}
+            {stage.status === 'complete' ? ' — Complete' : stage.status === 'active' ? ' — In progress' : ''}
+          </span>
+          {stage.detail && <span className="w-full text-slate-500">{stage.detail}</span>}
+        </div>)}
+        <p className="text-xs text-slate-500">You can use another tab while the selected payment range is loading.</p>
+      </div>}
+    </div> : <>
       <div className="hidden xl:block"><div className="flex items-center justify-between gap-3 border-b border-[var(--hover-100)] bg-[var(--hover-50)] px-5 py-2.5 text-xs font-semibold text-[var(--hover-800)]"><span className="inline-flex items-center gap-2"><ArrowLeftRight size={16} className="text-[var(--hover-600)]" />Scroll sideways to view all columns.</span><span>The Action column stays visible</span></div><div className="table-scroll" role="region" aria-label="Payment MLS cost table" tabIndex={0}>
         <table className="w-full min-w-[1500px]"><thead className="border-b border-slate-200 bg-slate-50"><tr>{['Payment Date', 'Patient', 'Clinician', 'Clinical Activity'].map((label) => <th key={label} className="px-5 py-5 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}{['Patient Balance', 'Collected Payment', 'Material Cost', 'Lab Cost', 'Special Doctor Cost', 'Total Cost', 'Net Receive', 'Doctor Earned'].map((label) => <th key={label} className="px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</th>)}<th className="sticky right-0 z-20 min-w-[145px] border-l border-slate-200 bg-slate-50 px-5 py-5 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Action</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{!visibleRows.length ? <tr><td colSpan={13} className="px-6 py-12 text-center"><p className="text-sm font-semibold text-slate-600">No payment rows found</p><p className="mt-1 text-xs text-slate-400">Try another payment date range or clear the search fields.</p></td></tr> : visibleRows.map((row) => <tr key={row.paymentId} className="group border-l-4 border-[var(--hover-300)] hover:bg-[var(--hover-50)]/30">

@@ -1,7 +1,8 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase';
 import * as tus from 'tus-js-client';
-import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity, DoctorSpecialFee, PatientDirectorySummary } from '../types';
-import { AUTO_ONP_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
+import { Patient, Appointment, AppointmentRescheduleLog, ClinicalRecord, DoctorEarningEntry, TreatmentType, PatientFile, Doctor, DoctorSchedule, DoctorScheduleInput, User, Medicine, MedicineSale, Location, LoyaltyRule, LoyaltyTransaction, Expense, Message, Conversation, ScheduledTask, S3Settings, PatientType, AppointmentType, DoctorTreatmentCommission, DoctorCategoryCommission, PaymentMethod, PaymentRecord, PaymentReceiptSnapshot, ReceiptPreferences, ClinicalFeeSettings, ClinicalFeeCompletionResult, ActiveStaffMonitorEntry, PaymentCorrection, PaymentAllocation, AuditLogSourceType, PatientMaterialCost, PatientMaterialCostInput, TreatmentCostSummary, TreatmentCostType, MaterialLabCostPreset, MaterialLabCostPresetInput, CancellationOutcome, DoctorAssignmentTreatmentCandidate, DoctorAssignmentCorrectionInput, DoctorAssignmentCorrectionResult, BranchReceiptIdentity, DoctorSpecialFee, PatientDirectorySummary } from '../types';
+import { DEFAULT_PATIENT_TYPE_NAME, DEFAULT_PATIENT_TYPE_OPTIONS, DOCTOR_DASHBOARD_TABS, FULL_ACCESS_TAB_PERMISSIONS } from '../constants';
+import { retryDeadlock } from '../utils/retryDeadlock';
 import { resolveAllowedTabs } from '../utils/permissions';
 import { EmailSettings, loadEmailSettingsAsync, saveEmailSettingsAsync } from '../utils/emailSettings';
 import { buildS3FileUrl, buildSupabaseS3Url, buildSupabaseS3PublicUrl, deleteS3Object, isSupabaseS3Endpoint, isS3SettingsReady, listS3Objects, normalizeS3BaseUrl, uploadS3Object } from '../utils/s3Storage';
@@ -15,12 +16,13 @@ import { resolveDoctorCommissionType, validateDoctorCommissionPercentage, valida
 import { allocateCommissionablePayments, calculateCommissionLedgerEntries } from '../utils/doctorCommissionLedger';
 import { enumValue, finiteNumber, strictDateString, trimOptional, trimRequired } from '../utils/validation';
 import { buildPatientCreatedAt } from '../utils/patientCreationDate';
-import { summarizeTreatmentCostRows } from '../utils/treatmentCostSummaries';
+import { getCommissionDeductibleCost, summarizeTreatmentCostRows } from '../utils/treatmentCostSummaries';
 import { buildPatientProfileUpdatePayload } from '../utils/patientProfileUpdate';
 import { chunkMonthlyReportPatientIds, type MonthlyReportSourceRecord } from '../utils/monthlyReport';
 import { chunkUniqueIds, mapWithConcurrency, REPORT_REQUEST_CONCURRENCY } from '../utils/reportBatching';
 import { normalizeMaterialCostPresetInputs, sortMaterialCostPresets } from '../utils/materialCostPresets';
 import { normalizeBranchReceiptIdentity } from '../utils/branchReceiptIdentity';
+import { loadOverviewRecords } from './overviewRecords';
 
 let usersAllowedTabsSupport: boolean | null = null;
 let usersDoctorIdSupport: boolean | null = null;
@@ -222,7 +224,7 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
   if (doctorIds.length > 0) {
     const customResult = await supabase
       .from('doctor_treatment_commissions')
-      .select('doctor_id, treatment_id, commission_rate, fixed_amount')
+      .select('doctor_id, treatment_id, commission_rate, fixed_amount, is_enabled')
       .in('doctor_id', doctorIds);
     if (customResult.error && !isMissingRelationError(customResult.error, 'doctor_treatment_commissions')) {
       throw new Error(customResult.error.message);
@@ -230,10 +232,12 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
     customRows = customResult.data || [];
   }
   const customRateByDoctorAndType = new Map(
-    customRows.map((row: any) => [`${row.doctor_id}|${row.treatment_id}`, Number(row.commission_rate || 0)])
+    customRows.filter((row: any) => row.is_enabled !== false)
+      .map((row: any) => [`${row.doctor_id}|${row.treatment_id}`, Number(row.commission_rate || 0)])
   );
   const customFixedAmountByDoctorAndType = new Map(
-    customRows.map((row: any) => [`${row.doctor_id}|${row.treatment_id}`, row.fixed_amount == null ? undefined : Number(row.fixed_amount)])
+    customRows.filter((row: any) => row.is_enabled !== false)
+      .map((row: any) => [`${row.doctor_id}|${row.treatment_id}`, row.fixed_amount == null ? undefined : Number(row.fixed_amount)])
   );
 
   const existingResult = await supabase
@@ -252,7 +256,7 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
     treatmentTypeId: row.treatment_type_id,
     date: row.date,
     cost: Math.max(0, Number(row.cost || 0)),
-    materialCost: materialByTreatment[row.id]?.totalAmount || 0,
+    materialCost: getCommissionDeductibleCost(materialByTreatment[row.id]) || 0,
     specialization: row.doctors?.specialization,
     commissionType: resolveDoctorCommissionType({
       commissionType: row.doctors?.commission_type,
@@ -280,7 +284,7 @@ const recalculatePatientDoctorCommissions = async (patientId: string): Promise<v
       ...(Array.isArray(row.treatment_ids) ? row.treatment_ids : []),
       ...getPaymentReceiptTreatmentIds(row)
     ])),
-    paymentCost: materialByPayment[row.id]?.totalAmount || 0
+    paymentCost: getCommissionDeductibleCost(materialByPayment[row.id]) || 0
   }));
   const allocations = allocateCommissionablePayments(treatments, payments);
   const existingEntries = (existingResult.data || []).map((row: any) => ({
@@ -1045,12 +1049,6 @@ const getLocalISODate = (date = new Date()): string => {
   return local.toISOString().slice(0, 10);
 };
 
-const getOneMonthAgoISO = (date = new Date()): string => {
-  const cutoff = new Date(date);
-  cutoff.setMonth(cutoff.getMonth() - 1);
-  return cutoff.toISOString();
-};
-
 const getAutoOnpPatientTypeEnabled = async (): Promise<boolean> => {
   try {
     const { data, error } = await supabase
@@ -1083,47 +1081,9 @@ const runAutoOnpPatientTypeRefresh = async (locationId?: string): Promise<void> 
     return;
   }
 
-  // Compatibility fallback while the atomic database migration is rolling out.
-  const enabled = await getAutoOnpPatientTypeEnabled();
-  if (!enabled) return;
-
-  const cutoffIso = getOneMonthAgoISO();
-
-  let selectQuery = supabase
-    .from('patients')
-    .select('id, patient_type')
-    .lte('created_at', cutoffIso)
-    .or(`patient_type.is.null,patient_type.neq.${AUTO_ONP_PATIENT_TYPE_NAME}`);
-
-  if (locationId) {
-    selectQuery = selectQuery.eq('location_id', locationId);
-  }
-
-  const { data: eligiblePatients, error: selectError } = await selectQuery;
-  if (selectError) {
-    console.warn('Failed to find patients eligible for auto ONP conversion:', selectError.message);
-    return;
-  }
-
-  const eligibleIds = (eligiblePatients || [])
-    .filter((patient: any) => String(patient.patient_type || '').trim() !== AUTO_ONP_PATIENT_TYPE_NAME)
-    .map((patient: any) => patient.id)
-    .filter(Boolean);
-
-  if (eligibleIds.length === 0) return;
-
-  // PostgREST encodes `.in()` filters in the request URL. Keep each update
-  // below the proxy request-line limit while the atomic RPC rolls out.
-  for (const patientIdBatch of chunkUniqueIds(eligibleIds)) {
-    const { error: updateError } = await supabase
-      .from('patients')
-      .update({ patient_type: AUTO_ONP_PATIENT_TYPE_NAME })
-      .in('id', patientIdBatch);
-
-    if (updateError) {
-      console.warn(`Failed to auto-convert ${patientIdBatch.length} patients to ONP:`, updateError.message);
-    }
-  }
+  // Fail closed. A browser fallback can scan every eligible patient and can
+  // overwrite a concurrent OPT conversion. The reviewed RPC is the only path.
+  console.warn('Auto ONP refresh skipped: the atomic database function is not installed. No client-side bulk fallback was run.');
 };
 
 const applyAutoOnpPatientTypeIfEnabled = async (locationId?: string): Promise<void> => {
@@ -1151,7 +1111,7 @@ const completeAppointmentWithClinicalFee = async (
   skipClinicalFee = false
 ): Promise<ClinicalFeeCompletionResult> => {
   const statusToPersist = skipClinicalFee ? 'SKIPPED' : 'NOT_APPLICABLE';
-  const { data, error } = await supabase
+  const { data, error } = await retryDeadlock(() => supabase
     .from('appointments')
     .update({
       status: 'Completed',
@@ -1162,16 +1122,16 @@ const completeAppointmentWithClinicalFee = async (
     })
     .eq('id', appointmentId)
     .select('id, clinical_fee_status, clinical_fee_amount, clinical_fee_patient_category')
-    .single();
+    .single());
 
   if (error) {
     if (isMissingColumnError(error, 'clinical_fee_status')) {
-      const legacyResult = await supabase
+      const legacyResult = await retryDeadlock(() => supabase
         .from('appointments')
         .update({ status: 'Completed' })
         .eq('id', appointmentId)
         .select('id')
-        .single();
+        .single());
 
       if (legacyResult.error) {
         throw new Error(legacyResult.error.message);
@@ -1857,6 +1817,46 @@ export const api = {
         console.warn('Error fetching patient page:', err);
         return [];
       }
+    },
+    getById: async (id: string, locationId: string): Promise<Patient | null> => {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('id', id)
+        .eq('location_id', locationId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const patient = mapPatient(data);
+      // This lightweight lookup does not join patient_auth. Preserve account
+      // information already held by the directory instead of replacing it.
+      delete patient.has_account;
+      delete patient.username;
+      return patient;
+    },
+    getCreatedInRange: async (locationId: string | undefined, dateFrom: string, dateTo: string): Promise<Patient[]> => {
+      strictDateString(dateFrom, 'Overview start date');
+      strictDateString(dateTo, 'Overview end date');
+      if (dateFrom > dateTo) throw new Error('Overview start date must not be after the end date.');
+      const nextDay = new Date(`${dateTo}T00:00:00Z`);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      const patients: Patient[] = [];
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        let query = supabase
+          .from('patients')
+          .select('*')
+          .gte('created_at', `${dateFrom}T00:00:00Z`)
+          .lt('created_at', nextDay.toISOString())
+          .order('id')
+          .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+        if (locationId) query = query.eq('location_id', locationId);
+        const { data, error } = await query;
+        if (error) throw error;
+        const page = data || [];
+        patients.push(...page.map(mapPatient));
+        if (page.length < SUPABASE_PAGE_SIZE) break;
+      }
+      return patients;
     },
     getDirectorySummaries: async (locationId: string | undefined, patientIds: string[]): Promise<PatientDirectorySummary[]> => {
       const ids = [...new Set(patientIds.filter(Boolean))].slice(0, 100);
@@ -2815,7 +2815,7 @@ export const api = {
         }
       );
     },
-    getAll: async (locationId?: string, options?: { ids?: string[]; doctorId?: string; throwOnError?: boolean }): Promise<Appointment[]> => {
+    getAll: async (locationId?: string, options?: { ids?: string[]; doctorId?: string; patientId?: string; dateFrom?: string; dateTo?: string; throwOnError?: boolean }): Promise<Appointment[]> => {
       if (options?.ids?.length === 0) return [];
       try {
         // Do not rely on the REST endpoint's implicit row limit. In production
@@ -2839,6 +2839,11 @@ export const api = {
             if (options?.doctorId) {
               query = query.eq('doctor_id', options.doctorId);
             }
+            if (options?.patientId) {
+              query = query.eq('patient_id', options.patientId);
+            }
+            if (options?.dateFrom) query = query.gte('date', options.dateFrom);
+            if (options?.dateTo) query = query.lte('date', options.dateTo);
             if (options?.ids) {
               query = query.in('id', options.ids);
             }
@@ -3840,6 +3845,25 @@ export const api = {
 
   treatments: {
     // Configuration
+    getCategoryServicesForLocations: async (locationIds: string[]): Promise<{ id: string; category: string; name: string }[]> => {
+      const uniqueLocations = [...new Set(locationIds.filter(Boolean))];
+      if (!uniqueLocations.length) return [];
+      const rows: { id: string; category: string; name: string }[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase
+          .from('treatment_types')
+          .select('id, category, name')
+          .in('location_id', uniqueLocations)
+          .order('id')
+          .range(offset, offset + pageSize - 1);
+        if (error) throw new Error(error.message);
+        const page = (data || []) as { id: string; category: string; name: string }[];
+        rows.push(...page);
+        if (page.length < pageSize) break;
+      }
+      return rows;
+    },
     getTypes: async (locationId?: string): Promise<TreatmentType[]> => {
        try {
          let query = supabase
@@ -4212,6 +4236,111 @@ export const api = {
         return [];
       }
     },
+    getOverviewRecords: async (
+      locationId: string | undefined,
+      range: { dateFrom: string; dateTo: string }
+    ): Promise<ClinicalRecord[]> => {
+      const mapOverviewTreatment = (rec: any, entries: DoctorEarningEntry[] = []): ClinicalRecord => ({
+        ...rec,
+        standardCost: rec.standard_cost ?? null,
+        discountAmount: Number(rec.discount_amount || 0),
+        pricingNote: rec.pricing_note || null,
+        doctorEarnings: Number(rec.doctor_earnings || 0),
+        doctorEarningEntries: entries.length ? entries : (
+          Number(rec.doctor_earnings || 0) > 0 && rec.doctor_id
+            ? [{
+                paymentId: `legacy-${rec.id}`,
+                treatmentId: rec.id,
+                doctorId: rec.doctor_id,
+                paymentDate: rec.date,
+                treatmentDate: rec.date,
+                calculationMode: getTreatmentCommissionMode(rec),
+                allocatedPayment: Number(rec.cost || 0),
+                commissionRate: getTreatmentCommissionRate(rec),
+                earnings: Number(rec.doctor_earnings || 0)
+              }]
+            : []
+        ),
+        patient_name: rec.patients?.name || 'Unknown',
+        patient_type: rec.patients?.patient_type || null,
+        patient_balance: Number(rec.patients?.balance || 0),
+        doctor_name: rec.doctors?.name || undefined,
+        doctor_specialization: rec.doctors?.specialization || null,
+        doctor_commission_type: getTreatmentCommissionMode(rec),
+        doctor_commission_percentage: getTreatmentCommissionMode(rec) === 'percentage' ? getTreatmentCommissionRate(rec) : null,
+        doctor_commission_per_visit: getTreatmentCommissionMode(rec) === 'flat_visit' ? getTreatmentCommissionRate(rec) : null
+      });
+
+      const loadTreatmentPages = async (dateRange?: { dateFrom: string; dateTo: string }, ids?: string[]) => {
+        const rows: any[] = [];
+        for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+          const buildQuery = (withRelations: boolean) => {
+            let query = supabase
+              .from('treatments')
+              .select(withRelations
+                ? '*, patients(name, balance, patient_type), doctors(name, specialization, commission_type, commission_percentage, commission_per_visit)'
+                : '*')
+              .order('date', { ascending: false })
+              .order('id')
+              .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+            if (locationId) query = query.eq('location_id', locationId);
+            if (dateRange) query = query.gte('date', dateRange.dateFrom).lte('date', dateRange.dateTo);
+            if (ids) query = query.in('id', ids);
+            return query;
+          };
+          let { data, error } = await buildQuery(true);
+          if (error && isOptionalRelationAccessError(error, ['patients', 'doctors'])) {
+            const fallback = await buildQuery(false);
+            data = fallback.data;
+            error = fallback.error;
+          }
+          if (error) throw error;
+          const page = data || [];
+          rows.push(...page);
+          if (page.length < SUPABASE_PAGE_SIZE || ids) break;
+        }
+        const entriesByTreatment = await getDoctorEarningEntriesByTreatmentIds(rows.map((row) => row.id));
+        return rows.map((row) => mapOverviewTreatment(row, entriesByTreatment.get(row.id) || []));
+      };
+
+      return loadOverviewRecords({
+        loadTreatmentsInRange: (_scope, dates) => loadTreatmentPages(dates),
+        loadTreatmentsByIds: (_scope, ids) => loadTreatmentPages(undefined, ids),
+        loadCommissionEntriesInRange: async (_scope, dates) => {
+          const entries: DoctorEarningEntry[] = [];
+          for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+            let query = supabase
+              .from('doctor_commission_entries')
+              .select('id, payment_id, treatment_id, doctor_id, payment_date, treatment_date, calculation_mode, allocated_payment, commission_rate, earnings')
+              .gte('payment_date', dates.dateFrom)
+              .lte('payment_date', dates.dateTo)
+              .order('id')
+              .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+            if (locationId) query = query.eq('location_id', locationId);
+            const { data, error } = await query;
+            if (error) {
+              if (isMissingRelationError(error, 'doctor_commission_entries')) return [];
+              throw error;
+            }
+            const page = data || [];
+            entries.push(...page.map((row: any) => ({
+              id: row.id,
+              paymentId: row.payment_id,
+              treatmentId: row.treatment_id,
+              doctorId: row.doctor_id,
+              paymentDate: row.payment_date,
+              treatmentDate: row.treatment_date,
+              calculationMode: row.calculation_mode,
+              allocatedPayment: Number(row.allocated_payment || 0),
+              commissionRate: Number(row.commission_rate || 0),
+              earnings: Number(row.earnings || 0)
+            })));
+            if (page.length < SUPABASE_PAGE_SIZE) break;
+          }
+          return entries;
+        }
+      }, locationId, range);
+    },
     updateAuditRecord: async (
       id: string,
       data: Partial<Pick<ClinicalRecord, 'date' | 'description' | 'teeth' | 'doctor_id'>>
@@ -4364,18 +4493,18 @@ export const api = {
         doctor_earnings: doctorEarnings
       };
       
-      let { data: result, error: insertError } = await supabase
+      let { data: result, error: insertError } = await retryDeadlock(() => supabase
         .from('treatments')
         .insert(treatmentData)
         .select()
-        .single();
+        .single());
 
       if (insertError && /treatment_type_id|standard_cost|discount_amount|pricing_note|schema cache/i.test(insertError.message || '')) {
-        const legacyInsert = await supabase
+        const legacyInsert = await retryDeadlock(() => supabase
           .from('treatments')
           .insert(legacyTreatmentData)
           .select()
-          .single();
+          .single());
 
         result = legacyInsert.data
           ? {
@@ -5002,6 +5131,7 @@ export const api = {
           treatment_id,
           commission_rate,
           fixed_amount,
+          is_enabled,
           created_at,
           updated_at,
           treatment_types:treatment_id (
@@ -5019,6 +5149,7 @@ export const api = {
         treatment_id: row.treatment_id,
         commission_rate: Number(row.commission_rate ?? 0),
         fixed_amount: row.fixed_amount == null ? null : Number(row.fixed_amount),
+        is_enabled: row.is_enabled !== false,
         created_at: row.created_at,
         updated_at: row.updated_at,
         treatment_name: row.treatment_types?.name || undefined
@@ -5031,23 +5162,27 @@ export const api = {
           doctor_id: doctorId,
           treatment_id: entry.treatment_id,
           commission_rate: Number(entry.commission_rate),
-          fixed_amount: entry.fixed_amount == null ? null : Number(entry.fixed_amount)
+          fixed_amount: entry.fixed_amount == null ? null : Number(entry.fixed_amount),
+          is_enabled: entry.is_enabled !== false
         }));
 
-      const { error: deleteError } = await supabase
+      if (normalized.length) {
+        const { error } = await supabase
+          .from('doctor_treatment_commissions')
+          .upsert(normalized, { onConflict: 'doctor_id,treatment_id' });
+        if (error) throw new Error(error.message);
+      }
+      const { data: existing, error: readError } = await supabase
         .from('doctor_treatment_commissions')
-        .delete()
+        .select('id, treatment_id')
         .eq('doctor_id', doctorId);
-
-      if (deleteError) throw new Error(deleteError.message);
-
-      if (normalized.length === 0) return;
-
-      const { error: upsertError } = await supabase
-        .from('doctor_treatment_commissions')
-        .upsert(normalized, { onConflict: 'doctor_id,treatment_id' });
-
-      if (upsertError) throw new Error(upsertError.message);
+      if (readError) throw new Error(readError.message);
+      const retained = new Set(normalized.map(row => row.treatment_id));
+      const removed = (existing || []).filter(row => !retained.has(row.treatment_id)).map(row => row.id);
+      if (removed.length) {
+        const { error } = await supabase.from('doctor_treatment_commissions').delete().in('id', removed);
+        if (error) throw new Error(error.message);
+      }
     },
     getApplicableRate: async (doctorId: string, treatmentId: string): Promise<number> => {
       const { data, error } = await supabase.rpc('get_applicable_commission_rate', {
@@ -5058,6 +5193,49 @@ export const api = {
       if (error) throw new Error(error.message);
 
       return Number(data ?? 0);
+    }
+  },
+
+  doctorCategoryCommissions: {
+    getByDoctor: async (doctorId: string): Promise<DoctorCategoryCommission[]> => {
+      const { data, error } = await supabase
+        .from('doctor_category_commissions')
+        .select('id, doctor_id, category, commission_rate, fixed_amount')
+        .eq('doctor_id', doctorId)
+        .order('category');
+      if (error) throw new Error(error.message);
+      return (data || []).map((row: any) => ({
+        ...row,
+        commission_rate: Number(row.commission_rate),
+        fixed_amount: row.fixed_amount == null ? null : Number(row.fixed_amount)
+      }));
+    },
+    replaceForDoctor: async (doctorId: string, rows: DoctorCategoryCommission[]): Promise<void> => {
+      const normalized = rows.map(row => ({
+        doctor_id: doctorId,
+        category: row.category.trim(),
+        commission_rate: Number(row.commission_rate),
+        fixed_amount: row.fixed_amount == null ? null : Number(row.fixed_amount)
+      }));
+      const { data: existing, error: readError } = await supabase
+        .from('doctor_category_commissions')
+        .select('id, category')
+        .eq('doctor_id', doctorId);
+      if (readError) throw new Error(readError.message);
+      for (const row of normalized) {
+        const match = (existing || []).find(item => item.category.toLowerCase() === row.category.toLowerCase());
+        const query = match
+          ? supabase.from('doctor_category_commissions').update(row).eq('id', match.id)
+          : supabase.from('doctor_category_commissions').insert(row);
+        const { error } = await query;
+        if (error) throw new Error(error.message);
+      }
+      const retained = new Set(normalized.map(row => row.category.toLowerCase()));
+      const removed = (existing || []).filter(row => !retained.has(row.category.toLowerCase())).map(row => row.id);
+      if (removed.length) {
+        const { error } = await supabase.from('doctor_category_commissions').delete().in('id', removed);
+        if (error) throw new Error(error.message);
+      }
     }
   },
 
@@ -5248,6 +5426,45 @@ export const api = {
         ...payment,
         assignedSpecialDoctorTotal: costsByPayment[payment.id]?.assignedSpecialDoctorTotal || 0
       }));
+    },
+    getOverviewPayments: async (
+      locationId: string | undefined,
+      range: { dateFrom: string; dateTo: string }
+    ): Promise<PaymentRecord[]> => {
+      strictDateString(range.dateFrom, 'Overview start date');
+      strictDateString(range.dateTo, 'Overview end date');
+      if (range.dateFrom > range.dateTo) throw new Error('Overview start date must not be after the end date.');
+      const payments: PaymentRecord[] = [];
+      for (let offset = 0; ; offset += SUPABASE_PAGE_SIZE) {
+        const buildQuery = (withRelations: boolean) => {
+          let query = supabase
+            .from('payments')
+            .select(withRelations
+              ? '*, patients(name, balance, patient_type), payment_allocations(id, payment_id, payment_method, amount, reference)'
+              : '*')
+            .gte('payment_date', range.dateFrom)
+            .lte('payment_date', range.dateTo)
+            .order('payment_date', { ascending: false })
+            .order('id')
+            .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+          if (locationId) query = query.eq('location_id', locationId);
+          return query;
+        };
+        let { data, error } = await buildQuery(true);
+        if (error && isOptionalRelationAccessError(error, ['patients', 'payment_allocations'])) {
+          const fallback = await buildQuery(false);
+          data = fallback.data;
+          error = fallback.error;
+        }
+        if (error) {
+          if (isMissingRelationError(error, 'payments')) return [];
+          throw error;
+        }
+        const page = data || [];
+        payments.push(...page.map(mapPaymentRow));
+        if (page.length < SUPABASE_PAGE_SIZE) break;
+      }
+      return payments;
     },
     processPayment: async (input: {
       patientId: string;
@@ -5612,6 +5829,51 @@ export const api = {
     },
     saveEmailSettings: async (settings: EmailSettings): Promise<EmailSettings> => {
       return saveEmailSettingsAsync(settings);
+    },
+    getPatientTypeAutomationSettings: async (): Promise<{ autoOnpEnabled: boolean; autoOptEnabled: boolean }> => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('auto_onp_patient_type_enabled, auto_opt_patient_type_enabled')
+        .eq('id', APP_SETTINGS_SINGLETON_ID)
+        .maybeSingle();
+      if (error) {
+        if (isMissingColumnError(error, 'auto_opt_patient_type_enabled')) {
+          return { autoOnpEnabled: await getAutoOnpPatientTypeEnabled(), autoOptEnabled: false };
+        }
+        console.warn('Failed to load patient type automation settings:', error.message);
+        return { autoOnpEnabled: false, autoOptEnabled: false };
+      }
+      return {
+        autoOnpEnabled: data?.auto_onp_patient_type_enabled === true,
+        autoOptEnabled: data?.auto_opt_patient_type_enabled === true
+      };
+    },
+    getAutoOptPatientTypeEnabled: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('auto_opt_patient_type_enabled')
+        .eq('id', APP_SETTINGS_SINGLETON_ID)
+        .maybeSingle();
+      if (error) {
+        if (!isMissingColumnError(error, 'auto_opt_patient_type_enabled')) {
+          console.warn('Failed to load auto OPT patient type setting:', error.message);
+        }
+        return false;
+      }
+      return data?.auto_opt_patient_type_enabled === true;
+    },
+    saveAutoOptPatientTypeEnabled: async (enabled: boolean): Promise<void> => {
+      const { error } = await supabase.from('app_settings').upsert({
+        id: APP_SETTINGS_SINGLETON_ID,
+        auto_opt_patient_type_enabled: enabled,
+        updated_at: new Date().toISOString()
+      });
+      if (error) {
+        if (isMissingColumnError(error, 'auto_opt_patient_type_enabled')) {
+          throw new Error('Auto OPT is not installed. Apply the reviewed 20261111000000_auto_opt_patient_type.sql migration first.');
+        }
+        throw new Error(error.message);
+      }
     },
     getAutoOnpPatientTypeEnabled: async (): Promise<boolean> => {
       return getAutoOnpPatientTypeEnabled();
@@ -6461,7 +6723,7 @@ export const api = {
   },
 
   expenses: {
-    getAll: async (locationId?: string): Promise<Expense[]> => {
+    getAll: async (locationId?: string, options?: { throwOnError?: boolean; dateFrom?: string; dateTo?: string }): Promise<Expense[]> => {
       try {
         let query = supabase
           .from('expenses')
@@ -6471,6 +6733,8 @@ export const api = {
         if (locationId) {
           query = query.eq('location_id', locationId);
         }
+        if (options?.dateFrom) query = query.gte('date', options.dateFrom);
+        if (options?.dateTo) query = query.lte('date', options.dateTo);
 
           const { data, error } = await query;
           if (error) throw error;
@@ -6482,13 +6746,17 @@ export const api = {
           try {
             syntheticMaterialExpenses = await fetchSyntheticMaterialCostExpenses(locationId, storedExpenses);
           } catch (enrichmentError) {
+            if (options?.throwOnError) throw enrichmentError;
             console.warn('Error enriching expenses with material/lab costs:', enrichmentError);
           }
 
           return [...storedExpenses, ...syntheticMaterialExpenses]
+            .filter((expense) => (!options?.dateFrom || expense.date >= options.dateFrom)
+              && (!options?.dateTo || expense.date <= options.dateTo))
             .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
         } catch (err) {
           console.warn("Error fetching expenses:", err);
+          if (options?.throwOnError) throw err;
           return [];
         }
       },

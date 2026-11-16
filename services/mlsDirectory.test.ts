@@ -23,7 +23,8 @@ beforeEach(() => {
 
 describe('MLS bounded directory', () => {
   it('selects filters/count/page in RPC and hydrates page patient history without date truncation', async () => {
-    const result = await loadMlsDirectoryPage('branch-1', query);
+    const progress = vi.fn();
+    const result = await loadMlsDirectoryPage('branch-1', query, undefined, progress);
     expect(mocks.rpc).toHaveBeenCalledWith('mls_directory_page', {
       p_location_id: 'branch-1', p_date_from: '2026-11-03', p_date_to: '2026-11-03',
       p_patient_search: 'Ann', p_doctor_search: 'Smith', p_treatment_search: 'Crown', p_page: 2, p_page_size: 1
@@ -34,12 +35,24 @@ describe('MLS bounded directory', () => {
     expect(result.total).toBe(3);
     const [row] = buildMaterialCostPaymentHistoryRows(result.records, result.payments, result.allocationPayments);
     expect(row.treatmentIds).toEqual(['recent']);
+    expect(progress).toHaveBeenCalled();
+    expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({
+      percentage: 100,
+      stages: [
+        { label: 'Selecting payment rows', status: 'complete' },
+        { label: 'Loading treatment allocation history', status: 'complete' },
+        { label: 'Loading payment allocation history', status: 'complete' },
+        { label: 'Verifying financial rows', status: 'complete' }
+      ]
+    });
   });
 
   it('does no hydration for an empty page', async () => {
     mocks.rpc.mockResolvedValue({ data: { total: 3, payment_ids: [], patient_ids: [], treatment_ids: [] }, error: null });
-    expect(await loadMlsDirectoryPage('branch-1', query)).toEqual({ total: 3, records: [], payments: [], allocationPayments: [] });
+    const progress = vi.fn();
+    expect(await loadMlsDirectoryPage('branch-1', query, undefined, progress)).toEqual({ total: 3, records: [], payments: [], allocationPayments: [] });
     expect(mocks.records).not.toHaveBeenCalled();
+    expect(progress.mock.calls.at(-1)?.[0].percentage).toBe(100);
   });
 
   it('rejects missing hydrated payments and malformed selections', async () => {

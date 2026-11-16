@@ -7,6 +7,16 @@ export interface TreatmentCostSummaryRow {
   doctor_id?: string | null;
 }
 
+/**
+ * Only material and lab costs reduce a percentage commission base. Special
+ * Doctor costs are direct doctor revenue and are added separately.
+ */
+export const getCommissionDeductibleCost = (
+  summary?: Pick<TreatmentCostSummary, 'materialTotal' | 'labTotal'>
+): number | undefined => summary
+  ? Math.round((Number(summary.materialTotal || 0) + Number(summary.labTotal || 0)) * 100) / 100
+  : undefined;
+
 export const summarizeTreatmentCostRows = (
   rows: TreatmentCostSummaryRow[],
   sourceByAuditId: Map<string, string>

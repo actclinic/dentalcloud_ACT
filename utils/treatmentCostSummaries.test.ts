@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { summarizeTreatmentCostRows } from './treatmentCostSummaries';
+import { getCommissionDeductibleCost, summarizeTreatmentCostRows } from './treatmentCostSummaries';
 
 describe('treatment cost summaries', () => {
   it('separates material and lab totals while preserving the combined total', () => {
@@ -39,6 +39,12 @@ describe('treatment cost summaries', () => {
       totalAmount: 55_000,
       itemCount: 3
     });
+    expect(getCommissionDeductibleCost(summaries['treatment-1'])).toBe(10_000);
+  });
+
+  it('preserves an absent summary while treating a real zero-cost summary as zero', () => {
+    expect(getCommissionDeductibleCost()).toBeUndefined();
+    expect(getCommissionDeductibleCost({ materialTotal: 0, labTotal: 0 })).toBe(0);
   });
 
   it('treats legacy rows without a cost type as material', () => {
