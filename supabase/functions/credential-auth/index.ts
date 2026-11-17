@@ -3,7 +3,16 @@ import { hashPassword, verifyPassword } from '../_shared/passwords.ts';
 const base = Deno.env.get('SUPABASE_URL')!;
 const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const restBase = Deno.env.get('AUTH_REHEARSAL_REST_URL') || `${base}/rest/v1`;
-const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization,apikey,content-type,x-client-info' };
+const allowedOrigins = new Set(
+  (Deno.env.get('AUTH_ALLOWED_ORIGINS') || '').split(',').map((value) => value.trim()).filter(Boolean),
+);
+function corsHeaders(req: Request) {
+  const origin = req.headers.get('origin') || '';
+  return {
+    ...(allowedOrigins.has(origin) ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}),
+    'Access-Control-Allow-Headers': 'authorization,apikey,content-type,x-client-info',
+  };
+}
 const safeColumns: Record<string,string> = {
   users: 'id,location_id,username,role,allowed_tabs,doctor_id,created_at,updated_at',
   doctors: 'id,location_id,name,email,phone,specialization,commission_percentage,commission_per_visit,commission_type,created_at',
@@ -69,7 +78,10 @@ async function sendCode(address:string,purpose:'signup'|'reset',origin:string) {
 }
 
 Deno.serve(async req => {
-  if(req.method==='OPTIONS') return new Response('ok',{headers:cors});
+  const cors = corsHeaders(req);
+  if(req.method==='OPTIONS') {
+    return new Response('ok',{status:allowedOrigins.has(req.headers.get('origin') || '') ? 200 : 403,headers:cors});
+  }
   const reply=(data:unknown,status=200,extra:Record<string,string>={})=>new Response(JSON.stringify(data),{status,headers:{...cors,'Content-Type':'application/json',...extra}});
   if(req.method!=='POST') return reply({error:'Method not allowed'},405);
   try {
@@ -77,6 +89,8 @@ Deno.serve(async req => {
     if(raw.length>65536) return reply({error:'Request too large'},413);
     const b=JSON.parse(raw);
     const action=String(b.action || '');
+    const requestOrigin=req.headers.get('origin') || '';
+    if(requestOrigin && !allowedOrigins.has(requestOrigin)) return reply({error:'Unrecognized application origin'},403);
     if(!['validate','logout'].includes(action) && (!await rpc('secure_auth_ready',{}) || !await rpc('secure_auth_converted',{}))) {
       return reply({error:'Secure login upgrade is in progress. Please try again shortly.'},503);
     }
@@ -156,9 +170,7 @@ Deno.serve(async req => {
     if(['signup','resend','reset-request','verify-signup','reset-complete'].includes(action)) {
       const address=email(b.email);
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return reply({error:'Please enter a valid email address.'});
-      const origin=req.headers.get('origin') || '';
-      const allowed=(Deno.env.get('AUTH_ALLOWED_ORIGINS') || '').split(',').map((value) => value.trim()).filter(Boolean);
-      if(!allowed.includes(origin)) return reply({error:'Unrecognized application origin'},403);
+      const origin=requestOrigin;
       const existing=(await rows('patient_auth',`select=*&email=${eq(address)}`))[0];
       if(action==='reset-request') {
         if(existing) await sendCode(address,'reset',origin);
