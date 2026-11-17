@@ -483,6 +483,8 @@ const App: React.FC = () => {
   const [assistantExpenses, setAssistantExpenses] = useState<Expense[]>([]);
   const [assistantMedicineSales, setAssistantMedicineSales] = useState<MedicineSale[]>([]);
   const [assistantPaymentRecords, setAssistantPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
+  const [assistantDataReady, setAssistantDataReady] = useState(false);
+  const [assistantDataError, setAssistantDataError] = useState<string | null>(null);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -517,6 +519,7 @@ const App: React.FC = () => {
   const paymentSubmitInFlightRef = React.useRef(false);
   const paymentSubmissionKeyRef = React.useRef<string | null>(null);
   const dashboardFetchRequestRef = React.useRef(0);
+  const assistantFetchRequestRef = React.useRef(0);
   const initialDataFetchRequestRef = React.useRef(0);
   const currentLocationIdRef = React.useRef(currentLocationId);
   currentLocationIdRef.current = currentLocationId;
@@ -1267,6 +1270,8 @@ const App: React.FC = () => {
     const checkAuth = async () => {
       let session = auth.getSession();
       if (session) {
+        if (session.role === 'patient') session = await auth.validatePatientSession();
+        if (!session) { resetStaffSession(); return; }
         if (session.role !== 'patient') {
           try {
             session = await auth.refreshStaffSession();
@@ -1282,8 +1287,6 @@ const App: React.FC = () => {
 
         applySessionState(session);
         const preferredBranchId = getPreferredSessionBranchId(session);
-        // Initialize default admin and fetch data
-        await auth.initializeDefaultAdmin();
         fetchInitialData(preferredBranchId || undefined);
         fetchUsers();
         return;
@@ -1302,8 +1305,6 @@ const App: React.FC = () => {
       }
 
       resetStaffSession();
-      // Still initialize default admin for first-time setup
-      auth.initializeDefaultAdmin();
     };
     
     checkAuth().catch(err => {
@@ -1717,6 +1718,10 @@ const App: React.FC = () => {
   };
 
   const fetchAssistantData = async () => {
+    const requestId = ++assistantFetchRequestRef.current;
+    setAssistantDataReady(false);
+    setAssistantDataError(null);
+    try {
     const session = auth.getSession();
     const restrictedLocationId = getSessionRestrictedLocationId(session);
     const queryLocationId = restrictedLocationId || currentLocationId || undefined;
@@ -1734,6 +1739,7 @@ const App: React.FC = () => {
       safeLoad('Assistant payments', api.finance.getPayments(assistantLocationId), [])
     ]);
 
+    if (requestId !== assistantFetchRequestRef.current) return;
     setAssistantPatients(patData);
     setAssistantAppointments(aptData);
     setAssistantDoctors(docData);
@@ -1743,6 +1749,13 @@ const App: React.FC = () => {
     setAssistantExpenses(expenseData);
     setAssistantMedicineSales(salesData);
     setAssistantPaymentRecords(mergeLegacyPaymentRecords(paymentData, assistantLocationId));
+    setAssistantDataReady(true);
+    } catch (error: any) {
+      if (requestId === assistantFetchRequestRef.current) {
+        setAssistantDataError(error?.message || 'Could not load complete assistant data.');
+      }
+      throw error;
+    }
   };
 
   const fetchInitialData = async (
@@ -4615,7 +4628,7 @@ const App: React.FC = () => {
       
       {/* Mobile Header */}
       {!isDoctor && (
-      <header className="lg:hidden theme-nav-bg theme-nav-text p-4 flex items-center justify-between sticky top-0 z-50">
+      <header data-mobile-app-header className="lg:hidden theme-nav-bg theme-nav-text p-4 flex items-center justify-between sticky top-0 z-50">
         {renderAppBrand('mobile')}
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -5130,6 +5143,9 @@ const App: React.FC = () => {
               />
             )}
             {currentView === 'ai-assistant' && canAccessView('ai-assistant') && <AIAssistantView 
+                dataReady={assistantDataReady}
+                dataError={assistantDataError}
+                onRetryData={() => void fetchAssistantData().catch(() => undefined)}
                 patients={assistantPatients} 
                 treatmentRecords={assistantRecords} 
                 appointments={assistantAppointments}

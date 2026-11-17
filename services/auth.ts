@@ -1,21 +1,18 @@
 import { User, Patient } from '../types';
 import { api } from './api';
+import { secureAuthRequest } from './secureAuth';
 import { activeStaffPresence } from './activeStaffPresence';
 import type { AppTabPermission } from '../constants';
 import { DOCTOR_DASHBOARD_TABS } from '../constants';
 import { resolveAllowedTabs } from '../utils/permissions';
 
 // Default admin credentials
-export const DEFAULT_ADMIN = {
-  username: 'admin',
-  password: 'admin123'
-};
-
 // Session storage keys
 const SESSION_KEY = 'dental_auth_session';
 const SESSION_USER_KEY = 'dental_auth_user';
 const SESSION_INSTANCE_KEY = 'dental_auth_session_instance';
 const SESSION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+let sessionRevision = 0;
 
 const generateSessionInstanceId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -51,6 +48,7 @@ export interface AuthSession {
   loginTime: number;
   clientSessionId?: string;
   staffAuthToken?: string;
+  patientAuthToken?: string;
   doctor_id?: string | null;
   patientId?: string; // For patient sessions
   supabaseUserId?: string; // For Supabase Auth sessions
@@ -59,21 +57,7 @@ export interface AuthSession {
 export const auth = {
   // Initialize default admin if it doesn't exist
   async initializeDefaultAdmin(): Promise<void> {
-    try {
-      const users = await api.users.getAll();
-      const adminExists = users.some(u => u.username === DEFAULT_ADMIN.username && u.role === 'admin');
-      
-      if (!adminExists) {
-        // Create default admin
-        await api.users.create({
-          username: DEFAULT_ADMIN.username,
-          password: DEFAULT_ADMIN.password,
-          role: 'admin'
-        });
-      }
-    } catch (error) {
-      console.warn('Error initializing default admin:', error);
-    }
+    // Administrators must be provisioned through authorized server tooling.
   },
 
   // Login with username, password, and CAPTCHA
@@ -87,15 +71,6 @@ export const auth = {
     try {
       const user = await api.users.authenticate(username, password);
       
-      if (!user && username === DEFAULT_ADMIN.username && password === DEFAULT_ADMIN.password) {
-        // If database auth fails but credentials match default, initialize and try again
-        await this.initializeDefaultAdmin();
-        const retryUser = await api.users.authenticate(username, password);
-        if (retryUser) {
-          return await this.createStaffSession(retryUser);
-        }
-      }
-
       if (!user) {
         throw new Error('Invalid username or password');
       }
@@ -109,6 +84,14 @@ export const auth = {
   // Logout
   async logout(): Promise<void> {
     const session = this.getSession();
+    sessionRevision += 1;
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_USER_KEY);
+    localStorage.removeItem(SESSION_INSTANCE_KEY);
+    if (session?.patientAuthToken) {
+      try { await secureAuthRequest('logout', { token: session.patientAuthToken }); }
+      catch { /* Local logout must still succeed during a network failure. */ }
+    }
     if (session && session.role !== 'patient') {
       try {
         await activeStaffPresence.markInactive(session);
@@ -125,9 +108,6 @@ export const auth = {
       }
     }
 
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(SESSION_USER_KEY);
-    localStorage.removeItem(SESSION_INSTANCE_KEY);
   },
 
   // Get current session
@@ -171,6 +151,7 @@ export const auth = {
 
   // Set session
   setSession(session: AuthSession): void {
+    sessionRevision += 1;
     const sessionWithClientId: AuthSession = {
       ...session,
       clientSessionId: session.clientSessionId || getOrCreateSessionInstanceId()
@@ -199,7 +180,8 @@ export const auth = {
         role: 'patient',
         location_id: patient.location_id || null,
         loginTime: Date.now(),
-        patientId: patient.id
+        patientId: patient.id,
+        patientAuthToken: patient.auth_session_token
       };
 
       this.setSession(session);
@@ -234,13 +216,27 @@ export const auth = {
   async refreshStaffSession(): Promise<AuthSession | null> {
     const currentSession = this.getSession();
     if (!currentSession || currentSession.role === 'patient') return currentSession;
+    const revision = sessionRevision;
+    const storedSession = localStorage.getItem(SESSION_KEY);
+    const isCurrent = () => revision === sessionRevision && storedSession === localStorage.getItem(SESSION_KEY);
+    if (!currentSession.staffAuthToken) { await this.logout(); return null; }
+    const validated = await secureAuthRequest<{ session: any }>('validate', { token: currentSession.staffAuthToken });
+    if (!isCurrent()) return null;
+    if (!validated.session || validated.session.kind !== 'staff' ||
+      (validated.session.id !== currentSession.userId &&
+        (!currentSession.doctor_id || validated.session.doctor_id !== currentSession.doctor_id))) {
+      await this.logout();
+      return null;
+    }
 
     let currentUser = await api.users.getById(currentSession.userId);
+    if (!isCurrent()) return null;
     // Older doctor-only logins stored doctors.id as userId. After the database
     // repair creates the linked staff user, migrate those cached sessions to
     // the canonical users.id instead of forcing the doctor to log in again.
     if (!currentUser && currentSession.role === 'doctor' && currentSession.doctor_id) {
       currentUser = await api.users.getByDoctorId(currentSession.doctor_id);
+      if (!isCurrent()) return null;
     }
     if (!currentUser) {
       await this.logout();
@@ -262,6 +258,21 @@ export const auth = {
 
     this.setSession(refreshedSession);
     return refreshedSession;
+  },
+
+  async validatePatientSession(): Promise<AuthSession | null> {
+    const current = this.getSession();
+    if (!current || current.role !== 'patient') return current;
+    if (!current.patientAuthToken) { await this.logout(); return null; }
+    const revision = sessionRevision;
+    const storedSession = localStorage.getItem(SESSION_KEY);
+    const result = await secureAuthRequest<{ session: any }>('validate', { token: current.patientAuthToken });
+    if (revision !== sessionRevision || storedSession !== localStorage.getItem(SESSION_KEY)) return null;
+    if (!result.session || result.session.kind !== 'patient' || result.session.id !== current.patientId) {
+      await this.logout();
+      return null;
+    }
+    return current;
   },
 
   // Patient/staff sessions are managed in localStorage; Supabase Auth is not used for app login.

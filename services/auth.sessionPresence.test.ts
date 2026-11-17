@@ -4,6 +4,9 @@ const presenceMock = vi.hoisted(() => ({
   markActive: vi.fn(),
   markInactive: vi.fn()
 }));
+const secureAuthMock = vi.hoisted(() => vi.fn());
+
+vi.mock('./secureAuth', () => ({ secureAuthRequest: secureAuthMock }));
 
 vi.mock('./activeStaffPresence', () => ({
   activeStaffPresence: presenceMock
@@ -49,6 +52,11 @@ describe('auth staff session presence resilience', () => {
     vi.stubGlobal('localStorage', createLocalStorageMock());
     presenceMock.markActive.mockReset();
     presenceMock.markInactive.mockReset();
+    secureAuthMock.mockImplementation(async (action: string) => {
+      if (action !== 'validate') return { success: true };
+      const session = JSON.parse(localStorage.getItem('dental_auth_session') || 'null');
+      return { session: { kind: session?.role === 'patient' ? 'patient' : 'staff', id: session?.userId, doctor_id: session?.doctor_id } };
+    });
   });
 
   it('keeps a valid staff session when active presence tracking fails', async () => {
@@ -59,6 +67,7 @@ describe('auth staff session presence resilience', () => {
       username: 'admin',
       password: 'admin123',
       role: 'admin',
+      auth_session_token: 'server-token-1',
       location_id: null
     });
 
@@ -76,6 +85,7 @@ describe('auth staff session presence resilience', () => {
       username: 'frontdesk',
       password: 'secret',
       role: 'normal',
+      auth_session_token: 'server-token-1',
       location_id: null
     });
 
@@ -110,6 +120,7 @@ describe('auth staff session presence resilience', () => {
       username: 'marketing',
       password: 'secret',
       role: 'normal',
+      auth_session_token: 'server-token-1',
       location_id: null,
       allowed_tabs: ['dashboard']
     });
@@ -119,6 +130,7 @@ describe('auth staff session presence resilience', () => {
       username: 'marketing',
       password: '',
       role: 'normal',
+      auth_session_token: 'server-token-1',
       location_id: null,
       allowed_tabs: ['dashboard', 'branch-switching']
     });
@@ -137,6 +149,7 @@ describe('auth staff session presence resilience', () => {
       username: 'removed-user',
       password: 'secret',
       role: 'normal',
+      auth_session_token: 'server-token-1',
       location_id: null
     });
     vi.mocked(api.users.getById).mockResolvedValueOnce(null);
@@ -151,6 +164,7 @@ describe('auth staff session presence resilience', () => {
       id: '00000000-0000-0000-0000-000000000010',
       username: 'doctor@example.com',
       role: 'normal',
+      auth_session_token: 'server-token-1',
       location_id: '00000000-0000-0000-0000-000000000020',
       doctor_id: '00000000-0000-0000-0000-000000000010'
     });

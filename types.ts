@@ -42,6 +42,7 @@ export interface Patient {
   created_at?: string;
   has_account?: boolean;
   username?: string | null;
+  auth_session_token?: string;
 }
 
 export interface PatientDirectorySummary {
