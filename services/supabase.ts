@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { backendConnection } from './backendConnection';
-import { createCredentialFetch } from './credentialTransport';
 
 // In production, use the same-origin nginx gateway so browser API requests do
 // not depend on Cloudflare's handling of cross-origin OPTIONS preflights.
@@ -10,16 +9,11 @@ const SUPABASE_URL = typeof window !== 'undefined'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgzOTIwMTM5LCJleHAiOjQxMDI0NDQ3OTl9.sWZxqAefSfaaAepGZ8VI4OIG3FVgt0rjAxpYvqamMnk';
 
 backendConnection.configure(SUPABASE_URL, globalThis.fetch.bind(globalThis));
-const credentialFetch = createCredentialFetch(
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY,
-  backendConnection.fetch.bind(backendConnection)
-);
 
 // Create client with proper configuration for Supabase Auth
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: {
-    fetch: credentialFetch
+    fetch: backendConnection.fetch.bind(backendConnection)
   },
   auth: {
     autoRefreshToken: true,

@@ -46,9 +46,6 @@ const supabaseMock = vi.hoisted(() => {
 
   return state;
 });
-const secureAuthMock = vi.hoisted(() => vi.fn());
-
-vi.mock('./secureAuth', () => ({ secureAuthRequest: secureAuthMock }));
 
 vi.mock('./supabase', () => ({
   supabase: { from: supabaseMock.from },
@@ -66,8 +63,22 @@ describe('patients.authenticate', () => {
     supabaseMock.from.mockClear();
   });
 
-  it('delegates password verification to secure auth without reading credential tables', async () => {
-    secureAuthMock.mockResolvedValueOnce({ patient: {
+  it('checks all matching patient_auth rows before rejecting a correct password', async () => {
+    supabaseMock.authRowsByColumnValue.set('email:patient@example.com', [
+      {
+        patient_id: 'stale-patient-id',
+        password: 'old-password',
+        is_verified: true,
+        created_at: '2026-07-09T07:00:00Z'
+      },
+      {
+        patient_id: 'current-patient-id',
+        password: 'correct-password',
+        is_verified: true,
+        created_at: '2026-07-08T07:00:00Z'
+      }
+    ]);
+    supabaseMock.patientRowsById.set('current-patient-id', {
       id: 'current-patient-id',
       patient_unique_id: 'P-0001',
       location_id: 'location-1',
@@ -78,16 +89,11 @@ describe('patients.authenticate', () => {
       loyalty_points: 0,
       medical_history: '',
       created_at: '2026-07-08T07:00:00Z'
-    }, token: 'patient-session-token' });
+    });
 
     const result = await api.patients.authenticate('patient@example.com', 'correct-password');
 
     expect(result?.id).toBe('current-patient-id');
     expect(result?.name).toBe('Patient One');
-    expect(result?.auth_session_token).toBe('patient-session-token');
-    expect(secureAuthMock).toHaveBeenCalledWith('login', {
-      kind: 'patient', identifier: 'patient@example.com', password: 'correct-password'
-    });
-    expect(supabaseMock.from).not.toHaveBeenCalledWith('patient_auth');
   });
 });
