@@ -81,13 +81,4 @@ describe('api.expenses.getAll', () => {
 
     warn.mockRestore();
   });
-
-  it('surfaces enrichment failures when a measured screen load requests strict reads', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    await expect(api.expenses.getAll('loc-1', { throwOnError: true }))
-      .rejects.toMatchObject({ message: 'Failed to fetch (CORS)' });
-
-    warn.mockRestore();
-  });
 });

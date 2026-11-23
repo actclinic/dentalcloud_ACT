@@ -5,7 +5,6 @@ import { Modal, Input } from './Shared';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
 import { EMAIL_SETTINGS_KEY, EmailSettings, loadEmailSettings, loadEmailSettingsAsync, saveEmailSettings as persistEmailSettings, saveEmailSettingsAsync } from '../utils/emailSettings';
-import { APP_VERSION } from '../constants';
 
 interface SettingsViewProps {
   currency: 'USD' | 'MMK';
@@ -32,8 +31,6 @@ interface SettingsViewProps {
   onSaveClinicalFeeSettings: (enabled: boolean, newPatientAmount: number, returningPatientAmount: number) => Promise<void>;
   autoOnpPatientTypeEnabled: boolean;
   onAutoOnpPatientTypeChange: (enabled: boolean) => Promise<void>;
-  autoOptPatientTypeEnabled: boolean;
-  onAutoOptPatientTypeChange: (enabled: boolean) => Promise<void>;
   patientTypes: PatientType[];
   appointmentTypes: AppointmentType[];
   onCreatePatientType: (data: Partial<PatientType>) => Promise<void>;
@@ -100,8 +97,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveClinicalFeeSettings,
   autoOnpPatientTypeEnabled,
   onAutoOnpPatientTypeChange,
-  autoOptPatientTypeEnabled,
-  onAutoOptPatientTypeChange,
   patientTypes,
   appointmentTypes,
   onCreatePatientType,
@@ -297,18 +292,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [clinicalFeeMessage, setClinicalFeeMessage] = useState<string>('');
   const [autoOnpMessage, setAutoOnpMessage] = useState<string>('');
   const [isSavingAutoOnp, setIsSavingAutoOnp] = useState(false);
-  const [autoOptMessage, setAutoOptMessage] = useState('');
-  const [isSavingAutoOpt, setIsSavingAutoOpt] = useState(false);
-  const [autoOnpDraft, setAutoOnpDraft] = useState(autoOnpPatientTypeEnabled);
-  const [autoOptDraft, setAutoOptDraft] = useState(autoOptPatientTypeEnabled);
-
-  useEffect(() => {
-    setAutoOnpDraft(autoOnpPatientTypeEnabled);
-  }, [autoOnpPatientTypeEnabled]);
-
-  useEffect(() => {
-    setAutoOptDraft(autoOptPatientTypeEnabled);
-  }, [autoOptPatientTypeEnabled]);
   const [patientTypeForm, setPatientTypeForm] = useState<{ name: string; sort_order: string; is_active: boolean }>({
     name: '',
     sort_order: String(patientTypes.length),
@@ -423,26 +406,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSaveAutoOpt = async () => {
-    if (!isAdmin || isSavingAutoOpt || autoOptDraft === autoOptPatientTypeEnabled) return;
-    const enabled = autoOptDraft;
-    setIsSavingAutoOpt(true);
-    setAutoOptMessage('');
-    try {
-      await onAutoOptPatientTypeChange(enabled);
-      setAutoOptMessage(enabled
-        ? 'Auto OPT enabled. No existing patients were bulk-converted.'
-        : 'Auto OPT disabled. Existing converted types are kept.');
-    } catch (error: any) {
-      setAutoOptMessage(error?.message || 'Failed to save auto OPT setting.');
-    } finally {
-      setIsSavingAutoOpt(false);
-    }
-  };
-
-  const handleSaveAutoOnp = async () => {
-    if (!isAdmin || isSavingAutoOnp || autoOnpDraft === autoOnpPatientTypeEnabled) return;
-    const enabled = autoOnpDraft;
+  const handleAutoOnpToggle = async (enabled: boolean) => {
     try {
       setAutoOnpMessage('');
       setIsSavingAutoOnp(true);
@@ -1023,81 +987,28 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             <h3 className="text-lg font-semibold text-gray-800">Auto ONP Patient Type</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Automatically change patient types to ONP when registration reaches one month. OPT(ONP) and OPT(RNP) are preserved.
+            Automatically change any patient type to ONP when the patient registration date reaches one month.
           </p>
 
-          <label className={`flex items-center justify-between gap-4 rounded-xl border p-4 transition ${autoOnpDraft ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'}`}>
+          <label className={`flex items-center justify-between gap-4 rounded-xl border p-4 transition ${autoOnpPatientTypeEnabled ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'}`}>
             <div>
               <div className="text-sm font-semibold text-gray-900">Enable one-month ONP conversion</div>
-              <div className="text-xs text-gray-500">Patients already marked ONP or either OPT type are skipped.</div>
+              <div className="text-xs text-gray-500">Patients already marked ONP are skipped.</div>
             </div>
             <input
               type="checkbox"
-              checked={autoOnpDraft}
-              onChange={(event) => { setAutoOnpDraft(event.target.checked); setAutoOnpMessage(''); }}
+              checked={autoOnpPatientTypeEnabled}
+              onChange={(event) => void handleAutoOnpToggle(event.target.checked)}
               disabled={isSavingAutoOnp}
               className="h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
             />
           </label>
 
-          <p className="mt-3 text-xs text-gray-500">
-            Changes take effect only after Save. Saved setting: {autoOnpPatientTypeEnabled ? 'Enabled' : 'Disabled'}.
-            {autoOnpDraft !== autoOnpPatientTypeEnabled && ' Unsaved changes.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleSaveAutoOnp()}
-            disabled={isSavingAutoOnp || autoOnpDraft === autoOnpPatientTypeEnabled}
-            className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSavingAutoOnp ? 'Saving...' : 'Save Auto ONP'}
-          </button>
-
           {autoOnpMessage && (
-            <p role="status" className={`mt-3 text-xs ${autoOnpMessage.toLowerCase().includes('failed') || autoOnpMessage.toLowerCase().includes('not installed') ? 'text-red-600' : 'text-emerald-700'}`}>
+            <p className={`mt-3 text-xs ${autoOnpMessage.toLowerCase().includes('failed') || autoOnpMessage.toLowerCase().includes('not installed') ? 'text-red-600' : 'text-emerald-700'}`}>
               {autoOnpMessage}
             </p>
           )}
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="border border-gray-200 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Clock className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-semibold text-gray-800">Auto OPT on Next Visit</h3>
-          </div>
-          <p className="text-sm text-gray-600 mb-4">
-            Change ONP to OPT(ONP) and RNP to OPT(RNP) when a completed appointment or treatment is recorded today,
-            provided the patient has an earlier completed visit on a previous day. Bookings, cancellations,
-            no-shows, same-day repeats and backdated entries do not count. Applies across branches.
-          </p>
-          <label className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
-            <span className="text-sm font-semibold text-gray-900">Change new PT types back to OPT on their next visit</span>
-            <input
-              type="checkbox"
-              checked={autoOptDraft}
-              disabled={isSavingAutoOpt}
-              onChange={(event) => { setAutoOptDraft(event.target.checked); setAutoOptMessage(''); }}
-              className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-            />
-          </label>
-          <p className="mt-3 text-xs text-gray-500">
-            Changes take effect only after Save. Saved setting: {autoOptPatientTypeEnabled ? 'Enabled' : 'Disabled'}.
-            {autoOptDraft !== autoOptPatientTypeEnabled && ' Unsaved changes.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleSaveAutoOpt()}
-            disabled={isSavingAutoOpt || autoOptDraft === autoOptPatientTypeEnabled}
-            className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSavingAutoOpt ? 'Saving...' : 'Save Auto OPT'}
-          </button>
-          <p className="mt-3 text-xs text-gray-500">
-            Off by default. Enabling does not bulk-update patients or rewrite visit history. Disabling keeps existing conversions.
-          </p>
-          {autoOptMessage && <p role="status" className="mt-3 text-xs text-gray-700">{autoOptMessage}</p>}
         </div>
       )}
 
@@ -2308,7 +2219,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             <p className="text-xs text-gray-500">
               &copy; {new Date().getFullYear()} WinterArc Myanmar Company Limited. All rights reserved.
             </p>
-            <p className="mt-1 text-xs font-semibold text-indigo-600">Version {APP_VERSION}</p>
           </div>
         </div>
       </div>

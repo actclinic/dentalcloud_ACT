@@ -44,14 +44,6 @@ export interface Patient {
   username?: string | null;
 }
 
-export interface PatientDirectorySummary {
-  patientId: string;
-  lastVisit: string | null;
-  nextAppointment: Pick<Appointment, 'id' | 'date' | 'time' | 'status'> | null;
-  treatments: Array<Pick<ClinicalRecord, 'id' | 'date' | 'description' | 'doctor_id' | 'doctor_name'>>;
-  doctorNames: string[];
-}
-
 export interface PatientType {
   id: string;
   name: string;
@@ -393,18 +385,9 @@ export interface DoctorTreatmentCommission {
   treatment_id: string;
   commission_rate: number;
   fixed_amount?: number | null;
-  is_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
   treatment_name?: string;
-}
-
-export interface DoctorCategoryCommission {
-  id?: string;
-  doctor_id?: string;
-  category: string;
-  commission_rate: number;
-  fixed_amount?: number | null;
 }
 
 export interface DoctorProfileSaveInput extends Partial<Doctor> {

@@ -2891,38 +2891,6 @@ ON public.payment_corrections
 FOR SELECT TO anon, authenticated
 USING (true);
 
-CREATE OR REPLACE FUNCTION public.prevent_payment_correction_mutation()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = pg_catalog, public, pg_temp
-AS $$
-BEGIN
-  IF TG_OP = 'DELETE' AND EXISTS (
-    SELECT 1
-    FROM public.voided_payments AS voided_payment
-    CROSS JOIN LATERAL jsonb_array_elements(
-      COALESCE(voided_payment.payment_snapshot -> 'corrections', '[]'::JSONB)
-    ) AS archived_correction(value)
-    WHERE voided_payment.original_payment_id = OLD.payment_id
-      AND archived_correction.value ->> 'id' = OLD.id::TEXT
-  ) THEN
-    RETURN OLD;
-  END IF;
-
-  RAISE EXCEPTION 'payment_corrections is immutable; update/delete is not allowed';
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_prevent_payment_correction_update ON public.payment_corrections;
-CREATE TRIGGER trg_prevent_payment_correction_update
-BEFORE UPDATE ON public.payment_corrections
-FOR EACH ROW EXECUTE FUNCTION public.prevent_payment_correction_mutation();
-
-DROP TRIGGER IF EXISTS trg_prevent_payment_correction_delete ON public.payment_corrections;
-CREATE TRIGGER trg_prevent_payment_correction_delete
-BEFORE DELETE ON public.payment_corrections
-FOR EACH ROW EXECUTE FUNCTION public.prevent_payment_correction_mutation();
-
 REVOKE ALL ON TABLE public.voided_payments FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.void_duplicate_payment(

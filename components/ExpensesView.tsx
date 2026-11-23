@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit2, Trash2, BarChart3, Eye, TrendingDown, TrendingUp, DollarSign, Calendar, Tag, RotateCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, BarChart3, Eye, TrendingDown, TrendingUp, DollarSign, Calendar, Tag, RotateCw } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Cell } from 'recharts';
 import { ClinicalRecord, Expense, Location, MedicineSale } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
@@ -8,7 +8,6 @@ import { exportExpensesToExcel } from '../utils/excelExport';
 import { Modal } from './Shared';
 import Pagination from './Pagination';
 import ExportMenu from './ExportMenu';
-import ExpensesLoadProgress, { type ExpenseLoadStage } from './ExpensesLoadProgress';
 
 interface ExpensesViewProps {
   expenses: Expense[];
@@ -17,8 +16,6 @@ interface ExpensesViewProps {
   locations: Location[];
   currentLocationId?: string;
   loading: boolean;
-  loadStages?: ExpenseLoadStage[] | null;
-  loadError?: string | null;
   currency: Currency;
   onAdd: () => void;
   onEdit: (expense: Expense) => void;
@@ -33,8 +30,6 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
   locations,
   currentLocationId,
   loading,
-  loadStages = null,
-  loadError = null,
   currency,
   onAdd,
   onEdit,
@@ -47,7 +42,7 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const itemsPerPage = 100;
+  const itemsPerPage = 10;
 
   const categories = useMemo(() => {
     const unique = new Set<string>();
@@ -457,19 +452,14 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({
 
       {/* Expenses Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
-        {loadError ? (
-          <div role="alert" className="p-10 text-center">
-            <p className="font-semibold text-red-700">Expenses could not be loaded.</p>
-            <p className="mt-2 text-sm text-slate-600">{loadError}</p>
-            {onRefresh && <button type="button" onClick={() => void onRefresh()} className="mt-4 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold">Retry</button>}
-          </div>
-        ) : loading ? (
-          <div className="p-10 flex flex-col items-center justify-center">
-            <ExpensesLoadProgress stages={loadStages} />
+        {loading ? (
+          <div className="p-16 flex flex-col items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--hover-600)]" />
+            <p className="mt-3 text-sm text-gray-500">Loading expenses...</p>
           </div>
         ) : (
           <>
-            <div role="region" aria-label="Expenses table" tabIndex={0} className="table-scroll">
+            <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                   <tr>

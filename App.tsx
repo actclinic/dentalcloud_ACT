@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useLayoutEffect, Suspense, useMemo, useRef, useTransition } from 'react';
-import { createExpenseLoadStages, type ExpenseLoadStage } from './components/ExpensesLoadProgress';
 import {
   Home,
   LayoutDashboard,
@@ -41,7 +40,6 @@ import {
   Doctor,
   DoctorInput,
   DoctorTreatmentCommission,
-  DoctorCategoryCommission,
   DoctorSchedule,
   DoctorScheduleInput,
   User, 
@@ -67,7 +65,6 @@ import {
   DOCTOR_DASHBOARD_TABS,
   FLEXIBLE_STAFF_TABS,
   FULL_ACCESS_TAB_PERMISSIONS,
-  APP_VERSION,
   type AppTabPermission
 } from './constants';
 import { api } from './services/api';
@@ -82,9 +79,6 @@ import { canManageMaterialCosts, resolveAllowedTabs } from './utils/permissions'
 import { loadEmailSettingsAsync } from './utils/emailSettings';
 import { buildAppointmentClinicalFocusNotes, parseAppointmentClinicalFocus } from './utils/appointmentClinicalFocus';
 import { dataCache } from './utils/dataCache';
-import { databaseFilteredDirectories } from './utils/directoryFeature';
-import { getAllFilteredAuditRows, getAuditDirectoryPage, type AuditDirectoryPage, type AuditQuery } from './services/auditDirectory';
-import { loadMlsDirectoryPage, type MlsDirectoryQuery, type MlsLoadProgress } from './services/mlsDirectory';
 import { mergePatientsById } from './utils/patientMerge';
 import { formatPaymentAllocations, formatPaymentMethod, getPaymentAllocationTotal, getPaymentHeaderMethod, isSelectablePaymentMethod, normalizePaymentAllocations, normalizePaymentMethod, PAYMENT_METHOD_OPTIONS, validatePaymentAllocations } from './utils/paymentMethods';
 import { buildLegacyPaymentReceiptSnapshot, buildPaymentReceiptSnapshot, getPaymentReceiptCapturedValue, mergePaymentTreatmentBatch, normalizePaymentReceiptSnapshot } from './utils/paymentReceipt';
@@ -437,27 +431,6 @@ const App: React.FC = () => {
   const [treatmentHistoryLoading, setTreatmentHistoryLoading] = useState(false);
   const [globalRecords, setGlobalRecords] = useState<ClinicalRecord[]>([]); 
   const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
-  const [auditRecords, setAuditRecords] = useState<ClinicalRecord[]>([]);
-  const [auditAppointments, setAuditAppointments] = useState<Appointment[]>([]);
-  const [auditPayments, setAuditPayments] = useState<PaymentRecord[]>([]);
-  const [auditRescheduleLogs, setAuditRescheduleLogs] = useState<AppointmentRescheduleLog[]>([]);
-  const [auditDisplayRows, setAuditDisplayRows] = useState<AuditDirectoryPage['auditRows']>([]);
-  const [auditDirectoryMeta, setAuditDirectoryMeta] = useState<Pick<AuditDirectoryPage, 'total' | 'counts'> | null>(null);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditLoadError, setAuditLoadError] = useState<string | null>(null);
-  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
-  const [mlsRecords, setMlsRecords] = useState<ClinicalRecord[]>([]);
-  const [mlsPayments, setMlsPayments] = useState<PaymentRecord[]>([]);
-  const [mlsAllocationPayments, setMlsAllocationPayments] = useState<PaymentRecord[]>([]);
-  const [mlsTotal, setMlsTotal] = useState(0);
-  const [mlsLoading, setMlsLoading] = useState(false);
-  const [mlsLoadError, setMlsLoadError] = useState<string | null>(null);
-  const [mlsLoadProgress, setMlsLoadProgress] = useState<MlsLoadProgress | null>(null);
-  const [mlsRefreshKey, setMlsRefreshKey] = useState(0);
-  const [mlsQuery, setMlsQuery] = useState<MlsDirectoryQuery>(() => {
-    const today = toLocalDateInputValue();
-    return { dateFrom: today, dateTo: today, page: 1, pageSize: 100 };
-  });
   const [dashboardPatients, setDashboardPatients] = useState<Patient[]>([]);
   const [dashboardAppointments, setDashboardAppointments] = useState<Appointment[]>([]);
   const [dashboardRecords, setDashboardRecords] = useState<ClinicalRecord[]>([]);
@@ -465,12 +438,6 @@ const App: React.FC = () => {
   const [dashboardPayments, setDashboardPayments] = useState<PaymentRecord[]>(() => readPaymentRecords());
   const [dashboardMedicines, setDashboardMedicines] = useState<Medicine[]>([]);
   const [dashboardMedicineSales, setDashboardMedicineSales] = useState<MedicineSale[]>([]);
-  const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
-  const [dashboardRange, setDashboardRange] = useState(() => {
-    const today = toLocalDateInputValue();
-    return { dateFrom: today, dateTo: today };
-  });
   const [dashboardLocationId, setDashboardLocationId] = useState<string>(() => {
     return localStorage.getItem('dashboardLocationId') || ALL_BRANCHES_VALUE;
   });
@@ -483,8 +450,6 @@ const App: React.FC = () => {
   const [assistantExpenses, setAssistantExpenses] = useState<Expense[]>([]);
   const [assistantMedicineSales, setAssistantMedicineSales] = useState<MedicineSale[]>([]);
   const [assistantPaymentRecords, setAssistantPaymentRecords] = useState<PaymentRecord[]>(() => readPaymentRecords());
-  const [assistantDataReady, setAssistantDataReady] = useState(false);
-  const [assistantDataError, setAssistantDataError] = useState<string | null>(null);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
   const [patientFiles, setPatientFiles] = useState<PatientFile[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -494,9 +459,6 @@ const App: React.FC = () => {
   const [loyaltyTransactions, setLoyaltyTransactions] = useState<LoyaltyTransaction[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [medicineSales, setMedicineSales] = useState<MedicineSale[]>([]);
-  const [expenseLoadStages, setExpenseLoadStages] = useState<ExpenseLoadStage[] | null>(null);
-  const [expensesViewLoading, setExpensesViewLoading] = useState(false);
-  const [expensesViewError, setExpensesViewError] = useState<string | null>(null);
   const [patientMedicineSales, setPatientMedicineSales] = useState<MedicineSale[]>([]);
   const [patientMedicineHistoryLoading, setPatientMedicineHistoryLoading] = useState(false);
   const [patientMedicineHistoryError, setPatientMedicineHistoryError] = useState<string | null>(null);
@@ -519,18 +481,13 @@ const App: React.FC = () => {
   const paymentSubmitInFlightRef = React.useRef(false);
   const paymentSubmissionKeyRef = React.useRef<string | null>(null);
   const dashboardFetchRequestRef = React.useRef(0);
-  const assistantFetchRequestRef = React.useRef(0);
   const initialDataFetchRequestRef = React.useRef(0);
   const currentLocationIdRef = React.useRef(currentLocationId);
   currentLocationIdRef.current = currentLocationId;
   const medicinesFetchRequestRef = React.useRef(0);
   const expensesFetchRequestRef = React.useRef(0);
   const medicineSalesFetchRequestRef = React.useRef(0);
-  const expensesViewLoadRequestRef = React.useRef(0);
   const auditFetchRequestRef = React.useRef(0);
-  const auditDirectoryRequestRef = React.useRef(0);
-  const mlsDirectoryRequestRef = React.useRef(0);
-  const mlsDirectoryAbortRef = React.useRef<AbortController | null>(null);
   const treatmentHistoryRequestRef = React.useRef(0);
   const medicineHistoryRequestRef = React.useRef(0);
   const paymentHistoryRequestRef = React.useRef(0);
@@ -619,7 +576,6 @@ const App: React.FC = () => {
   const [receiptHeaderTitle, setReceiptHeaderTitle] = useState<string>('');
   const [receiptSize, setReceiptSize] = useState<ReceiptSize>('A4');
   const [autoOnpPatientTypeEnabled, setAutoOnpPatientTypeEnabled] = useState(false);
-  const [autoOptPatientTypeEnabled, setAutoOptPatientTypeEnabled] = useState(false);
 
   // Sync browser tab title with app name in real-time
   useEffect(() => {
@@ -826,22 +782,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAutoOptPatientTypeChange = async (enabled: boolean) => {
-    await api.appSettings.saveAutoOptPatientTypeEnabled(enabled);
-    setAutoOptPatientTypeEnabled(enabled);
-  };
-
   const handleAutoOnpPatientTypeChange = async (enabled: boolean) => {
-    await api.appSettings.saveAutoOnpPatientTypeEnabled(enabled);
+    const previousValue = autoOnpPatientTypeEnabled;
     setAutoOnpPatientTypeEnabled(enabled);
-    if (enabled) {
-      try {
+    try {
+      await api.appSettings.saveAutoOnpPatientTypeEnabled(enabled);
+      if (enabled) {
         await fetchInitialData(currentLocationId || undefined);
-      } catch (error) {
-        // Saving succeeded. A later refresh error must not make the UI claim
-        // that the preference itself failed to persist.
-        console.warn('Auto ONP setting saved, but patient refresh failed:', error);
       }
+    } catch (error) {
+      setAutoOnpPatientTypeEnabled(previousValue);
+      throw error;
     }
   };
   
@@ -971,13 +922,9 @@ const App: React.FC = () => {
   const [newTreatmentTypeData, setNewTreatmentTypeData] = useState<Partial<TreatmentType>>({ name: '', cost: 0, category: '' });
   const [newDoctorData, setNewDoctorData] = useState<Partial<DoctorInput>>({ name: '', email: '', phone: '', specialization: 'General', commission_type: 'percentage', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] });
   const [doctorCommissionRows, setDoctorCommissionRows] = useState<DoctorTreatmentCommission[]>([]);
-  const [doctorCategoryRows, setDoctorCategoryRows] = useState<DoctorCategoryCommission[]>([]);
-  const [doctorServiceCategories, setDoctorServiceCategories] = useState<{ id: string; category: string; name: string }[]>([]);
-  const [doctorCategoriesLoading, setDoctorCategoriesLoading] = useState(false);
   const [doctorCommissionAdvancedOpen, setDoctorCommissionAdvancedOpen] = useState(false);
   const [doctorCommissionLoading, setDoctorCommissionLoading] = useState(false);
   const [doctorCommissionLoadError, setDoctorCommissionLoadError] = useState('');
-  const [doctorCategoryLoadError, setDoctorCategoryLoadError] = useState('');
   const [newUserData, setNewUserData] = useState<Partial<User>>(getDefaultUserFormData());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newMedicineData, setNewMedicineData] = useState<Partial<Medicine>>({
@@ -1020,10 +967,6 @@ const App: React.FC = () => {
     const existing = treatmentTypes.map((type) => (type.category || '').trim()).filter(Boolean);
     return [...new Set([...TREATMENT_CATEGORIES, ...existing])].sort((a, b) => a.localeCompare(b));
   }, [treatmentTypes]);
-  const availableDoctorCategoryNames = useMemo(() => [...new Set([
-    ...doctorServiceCategories.map(type => type.category?.trim()).filter(Boolean),
-    ...doctorCategoryRows.map(row => row.category.trim()).filter(Boolean)
-  ])].sort((a, b) => a.localeCompare(b)), [doctorServiceCategories, doctorCategoryRows]);
   const activePatientTypeOptions = useMemo(() => {
     const activeNames = patientTypes
       .filter((type) => type.is_active)
@@ -1422,16 +1365,13 @@ const App: React.FC = () => {
 
     let mounted = true;
 
-    let sharedSettingsRefreshInFlight = false;
     const refreshSharedAppSettings = async () => {
-      if (sharedSettingsRefreshInFlight || document.visibilityState === 'hidden') return;
-      sharedSettingsRefreshInFlight = true;
       try {
-        const [theme, preferences, clinicalFeeSettings, automationSettings] = await Promise.all([
+        const [theme, preferences, clinicalFeeSettings, autoOnpEnabled] = await Promise.all([
           api.appSettings.getHoverTheme(),
           api.appSettings.getReceiptPreferences(),
           api.appSettings.getClinicalFeeSettings(),
-          api.appSettings.getPatientTypeAutomationSettings()
+          api.appSettings.getAutoOnpPatientTypeEnabled()
         ]);
         if (mounted && theme) setHoverTheme(theme);
         if (mounted && preferences) {
@@ -1443,13 +1383,10 @@ const App: React.FC = () => {
           setClinicalFeeEnabled(clinicalFeeSettings.enabled);
           setClinicalFeeNewPatientAmount(clinicalFeeSettings.newPatientAmount);
           setClinicalFeeReturningPatientAmount(clinicalFeeSettings.returningPatientAmount);
-          setAutoOnpPatientTypeEnabled(automationSettings.autoOnpEnabled);
-          setAutoOptPatientTypeEnabled(automationSettings.autoOptEnabled);
+          setAutoOnpPatientTypeEnabled(autoOnpEnabled);
         }
       } catch (error) {
         console.warn('Failed to refresh shared app settings:', error);
-      } finally {
-        sharedSettingsRefreshInFlight = false;
       }
     };
 
@@ -1471,7 +1408,6 @@ const App: React.FC = () => {
             clinical_fee_new_patient_amount?: unknown;
             clinical_fee_returning_patient_amount?: unknown;
             auto_onp_patient_type_enabled?: unknown;
-            auto_opt_patient_type_enabled?: unknown;
           } | null;
           const nextTheme = row?.hover_theme;
           if (isHoverTheme(nextTheme)) {
@@ -1503,9 +1439,6 @@ const App: React.FC = () => {
           }
           if (typeof row?.auto_onp_patient_type_enabled === 'boolean') {
             setAutoOnpPatientTypeEnabled(row.auto_onp_patient_type_enabled);
-          }
-          if (typeof row?.auto_opt_patient_type_enabled === 'boolean') {
-            setAutoOptPatientTypeEnabled(row.auto_opt_patient_type_enabled);
           }
         }
       )
@@ -1665,13 +1598,9 @@ const App: React.FC = () => {
     scopeLocationId?: string,
     knownLocations?: Location[],
     // Preloaded data from fetchInitialData to avoid redundant API calls.
-    _preloaded?: { patients?: Patient[]; appointments?: Appointment[]; records?: ClinicalRecord[]; expenses?: Expense[] },
-    range = dashboardRange
+    preloaded?: { patients?: Patient[]; appointments?: Appointment[]; records?: ClinicalRecord[]; expenses?: Expense[] }
   ) => {
     const requestId = ++dashboardFetchRequestRef.current;
-    setDashboardLoading(true);
-    setDashboardLoadError(null);
-    try {
     const session = auth.getSession();
     const restrictedLocationId = getSessionRestrictedLocationId(session);
     const availableLocations = knownLocations || locations;
@@ -1684,14 +1613,13 @@ const App: React.FC = () => {
       ? ALL_BRANCHES_VALUE
       : restrictedLocationId || (hasMatchingLocation ? requestedScope : (availableLocations[0]?.id || requestedScope));
     const queryLocationId = sanitizedScope === ALL_BRANCHES_VALUE ? undefined : (sanitizedScope || undefined);
-    // Overview reporting is range-scoped and fully paginated. Treatment rows are
-    // the union of clinical-date records and older treatments paid in this range.
+    // Use preloaded data when available; fetch missing dashboard datasets in parallel.
     const [patData, aptData, recordsData, expenseData, scopedPayments, medicinesData, medicineSalesData] = await Promise.all([
-      api.patients.getCreatedInRange(queryLocationId, range.dateFrom, range.dateTo),
-      api.appointments.getAll(queryLocationId, { ...range, throwOnError: true }),
-      api.treatments.getOverviewRecords(queryLocationId, range),
-      api.expenses.getAll(queryLocationId, { ...range, throwOnError: true }),
-      api.finance.getOverviewPayments(queryLocationId, range),
+      preloaded?.patients ? Promise.resolve(preloaded.patients) : safeLoad('Dashboard patients', api.patients.getAll(queryLocationId), []),
+      preloaded?.appointments ? Promise.resolve(preloaded.appointments) : safeLoad('Dashboard appointments', api.appointments.getAll(queryLocationId), []),
+      preloaded?.records ? Promise.resolve(preloaded.records) : safeLoad('Dashboard treatment records', api.treatments.getAllRecords(queryLocationId), []),
+      preloaded?.expenses ? Promise.resolve(preloaded.expenses) : safeLoad('Dashboard expenses', api.expenses.getAll(queryLocationId), []),
+      safeLoad('Dashboard payments', api.finance.getPayments(queryLocationId), []),
       safeLoad('Dashboard medicines', api.medicines.getAll(queryLocationId), []),
       safeLoad('Dashboard medicine sales', api.medicines.getSales(queryLocationId), [])
     ]);
@@ -1709,21 +1637,9 @@ const App: React.FC = () => {
     setDashboardMedicineSales(medicineSalesData);
     setDashboardLocationId(sanitizedScope);
     localStorage.setItem('dashboardLocationId', sanitizedScope);
-    } catch (err: any) {
-      if (requestId === dashboardFetchRequestRef.current) {
-        setDashboardLoadError(err?.message || 'Could not load the overview. Please retry.');
-      }
-      throw err;
-    } finally {
-      if (requestId === dashboardFetchRequestRef.current) setDashboardLoading(false);
-    }
   };
 
   const fetchAssistantData = async () => {
-    const requestId = ++assistantFetchRequestRef.current;
-    setAssistantDataReady(false);
-    setAssistantDataError(null);
-    try {
     const session = auth.getSession();
     const restrictedLocationId = getSessionRestrictedLocationId(session);
     const queryLocationId = restrictedLocationId || currentLocationId || undefined;
@@ -1741,7 +1657,6 @@ const App: React.FC = () => {
       safeLoad('Assistant payments', api.finance.getPayments(assistantLocationId), [])
     ]);
 
-    if (requestId !== assistantFetchRequestRef.current) return;
     setAssistantPatients(patData);
     setAssistantAppointments(aptData);
     setAssistantDoctors(docData);
@@ -1751,13 +1666,6 @@ const App: React.FC = () => {
     setAssistantExpenses(expenseData);
     setAssistantMedicineSales(salesData);
     setAssistantPaymentRecords(mergeLegacyPaymentRecords(paymentData, assistantLocationId));
-    setAssistantDataReady(true);
-    } catch (error: any) {
-      if (requestId === assistantFetchRequestRef.current) {
-        setAssistantDataError(error?.message || 'Could not load complete assistant data.');
-      }
-      throw error;
-    }
   };
 
   const fetchInitialData = async (
@@ -2167,7 +2075,8 @@ const App: React.FC = () => {
       void fetchMedicines();
     }
     if (currentView === 'expenses' && canAccessView('expenses')) {
-      void loadExpensesView();
+      void fetchExpenses();
+      void fetchMedicineSales();
     }
     if (currentView === 'ai-assistant' && canAccessView('ai-assistant')) {
       fetchAssistantData().catch(err => {
@@ -2275,71 +2184,6 @@ const App: React.FC = () => {
     }
   };
 
-  const loadExpensesView = async (force = false) => {
-    const requestId = ++expensesViewLoadRequestRef.current;
-    const locationId = currentLocationId;
-    if (!locationId) {
-      setExpenses([]);
-      setMedicineSales([]);
-      setGlobalRecords([]);
-      setExpenseLoadStages(null);
-      setExpensesViewLoading(false);
-      return;
-    }
-
-    const stages = createExpenseLoadStages();
-    const publish = () => {
-      if (requestId === expensesViewLoadRequestRef.current && currentLocationIdRef.current === locationId) {
-        setExpenseLoadStages(stages.map(stage => ({ ...stage })));
-      }
-    };
-    const track = async <T,>(index: number, read: Promise<T[]>): Promise<T[]> => {
-      const rows = await read;
-      stages[index].count = rows.length;
-      publish();
-      return rows;
-    };
-
-    setExpensesViewLoading(true);
-    setExpensesViewError(null);
-    publish();
-
-    const expenseKey = getClinicCacheKey('expenses', locationId);
-    const medicineSalesKey = getClinicCacheKey('medicine-sales', locationId);
-    if (force) {
-      dataCache.invalidate(expenseKey);
-      dataCache.invalidate(medicineSalesKey);
-    }
-
-    try {
-      const [expenseRows, salesRows, treatmentRows] = await Promise.all([
-        track(0, dataCache.getOrLoad(
-          expenseKey,
-          () => api.expenses.getAll(locationId, { throwOnError: true }),
-          60_000
-        )),
-        track(1, dataCache.getOrLoad(
-          medicineSalesKey,
-          () => api.medicines.getSales(locationId, undefined, { throwOnError: true }),
-          60_000
-        )),
-        track(2, api.treatments.getAllRecords(locationId, { limit: null, throwOnError: true }))
-      ]);
-      if (requestId !== expensesViewLoadRequestRef.current || currentLocationIdRef.current !== locationId) return;
-      setExpenses(expenseRows);
-      setMedicineSales(salesRows);
-      setGlobalRecords(treatmentRows);
-      setGlobalRecordsReady(true);
-    } catch (loadError: any) {
-      if (requestId !== expensesViewLoadRequestRef.current || currentLocationIdRef.current !== locationId) return;
-      setExpensesViewError(loadError?.message || 'Unable to load expense datasets.');
-    } finally {
-      if (requestId === expensesViewLoadRequestRef.current && currentLocationIdRef.current === locationId) {
-        setExpensesViewLoading(false);
-      }
-    }
-  };
-
   const handlePatientSelect = async (patient: Patient) => {
     const requestId = ++treatmentHistoryRequestRef.current;
     const medicineRequestId = ++medicineHistoryRequestRef.current;
@@ -2429,114 +2273,6 @@ const App: React.FC = () => {
         setPatientFiles([]);
       });
   };
-
-  const loadDatabaseMls = React.useCallback(async (query: MlsDirectoryQuery) => {
-    setMlsQuery(query);
-    const locationId = currentLocationId || undefined;
-    const requestId = ++mlsDirectoryRequestRef.current;
-    mlsDirectoryAbortRef.current?.abort();
-    const controller = new AbortController();
-    mlsDirectoryAbortRef.current = controller;
-    const clearRows = () => {
-      setMlsRecords([]);
-      setMlsPayments([]);
-      setMlsAllocationPayments([]);
-      setMlsTotal(0);
-    };
-    if (!locationId) {
-      clearRows();
-      setMlsLoadProgress(null);
-      setMlsLoading(false);
-      return;
-    }
-    const cacheKey = `${getClinicCacheKey('mls-directory', locationId)}:${mlsRefreshKey}:${JSON.stringify(query)}`;
-    setMlsLoading(true);
-    setMlsLoadError(null);
-    setMlsLoadProgress(null);
-    clearRows();
-    try {
-      const bundle = await dataCache.getOrLoad(cacheKey, () => loadMlsDirectoryPage(
-        locationId,
-        query,
-        controller.signal,
-        progress => {
-          if (requestId !== mlsDirectoryRequestRef.current || currentLocationIdRef.current !== locationId || controller.signal.aborted) return;
-          setMlsLoadProgress(progress);
-        }
-      ), Infinity);
-      if (requestId !== mlsDirectoryRequestRef.current || currentLocationIdRef.current !== locationId || controller.signal.aborted) return;
-      setMlsRecords(bundle.records);
-      setMlsPayments(bundle.payments);
-      setMlsAllocationPayments(bundle.allocationPayments);
-      setMlsTotal(bundle.total);
-    } catch (err: any) {
-      if (requestId !== mlsDirectoryRequestRef.current || controller.signal.aborted) return;
-      clearRows();
-      setMlsLoadError(err?.message || 'MLS directory could not be loaded. Please retry.');
-    } finally {
-      if (requestId === mlsDirectoryRequestRef.current) setMlsLoading(false);
-    }
-  }, [currentLocationId, mlsRefreshKey]);
-
-  const loadDatabaseAuditLog = React.useCallback(async (query: AuditQuery) => {
-    const locationId = currentLocationId || undefined;
-    const requestId = ++auditDirectoryRequestRef.current;
-    const clearRows = () => {
-      setAuditRecords([]);
-      setAuditAppointments([]);
-      setAuditPayments([]);
-      setAuditRescheduleLogs([]);
-      setAuditDisplayRows([]);
-      setAuditDirectoryMeta(null);
-    };
-    if (!locationId) {
-      clearRows();
-      setAuditLoading(false);
-      return;
-    }
-    const session = auth.getSession();
-    if (session?.role === 'doctor' && !session.doctor_id) {
-      clearRows();
-      setAuditLoadError('Doctor account is not linked to a doctor.');
-      setAuditLoading(false);
-      return;
-    }
-    const doctorId = session?.role === 'doctor' ? session.doctor_id || undefined : undefined;
-    const cacheKey = `${getClinicCacheKey('audit-directory', locationId)}:${auditRefreshKey}:${JSON.stringify(query)}`;
-    setAuditLoading(true);
-    setAuditLoadError(null);
-    clearRows();
-    try {
-      const bundle = await dataCache.getOrLoad(cacheKey, () => query.showAll
-        ? getAllFilteredAuditRows(locationId, query, doctorId)
-        : getAuditDirectoryPage(locationId, query, doctorId), Infinity);
-      if (requestId !== auditDirectoryRequestRef.current || currentLocationIdRef.current !== locationId) return;
-      setAuditRecords(bundle.records);
-      setAuditAppointments(bundle.appointments);
-      setAuditPayments(bundle.payments);
-      setAuditRescheduleLogs(bundle.rescheduleLogs);
-      setAuditDisplayRows(bundle.auditRows);
-      setAuditDirectoryMeta({ total: bundle.total, counts: bundle.counts });
-    } catch (err: any) {
-      if (requestId !== auditDirectoryRequestRef.current) return;
-      clearRows();
-      setAuditLoadError(err?.message || 'Audit log data could not be loaded. Please retry.');
-    } finally {
-      if (requestId === auditDirectoryRequestRef.current) setAuditLoading(false);
-    }
-  }, [currentLocationId, auditRefreshKey]);
-
-  const exportDatabaseAuditLog = React.useCallback(async (query: AuditQuery) => {
-    const locationId = currentLocationId;
-    const session = auth.getSession();
-    if (!locationId || (session?.role === 'doctor' && !session.doctor_id)) throw new Error('No audit scope available.');
-    const scope = getClinicCacheScope(locationId);
-    const bundle = await getAllFilteredAuditRows(locationId, query, session?.role === 'doctor' ? session.doctor_id || undefined : undefined);
-    if (currentLocationIdRef.current !== locationId || scope !== getClinicCacheScope(locationId)) {
-      throw new Error('Branch or account changed during export. Please retry.');
-    }
-    return bundle;
-  }, [currentLocationId]);
 
   const fetchGlobalRecords = async (force = false) => {
     const requestId = ++auditFetchRequestRef.current;
@@ -3035,13 +2771,9 @@ const App: React.FC = () => {
 
   const resetDoctorCommissionEditor = () => {
     setDoctorCommissionRows([]);
-    setDoctorCategoryRows([]);
-    setDoctorServiceCategories([]);
-    setDoctorCategoriesLoading(false);
     setDoctorCommissionAdvancedOpen(false);
     setDoctorCommissionLoading(false);
     setDoctorCommissionLoadError('');
-    setDoctorCategoryLoadError('');
     setIsLoggingOut(false);
   };
 
@@ -3053,7 +2785,6 @@ const App: React.FC = () => {
 
     if (!editingDoctor?.id) {
       setDoctorCommissionRows([]);
-      setDoctorCategoryRows([]);
       setDoctorCommissionLoading(false);
       setDoctorCommissionLoadError('');
       return;
@@ -3065,14 +2796,10 @@ const App: React.FC = () => {
       setDoctorCommissionLoading(true);
       setDoctorCommissionLoadError('');
       try {
-        const [rows, categories] = await Promise.all([
-          api.doctorTreatmentCommissions.getByDoctor(editingDoctor.id),
-          api.doctorCategoryCommissions.getByDoctor(editingDoctor.id)
-        ]);
+        const rows = await api.doctorTreatmentCommissions.getByDoctor(editingDoctor.id);
         if (!cancelled) {
           setDoctorCommissionRows(rows);
-          setDoctorCategoryRows(categories);
-          setDoctorCommissionAdvancedOpen(rows.length > 0 || categories.length > 0);
+          setDoctorCommissionAdvancedOpen(rows.length > 0);
         }
       } catch (err: any) {
         if (!cancelled) {
@@ -3093,31 +2820,6 @@ const App: React.FC = () => {
       cancelled = true;
     };
   }, [showDoctorModal, editingDoctor?.id]);
-
-  useEffect(() => {
-    if (!showDoctorModal) return;
-    const assignedLocations = (newDoctorData.location_ids || [newDoctorData.location_id].filter(Boolean)).filter(Boolean) as string[];
-    if (!assignedLocations.length) {
-      setDoctorServiceCategories([]);
-      setDoctorCategoriesLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setDoctorCategoriesLoading(true);
-    api.treatments.getCategoryServicesForLocations(assignedLocations)
-      .then(rows => {
-        if (cancelled) return;
-        setDoctorServiceCategories(rows);
-        setDoctorCategoryLoadError('');
-      })
-      .catch(error => {
-        if (!cancelled) setDoctorCategoryLoadError(error?.message || 'Unable to load specialty categories.');
-      })
-      .finally(() => {
-        if (!cancelled) setDoctorCategoriesLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [showDoctorModal, (newDoctorData.location_ids || []).join(','), newDoctorData.location_id]);
 
   const handleCreateAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3308,7 +3010,7 @@ const App: React.FC = () => {
 
   const handleCreateDoctor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || doctorCommissionLoading || doctorCategoriesLoading || doctorCommissionLoadError || doctorCategoryLoadError) return;
+    if (isSubmitting || doctorCommissionLoading || doctorCommissionLoadError) return;
     setIsSubmitting(true);
 
     const isDoctorTransferValidationError = (error: unknown) =>
@@ -3391,41 +3093,12 @@ const App: React.FC = () => {
     }
 
     const normalizedCommissionRows = doctorCommissionRows
-      .filter((row) => row.treatment_id && (!useFlatVisitCommission || row.fixed_amount != null || row.is_enabled === false))
+      .filter((row) => row.treatment_id && (!useFlatVisitCommission || row.fixed_amount != null))
       .map((row) => ({
         treatment_id: row.treatment_id,
         commission_rate: Number(row.commission_rate),
-        fixed_amount: useFlatVisitCommission ? row.fixed_amount : null,
-        is_enabled: row.is_enabled !== false
+        fixed_amount: useFlatVisitCommission ? row.fixed_amount : null
       }));
-
-    if (doctorCategoryRows.some(row => !row.category.trim())) {
-      alert('Select a specialty category or remove the empty category row.');
-      setIsSubmitting(false);
-      return;
-    }
-    const normalizedCategoryRows = doctorCategoryRows.map(row => ({
-      category: row.category.trim(),
-      commission_rate: Number(row.commission_rate),
-      fixed_amount: useFlatVisitCommission ? row.fixed_amount : null
-    }));
-    if (new Set(normalizedCategoryRows.map(row => row.category.toLowerCase())).size !== normalizedCategoryRows.length) {
-      alert('Each specialty category can have only one commission rule.');
-      setIsSubmitting(false);
-      return;
-    }
-    if (normalizedCategoryRows.some(row => !availableDoctorCategoryNames.some(name => name.toLowerCase() === row.category.toLowerCase()))) {
-      alert('Choose a specialty category from the assigned branches’ Service Menu.');
-      setIsSubmitting(false);
-      return;
-    }
-    if (normalizedCategoryRows.some(row => useFlatVisitCommission
-      ? row.fixed_amount == null || !Number.isFinite(Number(row.fixed_amount)) || Number(row.fixed_amount) < 0
-      : !Number.isFinite(row.commission_rate) || row.commission_rate < 0 || row.commission_rate > 100)) {
-      alert('Enter a valid rate for every specialty category.');
-      setIsSubmitting(false);
-      return;
-    }
 
     const uniqueTreatmentIds = new Set(normalizedCommissionRows.map((row) => row.treatment_id));
     if (uniqueTreatmentIds.size !== normalizedCommissionRows.length) {
@@ -3434,7 +3107,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const invalidCommissionRate = normalizedCommissionRows.find((row) => useFlatVisitCommission && row.is_enabled !== false
+    const invalidCommissionRate = normalizedCommissionRows.find((row) => useFlatVisitCommission
       ? !Number.isFinite(row.fixed_amount) || (row.fixed_amount as number) < 0
       : Number.isNaN(row.commission_rate) || row.commission_rate < 0 || row.commission_rate > 100);
     if (invalidCommissionRate) {
@@ -3462,7 +3135,6 @@ const App: React.FC = () => {
 
       try {
         await api.doctorTreatmentCommissions.replaceForDoctor(savedDoctor.id, normalizedCommissionRows);
-        await api.doctorCategoryCommissions.replaceForDoctor(savedDoctor.id, normalizedCategoryRows);
       } catch (commissionErr: any) {
         if (!editingDoctor) {
           await api.doctors.delete(savedDoctor.id);
@@ -3833,21 +3505,7 @@ const App: React.FC = () => {
       setLatestTreatmentBatch((current) => mergePaymentTreatmentBatch(current, newRecords, selectedPatient.id));
       treatmentHistoryRequestRef.current += 1;
       
-      setSelectedPatient(previous => previous?.id === selectedPatient.id
-        ? { ...previous, balance: latestResponse?.new_balance ?? previous.balance }
-        : previous);
-      // The visit trigger may have changed the classification. Refresh only
-      // this patient; a refresh failure must never turn a saved treatment into
-      // a failed treatment or overwrite a newer selection.
-      void api.patients.getById(selectedPatient.id, currentLocationId).then(patient => {
-        if (!patient) return;
-        setSelectedPatient(previous => previous?.id === patient.id
-          ? { ...previous, patient_type: patient.patient_type }
-          : previous);
-        setPatients(previous => previous.map(row => row.id === patient.id
-          ? { ...row, patient_type: patient.patient_type }
-          : row));
-      }).catch(error => console.warn('Failed to refresh visit patient type:', error));
+      setSelectedPatient({ ...selectedPatient, balance: latestResponse?.new_balance ?? selectedPatient.balance });
       setTreatmentHistory((prev) => [...newRecords, ...prev]);
 
       const completedAppointmentIds = new Set(
@@ -4630,7 +4288,7 @@ const App: React.FC = () => {
       
       {/* Mobile Header */}
       {!isDoctor && (
-      <header data-mobile-app-header className="lg:hidden theme-nav-bg theme-nav-text p-4 flex items-center justify-between sticky top-0 z-50">
+      <header className="lg:hidden theme-nav-bg theme-nav-text p-4 flex items-center justify-between sticky top-0 z-50">
         {renderAppBrand('mobile')}
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -4720,7 +4378,6 @@ const App: React.FC = () => {
                 {isLoggingOut ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
                 {isLoggingOut ? 'Logging out...' : 'Logout'}
               </button>
-              <p className="mt-3 text-center text-[10px] theme-nav-muted">Version {APP_VERSION}</p>
            </div>
         </div>
         
@@ -4765,23 +4422,6 @@ const App: React.FC = () => {
                   allBranchesValue={ALL_BRANCHES_VALUE}
                   canViewAllBranches={canAdminViewAllBranches}
                   onLocationChange={handleDashboardLocationChange}
-                  reportRange={dashboardRange}
-                  onRangeChange={(dateFrom, dateTo) => {
-                    const range = { dateFrom, dateTo };
-                    setDashboardRange(range);
-                    void fetchDashboardData(dashboardLocationId, undefined, undefined, range).catch(() => undefined);
-                  }}
-                  loadError={dashboardLoadError}
-                  onRetry={() => void fetchDashboardData(dashboardLocationId).catch(() => undefined)}
-                  onLoadRecalls={async () => {
-                    const restrictedLocationId = getSessionRestrictedLocationId(auth.getSession());
-                    const queryLocationId = restrictedLocationId || (dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId);
-                    const [patients, appointments] = await Promise.all([
-                      api.patients.getAll(queryLocationId),
-                      api.appointments.getAll(queryLocationId, { throwOnError: true })
-                    ]);
-                    return { patients, appointments };
-                  }}
                   onUpdateCancellationOutcome={handleUpdateCancellationOutcome}
                   onLoadTreatmentAnalysis={async (dateFrom, dateTo) => {
                     const session = auth.getSession();
@@ -4830,7 +4470,7 @@ const App: React.FC = () => {
                     return report;
                   }}
                   onSelectPatient={handlePatientSelect}
-                  loading={loading || dashboardLoading}
+                  loading={loading}
                 />
               )
             )}
@@ -4980,62 +4620,8 @@ const App: React.FC = () => {
             />}
             {currentView === 'doctors' && canAccessView('doctors') && <DoctorsView doctors={doctors} loading={loading} currency={currency} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingDoctor(null); setNewDoctorData({ name: '', email: '', phone: '', specialization: 'General', commission_type: 'percentage', password: '', commission_percentage: 0, commission_per_visit: 0, schedules: [], location_id: currentLocationId || '', location_ids: currentLocationId ? [currentLocationId] : [] }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onEdit={(doc) => {setEditingDoctor(doc); setNewDoctorData({ ...doc, location_ids: doc.location_ids || [doc.location_id].filter(Boolean), specialization: doc.specialization || 'General', password: '' }); resetDoctorCommissionEditor(); setShowDoctorModal(true)}} onDelete={handleDeleteDoctor} />}
             {currentView === 'treatments' && canAccessView('treatments') && <TreatmentConfigView treatmentTypes={treatmentTypes} currency={currency} loading={loading} syncProgress={(!treatmentTypesReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={async () => { await fetchInitialData(currentLocationId || undefined); }} onAdd={() => {setEditingTreatmentType(null); setNewTreatmentTypeData({ name: '', cost: 0, category: '' }); setShowTreatmentTypeModal(true)}} onEdit={(t) => {setEditingTreatmentType(t); setNewTreatmentTypeData(t); setShowTreatmentTypeModal(true)}} onDelete={(id) => { const treatment = treatmentTypes.find(t => t.id === id); if (treatment) { setServiceToDelete({ id: treatment.id, name: treatment.name }); setDeleteServiceConfirmOpen(true); } }} />}
-            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView
-              records={databaseFilteredDirectories ? mlsRecords : globalRecords}
-              paymentRecords={databaseFilteredDirectories ? mlsPayments : paymentRecords}
-              allocationPayments={databaseFilteredDirectories ? mlsAllocationPayments : undefined}
-              doctors={doctors}
-              loading={databaseFilteredDirectories ? mlsLoading : loading}
-              syncProgress={databaseFilteredDirectories ? null : ((!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null)}
-              loadProgress={databaseFilteredDirectories ? mlsLoadProgress : null}
-              loadError={databaseFilteredDirectories ? mlsLoadError : null}
-              totalItems={databaseFilteredDirectories ? mlsTotal : undefined}
-              onQueryChange={databaseFilteredDirectories ? loadDatabaseMls : undefined}
-              initialQuery={databaseFilteredDirectories ? mlsQuery : undefined}
-              currency={currency}
-              canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)}
-              cacheScope={getClinicCacheScope()}
-              cacheRevision={materialCostCacheRevision}
-              onRefresh={async () => {
-                invalidateMaterialCostCaches();
-                if (databaseFilteredDirectories) setMlsRefreshKey((key) => key + 1);
-                else await fetchGlobalRecords(true);
-              }}
-              onCostsSaved={async (patientId) => {
-                invalidateMaterialCostCaches();
-                await refreshGlobalRecordsForPatient(patientId);
-                if (databaseFilteredDirectories) setMlsRefreshKey((key) => key + 1);
-                void fetchExpenses(true);
-                void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => {
-                  console.warn('Dashboard refresh after MLS cost save needs a manual refresh.');
-                });
-              }}
-            />}
-            {currentView === 'records' && canAccessView('records') && <RecordsView
-              records={databaseFilteredDirectories ? auditRecords : globalRecords}
-              appointments={databaseFilteredDirectories ? auditAppointments : appointments}
-              rescheduleLogs={databaseFilteredDirectories ? auditRescheduleLogs : appointmentRescheduleLogs}
-              payments={databaseFilteredDirectories ? auditPayments : paymentRecords}
-              loading={databaseFilteredDirectories ? auditLoading : loading}
-              syncProgress={databaseFilteredDirectories ? null : ((!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null)}
-              loadError={databaseFilteredDirectories ? auditLoadError : null}
-              onQueryChange={databaseFilteredDirectories ? loadDatabaseAuditLog : undefined}
-              legacyPaymentsNotice={databaseFilteredDirectories && !isDoctor && readPaymentRecords().some((payment) => payment.location_id === currentLocationId)}
-              directoryMeta={databaseFilteredDirectories ? auditDirectoryMeta : undefined}
-              displayRows={databaseFilteredDirectories ? auditDisplayRows : undefined}
-              onExportAll={databaseFilteredDirectories ? exportDatabaseAuditLog : undefined}
-              onRefresh={() => databaseFilteredDirectories ? setAuditRefreshKey((key) => key + 1) : fetchGlobalRecords(true)}
-              onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords}
-              currency={currency}
-              isDoctor={isDoctor}
-              initialFilter={recordsInitialFilter}
-              onOpenPaymentReceipt={handleOpenStoredPaymentReceipt}
-              canEditPayments={isAdmin && !isDoctor}
-              onPaymentCorrected={async (payment) => { await handlePaymentCorrected(payment); if (databaseFilteredDirectories) setAuditRefreshKey((key) => key + 1); }}
-              onPaymentVoided={async (result) => { await handlePaymentVoided(result); if (databaseFilteredDirectories) setAuditRefreshKey((key) => key + 1); }}
-              cacheScope={getClinicCacheScope()}
-              cacheRevision={materialCostCacheRevision}
-            />}
+            {currentView === 'material-cost' && canAccessView('material-cost') && <MaterialCostView records={globalRecords} paymentRecords={paymentRecords} doctors={doctors} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} canManageMaterials={canManageMaterialCosts(session?.role, session?.allowed_tabs)} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} onRefresh={async () => { invalidateMaterialCostCaches(); await fetchGlobalRecords(true); }} onCostsSaved={async (patientId) => { invalidateMaterialCostCaches(); await refreshGlobalRecordsForPatient(patientId); void fetchExpenses(true); void fetchDashboardData(dashboardLocationId === ALL_BRANCHES_VALUE ? undefined : dashboardLocationId).catch(() => { console.warn('Dashboard refresh after MLS cost save needs a manual refresh.'); }); }} />}
+            {currentView === 'records' && canAccessView('records') && <RecordsView records={globalRecords} appointments={appointments} rescheduleLogs={appointmentRescheduleLogs} payments={paymentRecords} loading={loading} syncProgress={(!globalRecordsReady && initialSyncActive) ? initialSyncProgress : null} onRefresh={() => fetchGlobalRecords(true)} onDeleteAll={isDoctor ? () => alert('Doctor accounts cannot delete patient records.') : handleDeleteAllRecords} currency={currency} isDoctor={isDoctor} initialFilter={recordsInitialFilter} onOpenPaymentReceipt={handleOpenStoredPaymentReceipt} canEditPayments={isAdmin && !isDoctor} onPaymentCorrected={handlePaymentCorrected} onPaymentVoided={handlePaymentVoided} cacheScope={getClinicCacheScope()} cacheRevision={materialCostCacheRevision} />}
             {currentView === 'inventory' && canAccessView('inventory') && <InventoryView medicines={medicines} topSelling={topSellingMedicines} loading={loading} syncProgress={(!medicinesReady && initialSyncActive) ? initialSyncProgress : null} currency={currency} onRefresh={() => fetchMedicines(true)} onAdd={() => {setEditingMedicine(null); setNewMedicineData({ name: '', description: '', unit: 'pack', item_type: 'Medicine', price: 0, stock: 0, min_stock: 0, quantity_step: 1, category: '' }); setShowMedicineModal(true)}} onEdit={(med) => {setEditingMedicine(med); setNewMedicineData(med); setShowMedicineModal(true)}} onDelete={handleDeleteMedicine} />}
             {currentView === 'expenses' && canAccessView('expenses') && (
               <ExpensesView
@@ -5044,11 +4630,9 @@ const App: React.FC = () => {
                 medicineSales={medicineSales}
                 locations={locations}
                 currentLocationId={currentLocationId}
-                loading={loading || expensesViewLoading}
-                loadStages={expenseLoadStages}
-                loadError={expensesViewError}
+                loading={loading}
                 currency={currency}
-                onRefresh={async () => { await loadExpensesView(true); }}
+                onRefresh={async () => { await Promise.all([fetchExpenses(true), fetchMedicineSales(true)]); }}
                 onAdd={() => {setEditingExpense(null); setNewExpenseData(getDefaultExpenseFormData()); setShowExpenseModal(true);}}
                 onEdit={(expense) => {setEditingExpense(expense); setNewExpenseData({ description: expense.description, amount: expense.amount, category: expense.category, date: expense.date }); setShowExpenseModal(true);}}
                 onDelete={handleDeleteExpense}
@@ -5091,8 +4675,6 @@ const App: React.FC = () => {
                     onSaveClinicalFeeSettings={handleSaveClinicalFeeSettings}
                     autoOnpPatientTypeEnabled={autoOnpPatientTypeEnabled}
                     onAutoOnpPatientTypeChange={handleAutoOnpPatientTypeChange}
-                    autoOptPatientTypeEnabled={autoOptPatientTypeEnabled}
-                    onAutoOptPatientTypeChange={handleAutoOptPatientTypeChange}
                     patientTypes={patientTypes}
                     appointmentTypes={appointmentTypes}
                     onCreatePatientType={async (data) => {
@@ -5145,9 +4727,6 @@ const App: React.FC = () => {
               />
             )}
             {currentView === 'ai-assistant' && canAccessView('ai-assistant') && <AIAssistantView 
-                dataReady={assistantDataReady}
-                dataError={assistantDataError}
-                onRetryData={() => void fetchAssistantData().catch(() => undefined)}
                 patients={assistantPatients} 
                 treatmentRecords={assistantRecords} 
                 appointments={assistantAppointments}
@@ -5943,11 +5522,17 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setDoctorCommissionAdvancedOpen((prev) => !prev);
+                    setDoctorCommissionAdvancedOpen((prev) => {
+                      const next = !prev;
+                      if (next && doctorCommissionRows.length === 0) {
+                        setDoctorCommissionRows([createEmptyDoctorCommissionRow()]);
+                      }
+                      return next;
+                    });
                   }}
                   className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
                 >
-                  {doctorCommissionAdvancedOpen ? 'Hide advanced commission setup' : 'Advanced: Set commissions per treatment or specialty category'}
+                  {doctorCommissionAdvancedOpen ? 'Hide advanced treatment commission setup' : 'Advanced: Set custom commission per treatment'}
                 </button>
               </div>
             </div>
@@ -5977,7 +5562,7 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     doctorCommissionRows.map((row, index) => (
-                      <div key={row.id || `doctor-commission-${index}`} className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-[1fr_160px_auto_auto] sm:items-end">
+                      <div key={row.id || `doctor-commission-${index}`} className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-[1fr_160px_auto] sm:items-end">
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">Treatment</label>
                           <select
@@ -5990,21 +5575,11 @@ const App: React.FC = () => {
                             }}
                           >
                             <option value="">Select treatment</option>
-                            {doctorServiceCategories.map((treatment) => (
+                            {treatmentTypes.map((treatment) => (
                               <option key={treatment.id} value={treatment.id}>{treatment.name}</option>
                             ))}
                           </select>
                         </div>
-                        <button
-                          type="button"
-                          aria-pressed={row.is_enabled !== false}
-                          onClick={() => setDoctorCommissionRows(prev => prev.map((item, rowIndex) => rowIndex === index
-                            ? { ...item, is_enabled: item.is_enabled === false }
-                            : item))}
-                          className={`rounded-lg border px-3 py-2 text-xs font-bold ${row.is_enabled === false ? 'border-amber-300 text-amber-800' : 'border-indigo-200 text-indigo-700'}`}
-                        >
-                          {row.is_enabled === false ? 'Enable rule' : 'Disable rule'}
-                        </button>
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">{usesFlatVisitCommission({ commissionType: newDoctorData.commission_type, specialization: newDoctorData.specialization }) ? `Fixed Amount (${getCurrencySymbol(currency)})` : 'Commission %'}</label>
                           <input
@@ -6038,79 +5613,6 @@ const App: React.FC = () => {
                     ))
                   )}
                 </div>
-              </div>
-            )}
-            {doctorCommissionAdvancedOpen && (
-              <div className="space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-800">Specialty Category Commissions</h4>
-                    <p className="text-xs text-gray-600">Enabled treatment rules win first, then the category rule, then the doctor default.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDoctorCategoryRows(prev => [...prev, { category: '', commission_rate: 0, fixed_amount: null }])}
-                    className="rounded-lg border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-700"
-                  >
-                    + Add Category
-                  </button>
-                </div>
-                {doctorCategoriesLoading ? (
-                  <div className="rounded-lg bg-white px-4 py-6 text-center text-sm text-gray-500">Loading specialty categories...</div>
-                ) : doctorCategoryRows.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-6 text-center text-sm text-gray-500">No category commission rules yet.</div>
-                ) : doctorCategoryRows.map((row, index) => {
-                  const overlaps = row.category.trim() ? doctorCommissionRows.filter(rule =>
-                    rule.is_enabled !== false && doctorServiceCategories.some(service =>
-                      service.id === rule.treatment_id
-                      && service.category?.trim().toLowerCase() === row.category.trim().toLowerCase()
-                    )) : [];
-                  return (
-                    <div key={row.id || `category-rule-${index}`} className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_160px_auto] sm:items-end">
-                        <label className="text-xs text-gray-600">Specialty Category
-                          <select
-                            value={row.category}
-                            onChange={event => setDoctorCategoryRows(prev => prev.map((item, rowIndex) => rowIndex === index ? { ...item, category: event.target.value } : item))}
-                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm"
-                          >
-                            <option value="">Select category</option>
-                            {availableDoctorCategoryNames.map(category => <option key={category} value={category}>{category}</option>)}
-                          </select>
-                        </label>
-                        <label className="text-xs text-gray-600">
-                          {usesFlatVisitCommission({ commissionType: newDoctorData.commission_type, specialization: newDoctorData.specialization })
-                            ? `Fixed Per Visit (${getCurrencySymbol(currency)})`
-                            : 'Commission %'}
-                          <input
-                            type="number"
-                            min="0"
-                            max={usesFlatVisitCommission({ commissionType: newDoctorData.commission_type, specialization: newDoctorData.specialization }) ? undefined : 100}
-                            step="0.01"
-                            value={usesFlatVisitCommission({ commissionType: newDoctorData.commission_type, specialization: newDoctorData.specialization }) ? (row.fixed_amount ?? '') : row.commission_rate}
-                            onChange={event => setDoctorCategoryRows(prev => prev.map((item, rowIndex) => rowIndex === index
-                              ? usesFlatVisitCommission({ commissionType: newDoctorData.commission_type, specialization: newDoctorData.specialization })
-                                ? { ...item, fixed_amount: event.target.value === '' ? null : Number(event.target.value) }
-                                : { ...item, commission_rate: Number(event.target.value) }
-                              : item))}
-                            className="mt-1 w-full rounded-lg border border-gray-200 p-2 text-sm"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          aria-label={`Remove category rule ${index + 1}`}
-                          onClick={() => setDoctorCategoryRows(prev => prev.filter((_, rowIndex) => rowIndex !== index))}
-                          className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      {overlaps.length > 0 && <p role="alert" className="mt-2 text-xs font-semibold text-amber-800">
-                        {overlaps.length} enabled per-treatment rule{overlaps.length === 1 ? '' : 's'} in this category will take precedence.
-                      </p>}
-                    </div>
-                  );
-                })}
               </div>
             )}
             <div>
@@ -6205,14 +5707,14 @@ const App: React.FC = () => {
                 </button>
               </div>
             </div>
-            {(doctorCommissionLoadError || doctorCategoryLoadError) && (
+            {doctorCommissionLoadError && (
               <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {doctorCommissionLoadError || doctorCategoryLoadError} Close and reopen this form before saving.
+                Custom commission rates could not be loaded. Close and reopen this form before saving.
               </p>
             )}
             <button
               type="submit"
-              disabled={isSubmitting || doctorCommissionLoading || doctorCategoriesLoading || Boolean(doctorCommissionLoadError || doctorCategoryLoadError)}
+              disabled={isSubmitting || doctorCommissionLoading || Boolean(doctorCommissionLoadError)}
               className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-600/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? (editingDoctor ? 'Updating...' : 'Creating...') : (editingDoctor ? 'Update Doctor' : 'Create Doctor')}

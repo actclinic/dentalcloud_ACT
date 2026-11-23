@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Search, Plus, Loader2, ChevronRight, Award, User, ShieldCheck, ShieldAlert, Key, Edit, MoreVertical, ArrowLeft, Calendar, Clock, Filter, AlertTriangle, RotateCw } from 'lucide-react';
-import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType, TreatmentType, Doctor, Location, PatientDirectorySummary } from '../types';
+import { Patient, LoyaltyRule, Appointment, ClinicalRecord, PatientType, TreatmentType, Doctor, Location } from '../types';
 import { formatCurrency, Currency } from '../utils/currency';
 import { exportPatientsToPDF } from '../utils/pdfExport';
 import { exportPatientsToExcel } from '../utils/excelExport';
@@ -110,7 +110,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({
   const [openActionMenuPatientId, setOpenActionMenuPatientId] = useState<string | null>(null);
   const [treatmentRecordsByPatientId, setTreatmentRecordsByPatientId] = useState<Record<string, ClinicalRecord[]>>({});
   const [treatmentRecordsLoadingForPatientId, setTreatmentRecordsLoadingForPatientId] = useState<string | null>(null);
-  const [directorySummaries, setDirectorySummaries] = useState<Record<string, PatientDirectorySummary>>({});
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const deletePatientIdRef = useRef<string | null>(null);
   const deletePatientNameRef = useRef<string>('this patient');
@@ -281,7 +280,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
       .sort((a, b) => a.localeCompare(b));
   };
 
-  const getUniquePatientDoctorNames = (records: Array<Pick<ClinicalRecord, 'doctor_id' | 'doctor_name'>>) => (
+  const getUniquePatientDoctorNames = (records: ClinicalRecord[]) => (
     [...new Set(records.map((record) => normalizeDoctorName(record.doctor_name)).filter(Boolean))]
   );
 
@@ -471,20 +470,6 @@ const PatientsView: React.FC<PatientsViewProps> = ({
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredPatients.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredPatients, currentPage, showAll]);
-
-  const visiblePatientKey = useMemo(() => paginatedPatients.map((patient) => patient.id).join('|'), [paginatedPatients]);
-  useEffect(() => {
-    const ids = paginatedPatients.map((patient) => patient.id).filter(Boolean);
-    if (!ids.length) return;
-    let cancelled = false;
-    void api.patients.getDirectorySummaries(paginatedPatients[0]?.location_id, ids)
-      .then((summaries) => {
-        if (cancelled) return;
-        setDirectorySummaries((previous) => ({ ...previous, ...Object.fromEntries(summaries.map((summary) => [summary.patientId, summary])) }));
-      })
-      .catch(() => { /* The pre-migration table continues using its existing history data. */ });
-    return () => { cancelled = true; };
-  }, [visiblePatientKey]);
 
   // Background batches must not interrupt a user browsing a later page.
   React.useEffect(() => {
@@ -886,7 +871,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         {/* Desktop Table View */}
         <div className="hidden md:block flex-1 min-h-0 p-6 pt-0 overflow-hidden">
           <div className="h-full rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
-            <div role="region" aria-label="Patients table" tabIndex={0} className="table-scroll table-scroll-fill">
+            <div className="h-full overflow-auto">
               <table className="min-w-[1040px] w-full text-sm">
                 <thead className="bg-indigo-50 border-b border-indigo-200">
                   <tr className="text-indigo-700">
@@ -910,11 +895,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                 </thead>
                 <tbody>
                   {paginatedPatients.map((patient, index) => {
-                        const summary = directorySummaries[patient.id];
-                        const patientRecords = summary?.treatments ?? treatmentRecordsByPatientIdMap.get(patient.id) ?? [];
-                        const nextAppointment = summary?.nextAppointment ?? nextAppointmentByPatientId.get(patient.id);
-                        const lastVisit = summary?.lastVisit ?? patientLastVisitMap.get(patient.id);
-                        const patientDoctorNames = summary?.doctorNames ?? getUniquePatientDoctorNames(patientRecords);
+                        const patientRecords = treatmentRecordsByPatientIdMap.get(patient.id) || [];
+                        const nextAppointment = nextAppointmentByPatientId.get(patient.id);
                         return (
                     <tr
                       key={patient.id}
@@ -958,10 +940,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                         {formatCreatedDate(patient.created_at)}
                       </td>
                       <td className="px-3 py-3 align-top whitespace-nowrap">
-                        {lastVisit ? (
+                        {patientLastVisitMap.get(patient.id) ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
                             <Calendar size={10} className="text-teal-500" />
-                            {formatDate(lastVisit)}
+                            {formatDate(patientLastVisitMap.get(patient.id)!)}
                           </span>
                         ) : (
                           <span className="text-xs text-gray-400 italic">No visits</span>
@@ -997,8 +979,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                       </td>
                       <td className="px-3 py-3 align-top text-gray-700">
                         <div className="text-[11px] font-medium text-gray-700 leading-tight max-h-[48px] overflow-y-auto space-y-0.5">
-                          {patientDoctorNames.length > 0 ? (
-                            patientDoctorNames.slice(0, 2).map((name, i) => (
+                          {patientRecords.length > 0 ? (
+                            getUniquePatientDoctorNames(patientRecords).slice(0, 2).map((name, i) => (
                               <div key={i} className="flex items-start gap-1">
                                 <span className="text-gray-400 mt-0.5 shrink-0">•</span>
                                 <span className="truncate">{formatDoctorName(name)}</span>
@@ -1007,8 +989,8 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
-                          {patientDoctorNames.length > 2 && (
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">+{patientDoctorNames.length - 2} more</div>
+                          {getUniquePatientDoctorNames(patientRecords).length > 2 && (
+                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">+{getUniquePatientDoctorNames(patientRecords).length - 2} more</div>
                           )}
                         </div>
                       </td>
@@ -1078,9 +1060,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
         {/* Mobile Card View */}
         <div className="md:hidden divide-y divide-gray-100 overflow-y-auto flex-1 min-h-0">
           {paginatedPatients.map((patient) => {
-            const summary = directorySummaries[patient.id];
-            const nextAppointment = summary?.nextAppointment ?? nextAppointmentByPatientId.get(patient.id);
-            const lastVisit = summary?.lastVisit ?? patientLastVisitMap.get(patient.id);
+            const nextAppointment = nextAppointmentByPatientId.get(patient.id);
             return (
             <div 
               key={patient.id} 
@@ -1125,10 +1105,10 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                     <div className="text-[11px] text-gray-400 mt-1">Created Date: {formatCreatedDate(patient.created_at)}</div>
                     <div className="text-[11px] text-gray-400 mt-1">
                       Last Visit:{' '}
-                      {lastVisit ? (
+                      {patientLastVisitMap.get(patient.id) ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
                           <Calendar size={9} className="text-teal-500" />
-                          {formatDate(lastVisit)}
+                          {formatDate(patientLastVisitMap.get(patient.id)!)}
                         </span>
                       ) : (
                         <span className="text-gray-400 italic">No visits</span>
@@ -1306,8 +1286,7 @@ const PatientsView: React.FC<PatientsViewProps> = ({
                   address: editData.address || undefined,
                   city: editData.city || undefined,
                   township: editData.township || undefined,
-                  ...(editData.patient_type !== normalizePatientType(editModal.patient.patient_type)
-                    ? { patient_type: editData.patient_type } : {})
+                  patient_type: editData.patient_type
                            };
                            await onUpdatePatient(editModal.patient.id, patientData);
                            setEditModal({ open: false, patient: null });

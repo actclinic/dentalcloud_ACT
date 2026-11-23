@@ -29,7 +29,7 @@ const UsersView: React.FC<UsersViewProps> = ({
   const [showAll, setShowAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [pendingDeleteUser, setPendingDeleteUser] = useState<UserType | null>(null);
-  const itemsPerPage = 100;
+  const itemsPerPage = 10;
 
   // Filtered data based on search term
   const filteredUsers = useMemo(() => {
@@ -194,9 +194,9 @@ const UsersView: React.FC<UsersViewProps> = ({
         </div>
       ) : (
         <div className="p-4 sm:p-6">
-          <div role="region" aria-label="Users table" tabIndex={0} className="table-scroll hidden md:block">
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[760px] w-full">
-              <thead className="bg-white">
+              <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Username</th>
                   <th className="text-left py-3 px-4 text-xs font-black text-gray-500 uppercase tracking-wider">Role</th>

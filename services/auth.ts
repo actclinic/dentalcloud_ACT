@@ -62,7 +62,7 @@ export const auth = {
     try {
       const users = await api.users.getAll();
       const adminExists = users.some(u => u.username === DEFAULT_ADMIN.username && u.role === 'admin');
-
+      
       if (!adminExists) {
         // Create default admin
         await api.users.create({

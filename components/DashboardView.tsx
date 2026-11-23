@@ -31,11 +31,6 @@ interface DashboardViewProps {
   allBranchesValue: string;
   canViewAllBranches: boolean;
   onLocationChange: (locationId: string) => void;
-  reportRange?: { dateFrom: string; dateTo: string };
-  onRangeChange?: (dateFrom: string, dateTo: string) => void;
-  loadError?: string | null;
-  onRetry?: () => void;
-  onLoadRecalls?: () => Promise<{ patients: Patient[]; appointments: Appointment[] }>;
   onLoadTreatmentAnalysis: (dateFrom: string, dateTo: string) => Promise<ClinicalRecord[]>;
   onLoadMonthlyReport: (dateFrom: string, dateTo: string, onProgress: MonthlyReportProgressCallback) => Promise<MonthlyReport>;
   onSelectPatient: (patient: Patient) => void;
@@ -64,11 +59,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   allBranchesValue,
   canViewAllBranches,
   onLocationChange,
-  reportRange,
-  onRangeChange,
-  loadError,
-  onRetry,
-  onLoadRecalls,
   onLoadTreatmentAnalysis,
   onLoadMonthlyReport,
   onSelectPatient,
@@ -88,28 +78,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const [completedLaterPickerId, setCompletedLaterPickerId] = useState<string | null>(null);
   const [exportingMonthlyReport, setExportingMonthlyReport] = useState(false);
   const [monthlyReportProgress, setMonthlyReportProgress] = useState({ percent: 0, label: '' });
-  const [dateFrom, setDateFrom] = useState(reportRange?.dateFrom || todayKey);
-  const [dateTo, setDateTo] = useState(reportRange?.dateTo || todayKey);
-  const [recallData, setRecallData] = useState<{ patients: Patient[]; appointments: Appointment[] } | null>(null);
-  const [recallLoading, setRecallLoading] = useState(false);
-  const [recallError, setRecallError] = useState('');
-  const [recallRevision, setRecallRevision] = useState(0);
-  const recallLoaderRef = useRef(onLoadRecalls);
-  recallLoaderRef.current = onLoadRecalls;
-  const recallAppointments = onLoadRecalls ? recallData?.appointments || [] : appointments;
-  const recallPatients = onLoadRecalls ? recallData?.patients || [] : patients;
-  useEffect(() => {
-    if (activeTab !== 'recalls-cancels' || !recallLoaderRef.current) return;
-    let cancelled = false;
-    setRecallLoading(true);
-    setRecallError('');
-    void recallLoaderRef.current().then((data) => {
-      if (!cancelled) setRecallData(data);
-    }).catch((error) => {
-      if (!cancelled) setRecallError(error?.message || 'Could not load follow-up appointments.');
-    }).finally(() => { if (!cancelled) setRecallLoading(false); });
-    return () => { cancelled = true; };
-  }, [activeTab, selectedLocationId, recallRevision]);
+  const [dateFrom, setDateFrom] = useState(todayKey);
+  const [dateTo, setDateTo] = useState(todayKey);
   const [analysisRecords, setAnalysisRecords] = useState<ClinicalRecord[]>([]);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
@@ -120,24 +90,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const moreDetailButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleDateFromChange = (value: string) => {
-    if (!value) return;
     setDateFrom(value);
     const nextDateTo = value > dateTo ? value : dateTo;
     if (value > dateTo) {
       setDateTo(value);
     }
-    onRangeChange?.(value, nextDateTo);
     if (activeTab === 'treatment-analysis') void loadTreatmentAnalysis(value, nextDateTo);
   };
 
   const handleDateToChange = (value: string) => {
-    if (!value) return;
     setDateTo(value);
     const nextDateFrom = value < dateFrom ? value : dateFrom;
     if (value < dateFrom) {
       setDateFrom(value);
     }
-    onRangeChange?.(nextDateFrom, value);
     if (activeTab === 'treatment-analysis') void loadTreatmentAnalysis(nextDateFrom, value);
   };
 
@@ -278,7 +244,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     [paymentRecords, dateFrom, dateTo]
   );
 
-  const recallsCancelsLists = useMemo(() => buildRecallsCancelsLists(recallAppointments, todayKey), [recallAppointments, todayKey]);
+  const recallsCancelsLists = useMemo(() => buildRecallsCancelsLists(appointments, todayKey), [appointments, todayKey]);
   const recallsCancelsTotal = recallsCancelsLists.recalls.length + recallsCancelsLists.late.length + recallsCancelsLists.cancelled.length + recallsCancelsLists.noShow.length + recallsCancelsLists.rescheduled.length + recallsCancelsLists.completedLater.length;
 
   const handleRecallsCancelsExport = async (format: 'pdf' | 'excel') => {
@@ -287,10 +253,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     try {
       if (format === 'pdf') {
         const { exportRecallsCancelsToPDF } = await import('../utils/pdfExport');
-        exportRecallsCancelsToPDF(recallAppointments, todayKey, selectedLocationName);
+        exportRecallsCancelsToPDF(appointments, todayKey, selectedLocationName);
       } else {
         const { exportRecallsCancelsToExcel } = await import('../utils/excelExport');
-        await exportRecallsCancelsToExcel(recallAppointments, todayKey, selectedLocationName);
+        await exportRecallsCancelsToExcel(appointments, todayKey, selectedLocationName);
       }
     } catch (error) {
       console.error(`Failed to export Recalls & Cancels as ${format}:`, error);
@@ -393,7 +359,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               const patientName = appointmentPatientName(appointment);
               const relativeLabel = getRelativeDayLabel(appointment.date);
               const patient = tone === 'cancelled' && appointment.patient_id
-                ? recallPatients.find(candidate => candidate.id === appointment.patient_id)
+                ? patients.find(candidate => candidate.id === appointment.patient_id)
                 : undefined;
               const rowContent = (
                 <>
@@ -446,7 +412,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     return `${appointment.date}T${time}`;
   };
 
-  const completedLaterCandidates = (appointment: Appointment) => recallAppointments
+  const completedLaterCandidates = (appointment: Appointment) => appointments
     .filter((candidate) => {
       if (!appointment.patient_id || candidate.patient_id !== appointment.patient_id || candidate.status !== 'Completed') return false;
       return appointmentDateTimeKey(candidate) > appointmentDateTimeKey(appointment);
@@ -461,7 +427,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     setSavingCancellationId(appointment.id);
     try {
       await onUpdateCancellationOutcome(appointment.id, outcome, completedLaterAppointmentId);
-      setRecallRevision((value) => value + 1);
       setCompletedLaterPickerId(null);
     } catch (error: any) {
       console.error('Unable to save cancellation follow-up outcome:', error);
@@ -527,7 +492,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         ) : (
           <div className="max-h-[480px] divide-y divide-slate-100 overflow-y-auto [scrollbar-width:thin]">
             {panel.rows.map((appointment) => {
-              const patient = appointment.patient_id ? recallPatients.find((candidate) => candidate.id === appointment.patient_id) : undefined;
+              const patient = appointment.patient_id ? patients.find((candidate) => candidate.id === appointment.patient_id) : undefined;
               const candidates = completedLaterCandidates(appointment);
               const isSaving = savingCancellationId === appointment.id;
               const isPickerOpen = completedLaterPickerId === appointment.id;
@@ -542,7 +507,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                       <p className="mt-1 text-xs text-slate-500">{appointment.type || 'No type'} · {formatAppointmentDate(appointment.date)} · {appointment.time || '--:--'}</p>
                       {cancellationTab === 'completed-later' && appointment.completed_later_appointment_id ? (
                         <p className="mt-1 text-xs font-medium text-emerald-700">
-                          Completed visit: {recallAppointments.find((candidate) => candidate.id === appointment.completed_later_appointment_id)?.date || 'Linked appointment'}
+                          Completed visit: {appointments.find((candidate) => candidate.id === appointment.completed_later_appointment_id)?.date || 'Linked appointment'}
                         </p>
                       ) : null}
                     </div>
@@ -1022,13 +987,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         ))}
       </div>
 
-      {loadError && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {loadError}
-          <button type="button" className="ml-3 font-semibold underline" onClick={onRetry}>Retry</button>
-        </div>
-      )}
-
       {activeTab === 'treatment-analysis' ? (
         <div ref={analysisPanelRef} tabIndex={-1} className="focus:outline-none">
           <TreatmentAnalysisView
@@ -1045,8 +1003,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           />
         </div>
       ) : activeTab === 'recalls-cancels' ? (
-        recallLoading ? <div role="status" className="rounded-xl bg-white p-6 text-sm text-gray-500">Loading follow-up appointments…</div> :
-        recallError ? <div role="alert" className="rounded-xl bg-red-50 p-6 text-red-700">{recallError}<button type="button" className="ml-3 underline" onClick={() => setRecallRevision((value) => value + 1)}>Retry</button></div> :
         <div className="space-y-5">
           <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1107,7 +1063,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
         </div>
-      ) : loading || loadError ? null : (
+      ) : (
         <>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">

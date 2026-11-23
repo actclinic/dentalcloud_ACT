@@ -96,8 +96,8 @@ const resolveFixedCustomAmount = (treatment: CommissionTreatmentInput): number |
     : treatment.customCommissionFixedAmount
 );
 
-// Percentage commission is paid only from the amount left after deductible
-// material and lab costs recorded for the treatment have been recovered.
+// Percentage commission is paid only from the amount left after every cost
+// recorded for the treatment (material, lab, and special doctor) has been recovered.
 // Applying this per payment also makes partial payments deterministic: the
 // cost is deducted once, from the earliest collected amount(s).
 const calculatePercentageCommissionBase = (

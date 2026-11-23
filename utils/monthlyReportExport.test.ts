@@ -60,13 +60,12 @@ describe('monthly report Excel workbook', () => {
     expect(summary['!freeze']).toMatchObject({ ySplit: 4, topLeftCell: 'A5' });
 
     const detail = workbook.Sheets['Treatment Detail'];
-    expect(detail.A4.v).toBe('Activity Date');
+    expect(detail.A4.v).toBe('Treatment Date');
     expect(detail.B4.v).toBe('Patient Name');
     expect(detail.F4.v).toBe('Township');
-    expect(detail.J4.v).toBe('Treatment Charges');
-    expect(detail.L4.v).toBe('Closing Treatment Balance');
-    expect(detail.P4.v).toBe('Doctor Commission');
-    expect(detail.Q4.v).toBe('Total Expenses');
+    expect(detail.J4.v).toBe('Total Cost');
+    expect(detail.L4.v).toBe('Receivable Balance');
+    expect(detail.P4.v).toBe('Doctor RF');
     expect(detail.A6.v).toBe('REPORT TOTAL');
     expect(detail.J5.z).toBe('#,##0" Ks"');
     expect(detail.S5.z).toBe('0.0%');
@@ -91,9 +90,7 @@ describe('monthly report Excel workbook', () => {
     const clinician = workbook.Sheets['By Clinician'];
     expect(clinician.A1.v).toBe('CLINICIAN PERFORMANCE');
     expect(clinician.A4.v).toBe('Clinician');
-    expect(clinician.D4.v).toBe('Treatment Charges');
-    expect(clinician.E4.v).toBe('Allocated Treatment Payment');
-    expect(clinician.F4.v).toBe('Total Expenses');
+    expect(clinician.D4.v).toBe('Total Cost');
     expect(clinician.A6.v).toBe('REPORT TOTAL');
   });
 
@@ -136,7 +133,7 @@ describe('monthly report Excel workbook', () => {
     const workbook = await buildMonthlyReportExcelWorkbook(emptyReport, metadata);
     const detail = workbook.Sheets['Treatment Detail'];
 
-    expect(detail.A4.v).toBe('Activity Date');
+    expect(detail.A4.v).toBe('Treatment Date');
     expect(detail.A5.v).toBe('REPORT TOTAL');
     expect(detail.J5.v).toBe(0);
     expect(detail.J5.z).toBe('#,##0" Ks"');

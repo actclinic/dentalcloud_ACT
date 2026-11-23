@@ -11,14 +11,6 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
-.env.*
-!.env.example
-!.env.*.example
-supabase/functions/.env
-supabase/functions/.env.*
-!supabase/functions/.env.example
-!supabase/functions/.env.*.example
 # Public image assets and PWA manifest are deployment-specific.
 public/**/*.avif
 public/**/*.bmp

@@ -16,7 +16,6 @@ import { formatDoctorName } from '../utils/doctorName';
 import { ASSISTANT_PRODUCT_KNOWLEDGE } from '../utils/assistantProductKnowledge';
 import { LOLI_WELCOME_MESSAGE, LOLI_WELCOME_MESSAGE_ID, isWelcomeMessage, isWelcomeOnlyConversation } from '../utils/assistantIntro';
 import LoliIntroAnimation from './LoliIntroAnimation';
-import AssistantDataStatus from './AssistantDataStatus';
 import {
   ExpectedAppointmentState,
   renderVerificationResult,
@@ -46,15 +45,6 @@ import { loadEmailSettingsAsync } from '../utils/emailSettings';
 
 // Custom CSS for animations
 const customStyles = `
-  .loli-workspace button:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
-  .loli-workspace .ai-markdown { min-width: 0; overflow-wrap: anywhere; }
-  .loli-workspace .ai-markdown pre { max-width: 100%; overflow-wrap: normal; }
-  @media (max-width: 639px) { .loli-workspace button { min-height: 44px; } }
-  @media (prefers-reduced-motion: reduce) {
-    .loli-workspace *, .loli-workspace *::before, .loli-workspace *::after {
-      animation: none !important; transition: none !important;
-    }
-  }
   @keyframes fade-in-up {
     0% {
       opacity: 0;
@@ -663,9 +653,6 @@ const buildConversationTimelineForPrompt = (history: Message[]) => {
 };
 
 interface AIAssistantViewProps {
-  dataReady?: boolean;
-  dataError?: string | null;
-  onRetryData?: () => void;
   patients: Patient[];
   treatmentRecords: ClinicalRecord[];
   appointments: Appointment[];
@@ -685,9 +672,6 @@ interface AIAssistantViewProps {
 }
 
 const AIAssistantView: React.FC<AIAssistantViewProps> = ({ 
-  dataReady = true,
-  dataError,
-  onRetryData,
   patients, 
   treatmentRecords,
   appointments,
@@ -1658,31 +1642,9 @@ const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     return 'General dental practice discussion';
   };
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const workspaceRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const memoryDirtyRef = useRef<boolean>(false);
   const lastSpeechTranscriptRef = useRef<string>('');
-
-  useEffect(() => {
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
-    const viewport = window.visualViewport;
-    const appHeader = document.querySelector<HTMLElement>('[data-mobile-app-header]');
-    const updateHeight = () => {
-      const headerHeight = appHeader?.getBoundingClientRect().height || 0;
-      workspace.style.setProperty('--loli-mobile-height', `${Math.max(0, (viewport?.height ?? window.innerHeight) - headerHeight)}px`);
-    };
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    viewport?.addEventListener('resize', updateHeight);
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateHeight) : null;
-    if (appHeader) observer?.observe(appHeader);
-    return () => {
-      window.removeEventListener('resize', updateHeight);
-      viewport?.removeEventListener('resize', updateHeight);
-      observer?.disconnect();
-    };
-  }, []);
   
   // Enhanced speech recognition with SpeechGrammarList for better accuracy
   const recognition = useRef<any>(null);
@@ -3627,7 +3589,7 @@ I can provide guidance on:
 
   const handleSendMessage = async (messageOverride?: string) => {
     const messageText = (messageOverride ?? inputMessage).trim();
-    if (!messageText || isLoading || !dataReady) return;
+    if (!messageText || isLoading) return;
 
     // Check if this is a confirmation response for a pending action
     const lowerInput = messageText.toLowerCase();
@@ -5477,10 +5439,9 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
   const showIntroPresentation = isWelcomeOnlyConversation(messages);
   
   return (
-    <div ref={workspaceRef} className="loli-workspace flex h-[var(--loli-mobile-height,100dvh)] w-full min-w-0 min-h-0 flex-col overflow-hidden bg-white animate-fade-in lg:h-full">
-      <AssistantDataStatus ready={dataReady} error={dataError} onRetry={onRetryData} />
-      <div className="max-h-[35%] shrink-0 overflow-y-auto border-b border-gray-200 bg-white lg:max-h-none">
-        <div className="flex flex-col gap-2 px-3 py-2 sm:gap-4 sm:px-4 sm:py-4 lg:px-6">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white animate-fade-in">
+      <div className="border-b border-gray-200 bg-white">
+        <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
               <div className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-md">
@@ -5502,7 +5463,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setShowHelpModal(true)}
                 className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
@@ -5532,13 +5493,12 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="min-w-0 sm:min-w-[220px]">
+              <div className="min-w-[220px]">
                 {canAccessAllLocations ? (
                   <select
                     value={selectedLocationScope}
-                    aria-label="Report branch scope"
                     onChange={(e) => setSelectedLocationScope(e.target.value)}
-                    className="min-h-11 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-base sm:text-sm text-gray-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   >
                     <option value={ALL_BRANCHES_VALUE}>All Branches</option>
                     {locations.map(location => (
@@ -5554,13 +5514,13 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                 )}
               </div>
 
-              <div className="hidden min-w-0 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 sm:inline-flex">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
                 <MapPin className="h-3.5 w-3.5" />
                 {selectedLocationLabel}
               </div>
             </div>
 
-            <div className="inline-flex shrink-0 rounded-lg bg-gray-100 p-1">
+            <div className="inline-flex rounded-lg bg-gray-100 p-1">
               <button
                 onClick={() => setMode('ask')}
                 className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
@@ -5588,8 +5548,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
         </div>
       </div>
 
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1">
-        <div className="relative flex min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 animate-gradient-shift">
+      <div className="grid min-h-0 flex-1 grid-cols-1">
+        <div className="relative flex min-h-0 flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 animate-gradient-shift">
           {/* Floating particles background */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {particles.map((particle) => (
@@ -5630,8 +5590,8 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
             </div>
           </div>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div role="region" aria-label="Chat messages" tabIndex={0} className="h-full overflow-y-auto overscroll-contain px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
+          <div className="flex-1 overflow-hidden">
+            <div className="h-full overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-6">
               <div className="w-full space-y-4">
                 {apiStatus === 'mock' && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -5830,23 +5790,22 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
           </div>
 
           {/* Input Area */}
-          <div className="shrink-0 border-t border-gray-200 bg-white px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-4 lg:px-6">
+          <div className="border-t border-gray-200 bg-white px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
             <div className="w-full">
               <div className="rounded-xl border border-gray-200 bg-white p-3">
-                <div className="flex flex-col gap-2 md:flex-row md:gap-3">
+                <div className="flex flex-col gap-3 md:flex-row">
                   <textarea
                     ref={inputRef}
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyDown={handleKeyPress}
                     placeholder={inputPlaceholder}
-                    aria-label="Message Loli"
-                    className="min-h-[60px] sm:min-h-[72px] min-w-0 flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 sm:px-4 py-2.5 sm:py-3 text-base text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                    className="min-h-\[60px\] sm:min-h-\[72px\] flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                     rows={2}
                     disabled={isLoading || isListening}
                   />
 
-                  <div className="loli-composer-actions flex w-full flex-row gap-2 md:w-[180px] md:shrink-0 md:flex-col [&>button]:min-h-11 [&>button]:flex-1">
+                  <div className="flex w-full flex-col gap-2 md:w-[180px]">
                     {/* Speech-to-text button */}
                     {typeof window !== 'undefined' && 'webkitSpeechRecognition' in window && (
                       <button
@@ -5908,7 +5867,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                     )}
                     <button
                       onClick={() => handleSendMessage()}
-                      disabled={!inputMessage.trim() || isLoading || !dataReady}
+                      disabled={!inputMessage.trim() || isLoading}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--hover-600)] px-4 py-3 text-sm font-medium text-white transition hover:bg-[var(--hover-700)] focus:outline-none focus:ring-2 focus:ring-[var(--hover-600)] disabled:cursor-not-allowed disabled:bg-gray-300"
                       title="Send message"
                     >
@@ -5933,7 +5892,7 @@ This action requires Agent Mode to be enabled. Please switch to Agent Mode using
                       </span>
                     )}
                   </div>
-                  <p className="hidden text-xs text-gray-500 sm:block">AI guidance supports decisions, but final clinical judgment stays with your team.</p>
+                  <p className="text-xs text-gray-500">AI guidance supports decisions, but final clinical judgment stays with your team.</p>
                 </div>
               </div>
             </div>
