@@ -51,15 +51,15 @@ COPY --chown=101:101 --from=build /app/dist /usr/share/nginx/html
 USER root
 
 RUN cat > /etc/nginx/nginx.conf <<'EOF'
-worker_processes 1;
-worker_rlimit_nofile 4096;
+worker_processes auto;
+worker_rlimit_nofile 8192;
 
 error_log /dev/stderr warn;
 pid /tmp/nginx.pid;
 
 events {
-    worker_connections 1024;
-    multi_accept off;
+    worker_connections 4096;
+    multi_accept on;
 }
 
 http {
@@ -68,7 +68,16 @@ http {
 
     map $http_upgrade $connection_upgrade {
         default upgrade;
-        '' close;
+        ''      '';
+    }
+
+    # Persistent upstream pool to the Supabase host. Without keepalive every
+    # API call paid a full TCP + TLS handshake (~1s per request measured).
+    upstream supabase_backend {
+        server 167.86.78.69:443;
+        keepalive 64;
+        keepalive_requests 1000;
+        keepalive_timeout 60s;
     }
 
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
@@ -78,12 +87,12 @@ http {
 
     sendfile on;
     tcp_nopush on;
-    keepalive_timeout 15;
+    keepalive_timeout 65;
     keepalive_requests 1000;
     reset_timedout_connection on;
-    client_body_timeout 10;
+    client_body_timeout 60;
     client_header_timeout 10;
-    send_timeout 10;
+    send_timeout 60;
 
     # All nginx runtime state stays in /tmp so the root filesystem can be read-only.
     client_body_temp_path /tmp/client_temp;
@@ -104,6 +113,10 @@ server {
     index index.html;
 
     server_tokens off;
+
+    # Patient files and photos are uploaded through /supabase/storage/v1/.
+    # Without this nginx rejects anything over its 1m default with a 413.
+    client_max_body_size 50m;
 
     gzip on;
     gzip_vary on;
@@ -136,7 +149,7 @@ server {
     # browser CORS preflights from depending on the backend's CDN proxy while
     # keeping the database and all Supabase services on their current server.
     location /supabase/ {
-        proxy_pass https://167.86.78.69/;
+        proxy_pass https://supabase_backend/;
         proxy_http_version 1.1;
         proxy_ssl_server_name on;
         proxy_ssl_name supabaseact.dentalcloud.asia;
@@ -148,10 +161,12 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header Upgrade $http_upgrade;
+        # '' for normal HTTP so the upstream keepalive pool is reused;
+        # 'upgrade' only for Realtime WebSocket traffic.
         proxy_set_header Connection $connection_upgrade;
         proxy_connect_timeout 5s;
         proxy_read_timeout 3600s;
-        proxy_send_timeout 60s;
+        proxy_send_timeout 300s;
     }
 
     location = /index.html {
