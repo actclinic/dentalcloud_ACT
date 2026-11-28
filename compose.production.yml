@@ -19,13 +19,15 @@ services:
     stop_signal: SIGQUIT
     stop_grace_period: 30s
 
-    # Safe initial limits for this static nginx workload. Monitor real usage before
-    # reducing them; increase DENTALCLOUD_MEMORY_LIMIT if Docker reports OOMKilled.
-    cpus: "${DENTALCLOUD_CPU_LIMIT:-0.50}"
-    mem_limit: "${DENTALCLOUD_MEMORY_LIMIT:-128m}"
-    mem_reservation: "${DENTALCLOUD_MEMORY_RESERVATION:-64m}"
-    memswap_limit: "${DENTALCLOUD_MEMORY_LIMIT:-128m}"
-    pids_limit: 100
+    # The gateway now proxies every clinic's auth, REST, storage and Realtime
+    # traffic, so it needs more headroom than a plain static-site container.
+    # Monitor real usage; increase DENTALCLOUD_MEMORY_LIMIT if Docker reports
+    # OOMKilled.
+    cpus: "${DENTALCLOUD_CPU_LIMIT:-1.0}"
+    mem_limit: "${DENTALCLOUD_MEMORY_LIMIT:-256m}"
+    mem_reservation: "${DENTALCLOUD_MEMORY_RESERVATION:-128m}"
+    memswap_limit: "${DENTALCLOUD_MEMORY_LIMIT:-256m}"
+    pids_limit: 200
 
     read_only: true
     tmpfs:
@@ -42,6 +44,7 @@ services:
         max-file: "3"
 
     ulimits:
+      # Must be >= nginx worker_rlimit_nofile / worker_connections.
       nofile:
-        soft: 1024
-        hard: 4096
+        soft: 8192
+        hard: 16384
